@@ -1,0 +1,39 @@
+# Dependencias
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker
+*.log
+
+# Archivos temporales
+*.tmp
+*.bak
+*.orig
+
+# Aider
+.aider*
+
+# Sistema
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Archivos con backtick (esqueletos no oficiales)
+`*

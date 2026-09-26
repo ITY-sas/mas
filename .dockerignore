@@ -1,0 +1,17 @@
+.git
+.aider.tags.cache.v4
+.aider.chat.history.md
+.aider.input.history
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+.venv
+venv
+.env
+*.md
+workspace
+datos_curados
+`*
