@@ -3,6 +3,38 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 Convención de commits: [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
 
+## [1.3.0] — 2026-09-26
+
+### Added
+- **feat**: Orquestador multi-agente con **LangGraph** (`orchestrator/`)
+  - `multi_agent/state.py` — Esquemas de estado (`SupervisorState`, `IdeacionState`, `PublicacionState`)
+  - `multi_agent/tools.py` — 6 tools registradas como `@tool` de LangChain
+  - `multi_agent/ideacion.py` — Subgrafo StateGraph del agente de ideación
+  - `multi_agent/publicacion.py` — Subgrafo StateGraph del agente de publicación
+  - `multi_agent/supervisor.py` — Patrón supervisor con enrutamiento condicional
+  - `main.py` — FastAPI + RabbitMQ + LangGraph (puerto 8002)
+- **feat**: Endpoints del orquestador: `/health`, `/metrics`, `/tools`, `/graph`, `/process`
+- **feat**: Dockerfile y servicio `orchestrator` en docker-compose
+- **feat**: Dependencias LangGraph: `langgraph 1.2`, `langchain 1.4`, `langchain-ollama 1.1`
+- **test**: 15 tests unitarios del orquestador (`tests/unit/test_orquestador.py`)
+  - Esquemas de estado (compatibilidad entre subgrafos y supervisor)
+  - Tools LangChain (6 tools con nombre/descripción, tipo `BaseTool`)
+  - Lógica de enrutamiento del supervisor (decide_next)
+  - Compilación de grafos (StateGraph con nodos correctos)
+- **test**: 5 tests de integración (`tests/integration/test_orquestador_integration.py`)
+  - Nodos de ideación contra PostgreSQL + Ollama
+  - Nodos de publicación contra PostgreSQL + Ollama
+  - Pipeline completo E2E del orquestador
+- **test**: Script `prueba_orquestador.py` para prueba E2E directa
+- **docs**: `docs/TECNOLOGIAS.md` — Actualizado: LangGraph SÍ se usa en orquestador
+- **docs**: `docs/ARQUITECTURA.md` — Diagrama del patrón supervisor y subgrafos
+- **docs**: `docs/PLAN_DE_PRUEBAS.md` — Tests U-ORQ-01..04, I-ORQ-01..03, criterios G11..G14
+- **docs**: `docs/CHANGELOG.md` — Este archivo
+
+### Changed
+- **refactor**: `docker-compose.yml` añade servicio `orchestrator` (puerto 8002)
+- **refactor**: Suite completa: **99 passed, 1 skipped** (antes: 79 passed)
+
 ## [1.2.0] — 2026-09-26
 
 ### Added

@@ -1,22 +1,76 @@
 # Stack Tecnológico
 
-## ⚠️ Aclaración importante: ¿Usamos LangChain?
+## ✅ LangGraph: SÍ se usa (en el orquestador)
 
-**NO.** Este proyecto **no utiliza LangChain, LangGraph, CrewAI ni AutoGen.**
+**Desde la v1.3.0, este proyecto SÍ utiliza LangGraph y LangChain.**
 
-Existía un archivo esqueleto `` `agente_ideacion/grafo.py `` con una clase dummy:
+El orquestador (`orchestrator/`) implementa un **sistema multi-agente real** con:
 
-```python
-class LangGraph:  # ← ESTO NUNCA SE USÓ
-    def deliberate(self, brief):
-        return {"content": f"Idea generated for {brief.content}"}
+| Componente | Tecnología | Uso |
+|-----------|-----------|-----|
+| Orquestador | **LangGraph 1.2** | Patrón supervisor que coordina los agentes |
+| Agentes | **LangGraph StateGraph** | Subgrafos de ideación y publicación |
+| Tools | **LangChain @tool** | 6 tools registradas y disponibles |
+| LLM | **langchain-ollama ChatOllama** | Llamadas al LLM vía LangChain |
+
+> **Nota**: Los agentes individuales (`agente_ideacion/`, `agente_publicacion/`)
+> siguen usando llamadas HTTP directas a Ollama (sin LangChain) para mantener
+> la compatibilidad y simplicidad. El orquestador LangGraph es el sistema
+> multi-agente completo.
+
+### ¿Por qué LangGraph AHORA sí?
+
+1. **Sistema multi-agente real**: El patrón supervisor de LangGraph coordina
+   ambos agentes con lógica de enrutamiento condicional
+2. **Estado compartido**: `SupervisorState` mantiene el estado global entre agentes
+3. **Grafos como grafos**: Cada agente es un `StateGraph` con nodos y aristas explícitos
+4. **Tools como tools**: Las funciones están registradas como `@tool` de LangChain
+5. **Observabilidad**: LangGraph permite inspeccionar la ejecución del grafo
+
+### Arquitectura multi-agente con LangGraph
+
 ```
-
-Esa clase **nunca fue importada** por el código real y fue ignorada.
+                    ┌─────────────────────────────────────────┐
+                    │     SUPERVISOR (LangGraph StateGraph)    │
+                    │                                         │
+                    │   START → start → [decide_next] → ...   │
+                    │                                         │
+                    │   decide_next(state):                   │
+                    │     if not idea → "ideacion_agent"      │
+                    │     if not publication → "publicacion_agent"
+                    │     else → END                          │
+                    └────────────┬────────────────────────────┘
+                                 │
+              ┌──────────────────┼──────────────────┐
+              ▼                                     ▼
+    ┌──────────────────────┐            ┌──────────────────────┐
+    │  IDEACIÓN AGENT      │            │  PUBLICACIÓN AGENT   │
+    │  (StateGraph)        │            │  (StateGraph)        │
+    │                      │            │                      │
+    │  load_context        │            │  load_context        │
+    │      ↓               │            │      ↓               │
+    │  fetch_news          │            │  fetch_trending      │
+    │      ↓               │            │      ↓               │
+    │  generate_idea       │            │  generate_post       │
+    │      ↓               │            │      ↓               │
+    │  save_idea           │            │  save_post           │
+    └──────────┬───────────┘            └──────────┬───────────┘
+               │                                    │
+               ▼                                    ▼
+    ┌──────────────────────┐            ┌──────────────────────┐
+    │ LangChain Tools (6): │            │ LangChain Tools (6): │
+    │ • load_client_profile│            │ • load_client_profile│
+    │ • search_trends      │            │ • search_trends      │
+    │ • search_competitors │            │ • fetch_trending     │
+    │ • search_similar_ideas            │ • fetch_news         │
+    │ • fetch_news         │            │                      │
+    │ • fetch_trending     │            │                      │
+    └──────────────────────┘            └──────────────────────┘
+```
 
 ---
 
-## Tecnologías SÍ utilizadas
+## Stack general del proyecto
 
 ### Orquestación y comunicación
 | Tecnología | Versión | Uso |
@@ -29,9 +83,17 @@ Esa clase **nunca fue importada** por el código real y fue ignorada.
 | Tecnología | Versión | Uso |
 |-----------|---------|-----|
 | Python | 3.11 | Lenguaje principal |
-| FastAPI | 0.141 | Framework web + endpoints /health, /metrics, /tools |
+| FastAPI | 0.141 | Framework web + endpoints |
 | Uvicorn | 0.54 | Servidor ASGI |
 | Pydantic | 2.13 | Validación de modelos de datos |
+
+### Multi-agente (orquestador)
+| Tecnología | Versión | Uso |
+|-----------|---------|-----|
+| **LangGraph** | 1.2.12 | StateGraph, supervisor pattern, conditional edges |
+| **LangChain** | 1.4.2 | Framework base |
+| **langchain-core** | 1.6.5 | @tool, tipos base |
+| **langchain-ollama** | 1.1.0 | ChatOllama para LLM calls |
 
 ### Base de datos y búsqueda semántica
 | Tecnología | Versión | Uso |
@@ -46,7 +108,8 @@ Esa clase **nunca fue importada** por el código real y fue ignorada.
 |-----------|---------|-----|
 | Ollama | local | Runtime de LLM local |
 | gemma3:4b | 3.3 GB | Modelo de generación de texto |
-| requests | 2.34 | Cliente HTTP para API de Ollama |
+| requests | 2.34 | Cliente HTTP (agentes individuales) |
+| ChatOllama | (LangChain) | Cliente LLM (orquestador) |
 
 ### Fuentes externas
 | Tecnología | Uso |
@@ -55,77 +118,20 @@ Esa clase **nunca fue importada** por el código real y fue ignorada.
 
 ---
 
-## ¿Por qué NO LangChain?
+## Comparativa: agentes individuales vs orquestador
 
-1. **Simplicidad**: Para esta PoC, llamadas HTTP directas a Ollama son suficientes
-2. **Sin dependencias pesadas**: LangChain añade ~50 dependencias
-3. **Transparencia**: El pipeline es explícito y fácil de depurar
-4. **Control total**: Sin abstracciones que oculten lo que ocurre
+| Aspecto | Agentes individuales | Orquestador LangGraph |
+|---------|---------------------|----------------------|
+| Coordinación | RabbitMQ (colas) | LangGraph supervisor (estado compartido) |
+| Tools | Funciones Python directas | LangChain `@tool` registradas |
+| LLM | HTTP directo (`requests`) | `ChatOllama` (LangChain) |
+| Estado | Se pasa por mensajes JSON | `SupervisorState` (TypedDict) |
+| Enrutamiento | Colas separadas | `decide_next()` con edges condicionales |
+| Observabilidad | Logs | Logs + estructura de grafo inspeccionable |
 
-### ¿Cuándo SÍ convendría LangChain?
+### ¿Cuándo usar cada uno?
 
-- Cuando se necesiten **cadenas de prompts complejos** con memoria conversacional
-- Cuando se quiera **tool-calling automático** (ReAct loop donde el LLM decide qué tool usar)
-- Cuando se necesiten **múltiples proveedores LLM** con fallback
-- Cuando se quiera **agentes con reasoning loops** (el LLM decide sus propios pasos)
-
-### ¿Cómo se agregaría?
-
-```bash
-pip install langchain langchain-ollama
-```
-
-Y reemplazar las llamadas directas por:
-
-```python
-from langchain_ollama import OllamaLLM
-from langchain.agents import initialize_agent, Tool
-
-llm = OllamaLLM(model="gemma3:4b")
-tools = [
-    Tool(name="get_client_profile", func=get_client_profile, description="..."),
-    Tool(name="get_relevant_trends", func=get_relevant_trends, description="..."),
-]
-agent = initialize_agent(tools, llm, agent="zero-shot-react-description")
-```
-
----
-
-## Arquitectura actual (sin LangChain)
-
-```
-                    ┌─────────────────────────────────────┐
-                    │           RabbitMQ                  │
-  Brief ──────────► │  ┌─────────────┐ ┌──────────────┐  │
-  (JSON)            │  │ideation_    │ │publication_  │  │
-                    │  │queue        │ │queue         │  │
-                    │  └──────┬──────┘ └──────▲───────┘  │
-                    └─────────┼───────────────┼──────────┘
-                              │               │
-                   ┌──────────▼──┐   ┌────────┴──────────┐
-                   │   AGENTE    │   │   AGENTE           │
-                   │ IDEACIÓN    │──►│ PUBLICACIÓN         │
-                   │  (8000)     │   │   (8001)           │
-                   └──┬───┬───┬──┘   └──┬───┬───┬────────┘
-                      │   │   │         │   │   │
-            ┌─────────┘   │   └────┐    │   │   └────────┐
-            ▼             ▼        ▼    ▼   ▼            ▼
-       ┌────────┐   ┌──────────┐ ┌──┐┌────┐┌──────┐ ┌─────────┐
-       │Ollama  │   │PostgreSQL│ │G.││Oll.││Postg│ │Google   │
-       │(LLM)   │   │+pgvector │ │N.││LLM ││SQL  │ │News RSS │
-       └────────┘   └──────────┘ └──┘└────┘└─────┘ └─────────┘
-```
-
-**Pipeline de cada brief:**
-
-1. Brief llega por RabbitMQ
-2. `enrich_brief_context()` ejecuta 4 tools:
-   - `get_client_profile()` → PostgreSQL
-   - `get_relevant_trends()` → pgvector similarity search
-   - `get_relevant_competitors()` → pgvector similarity search
-   - `search_similar_ideas()` → pgvector RAG
-3. `fetch_google_news()` → Google News RSS
-4. Prompt enriquecido se envía a Ollama (gemma3:4b)
-5. Idea guardada en PostgreSQL + embedding
-6. Publicada a `publication_queue`
-7. Agente de publicación repite proceso similar
+- **Agentes individuales**: Para pruebas aisladas, integración con sistemas externos
+  que consumen una cola específica, o cuando no se necesita coordinación.
+- **Orquestador LangGraph**: Para el pipeline completo end-to-end, cuando se
+  necesita estado compartido entre agentes, o para inspeccionar el flujo de ejecución.

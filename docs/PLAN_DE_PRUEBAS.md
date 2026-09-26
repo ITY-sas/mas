@@ -8,26 +8,32 @@
 |-------|---------|----------|-------------|
 | **Unitarias** | `tests/unit/` | Verificar cada función individualmente | pytest |
 | **Integración** | `tests/integration/` | Verificar interacción entre componentes | pytest |
-| **E2E** | `prueba_e2e.py` | Flujo completo de punta a punta | Script standalone |
+| **E2E** | `prueba_e2e.py` / `prueba_orquestador.py` | Flujo completo de punta a punta | Script standalone |
 | **Rendimiento** | `tests/performance/` | Tiempos de respuesta y throughput | pytest + time |
 
 ### 1.2 Cobertura objetivo
 
 ```
-Módulo                      Unitarias  Integración  Rendimiento
-─────────────────────────────────────────────────────────────────
-shared_tools/db.py             ✅          ✅            —
-shared_tools/embeddings.py     ✅          ✅            ✅
-shared_tools/cliente.py        ✅          ✅            —
-shared_tools/tendencias.py     ✅          ✅            ✅
-shared_tools/competencia.py    ✅          ✅            —
-shared_tools/rag.py            ✅          ✅            ✅
-shared_tools/enrichment.py     ✅          ✅            ✅
-shared_tools/fuentes_externas  ✅          ✅            —
-agente_ideacion/main.py        ✅          ✅            ✅
-agente_publicacion/main.py     ✅          ✅            ✅
-─────────────────────────────────────────────────────────────────
-TOTAL                          10 tests    6 tests       4 tests
+Módulo                              Unitarias  Integración  Rendimiento
+──────────────────────────────────────────────────────────────────────
+shared_tools/db.py                     ✅          ✅            —
+shared_tools/embeddings.py             ✅          ✅            ✅
+shared_tools/cliente.py                ✅          ✅            —
+shared_tools/tendencias.py             ✅          ✅            ✅
+shared_tools/competencia.py            ✅          ✅            —
+shared_tools/rag.py                    ✅          ✅            ✅
+shared_tools/enrichment.py             ✅          ✅            ✅
+shared_tools/fuentes_externas          ✅          ✅            —
+agente_ideacion/main.py                ✅          ✅            ✅
+agente_publicacion/main.py             ✅          ✅            ✅
+orchestrator/multi_agent/state         ✅          —             —
+orchestrator/multi_agent/tools         ✅          —             —
+orchestrator/multi_agent/supervisor    ✅          —             —
+orchestrator/multi_agent/ideacion      ✅          ✅            —
+orchestrator/multi_agent/publicacion   ✅          ✅            —
+orchestrator/multi_agent (E2E)         —           ✅            —
+──────────────────────────────────────────────────────────────────────
+TOTAL                                  99+         17+           9
 ```
 
 ---
@@ -80,6 +86,17 @@ TOTAL                          10 tests    6 tests       4 tests
 | U20 | `search_similar_content` con tabla inválida | `tabla="hack"` | `raises ValueError` |
 | U21 | `store_embedding` con tabla válida | `ideas_generadas, id=1` | `True` o `False` sin excepción |
 
+### 2.6 `test_orquestador.py` (LangGraph)
+
+| # | Test | Entrada esperada | Criterio de aceptación |
+|---|------|-----------------|----------------------|
+| U-ORQ-01 | Esquemas de estado definidos | `SupervisorState`, `IdeacionState`, `PublicacionState` | Claves esperadas presentes |
+| U-ORQ-01b | Compatibilidad de claves compartidas | Estados superpuestos | Subgrafos pueden leer/escribir en supervisor |
+| U-ORQ-02 | Tools LangChain registradas | `ALL_TOOLS` | 6 tools con nombre y descripción |
+| U-ORQ-02b | Tools son `BaseTool` | `ALL_TOOLS` | `isinstance(tool, BaseTool)` |
+| U-ORQ-03 | Enrutamiento del supervisor | Estado con/sin idea/publicación | Rutas correctas a agentes o END |
+| U-ORQ-04 | Compilación de grafos | `create_*_graph()` | Grafos compilan con nodos correctos |
+
 ---
 
 ## 3. Pruebas de Integración (`tests/integration/`)
@@ -112,6 +129,16 @@ TOTAL                          10 tests    6 tests       4 tests
 | I12 | Endpoint `/tools` lista tools | Container corriendo | `len(tools) >= 6` |
 | I13 | `enrich_brief_context` completo | DB con seed | Retorna contexto con stats |
 | I14 | Brief completo → idea en DB | Todos los servicios | ≥1 nueva fila en `ideas_generadas` |
+
+### 3.4 `test_orquestador_integration.py` (LangGraph)
+
+| # | Test | Condición previa | Criterio de aceptación |
+|---|------|-----------------|----------------------|
+| I-ORQ-01 | `load_context` nodo ideación | PostgreSQL corriendo | Retorna `client_profile`, `trends`, `competitors` |
+| I-ORQ-01b | `generate_idea` nodo ideación | PostgreSQL + Ollama | Retorna `idea` con >20 chars |
+| I-ORQ-02 | `load_context` nodo publicación | PostgreSQL corriendo | Retorna `client_profile`, `trends` |
+| I-ORQ-02b | `generate_post` nodo publicación | PostgreSQL + Ollama | Retorna `publication` con >10 chars |
+| I-ORQ-03 | Pipeline completo E2E | Todos los servicios | `idea_id>0` y `publication_id>0` |
 
 ---
 
@@ -181,7 +208,11 @@ pytest tests/unit/ --cov=shared_tools --cov-report=html
 ### 5.3 Prueba E2E (fuera de pytest)
 
 ```bash
+# E2E clásico (agentes individuales vía RabbitMQ)
 python prueba_e2e.py
+
+# E2E del orquestador LangGraph (directo, sin RabbitMQ)
+python prueba_orquestador.py
 ```
 
 ---
@@ -200,3 +231,7 @@ python prueba_e2e.py
 | G08 | Embeddings generados | 0 registros con `embedding IS NULL` |
 | G09 | Documentación actualizada | `docs/` completo |
 | G10 | Commits con convención | `git log` con `feat:`, `fix:`, etc. |
+| G11 | Orquestador LangGraph responde | `curl localhost:8002/health` |
+| G12 | Pipeline LangGraph completo pasa | `python prueba_orquestador.py` |
+| G13 | Tools LangChain registradas | `curl localhost:8002/tools` → 6 tools |
+| G14 | Grafo supervisor compila | `pytest tests/unit/test_orquestador.py` |
