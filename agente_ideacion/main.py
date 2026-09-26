@@ -3,6 +3,8 @@ import pika
 import psycopg2
 from fastapi import FastAPI
 from pydantic import BaseModel
+import logging
+import time
 
 app = FastAPI()
 
@@ -18,6 +20,22 @@ async def health():
 async def metrics():
     return {"metrics": "data"}
 
+def autocorrect(func):
+    def wrapper(*args, **kwargs):
+        attempts = 0
+        while attempts < 5:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logging.error(f"Error: {e}")
+                time.sleep(1)
+                attempts += 1
+        logging.error("Max attempts reached. Documenting the issue.")
+        with open("INFORME_BLOQUEOS.md", "a") as f:
+            f.write(f"Error: {e}\n")
+    return wrapper
+
+@autocorrect
 async def consume_messages():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
     channel = connection.channel()
