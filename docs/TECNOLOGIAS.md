@@ -1,137 +1,112 @@
 # Stack Tecnológico
 
-## ✅ LangGraph: SÍ se usa (en el orquestador)
-
-**Desde la v1.3.0, este proyecto SÍ utiliza LangGraph y LangChain.**
-
-El orquestador (`orchestrator/`) implementa un **sistema multi-agente real** con:
-
-| Componente | Tecnología | Uso |
-|-----------|-----------|-----|
-| Orquestador | **LangGraph 1.2** | Patrón supervisor que coordina los agentes |
-| Agentes | **LangGraph StateGraph** | Subgrafos de ideación y publicación |
-| Tools | **LangChain @tool** | 6 tools registradas y disponibles |
-| LLM | **langchain-ollama ChatOllama** | Llamadas al LLM vía LangChain |
-
-> **Nota**: Los agentes individuales (`agente_ideacion/`, `agente_publicacion/`)
-> siguen usando llamadas HTTP directas a Ollama (sin LangChain) para mantener
-> la compatibilidad y simplicidad. El orquestador LangGraph es el sistema
-> multi-agente completo.
-
-### ¿Por qué LangGraph AHORA sí?
-
-1. **Sistema multi-agente real**: El patrón supervisor de LangGraph coordina
-   ambos agentes con lógica de enrutamiento condicional
-2. **Estado compartido**: `SupervisorState` mantiene el estado global entre agentes
-3. **Grafos como grafos**: Cada agente es un `StateGraph` con nodos y aristas explícitos
-4. **Tools como tools**: Las funciones están registradas como `@tool` de LangChain
-5. **Observabilidad**: LangGraph permite inspeccionar la ejecución del grafo
-
-### Arquitectura multi-agente con LangGraph
+## Mapa tecnológico por capa
 
 ```
-                    ┌─────────────────────────────────────────┐
-                    │     SUPERVISOR (LangGraph StateGraph)    │
-                    │                                         │
-                    │   START → start → [decide_next] → ...   │
-                    │                                         │
-                    │   decide_next(state):                   │
-                    │     if not idea → "ideacion_agent"      │
-                    │     if not publication → "publicacion_agent"
-                    │     else → END                          │
-                    └────────────┬────────────────────────────┘
-                                 │
-              ┌──────────────────┼──────────────────┐
-              ▼                                     ▼
-    ┌──────────────────────┐            ┌──────────────────────┐
-    │  IDEACIÓN AGENT      │            │  PUBLICACIÓN AGENT   │
-    │  (StateGraph)        │            │  (StateGraph)        │
-    │                      │            │                      │
-    │  load_context        │            │  load_context        │
-    │      ↓               │            │      ↓               │
-    │  fetch_news          │            │  fetch_trending      │
-    │      ↓               │            │      ↓               │
-    │  generate_idea       │            │  generate_post       │
-    │      ↓               │            │      ↓               │
-    │  save_idea           │            │  save_post           │
-    └──────────┬───────────┘            └──────────┬───────────┘
-               │                                    │
-               ▼                                    ▼
-    ┌──────────────────────┐            ┌──────────────────────┐
-    │ LangChain Tools (6): │            │ LangChain Tools (6): │
-    │ • load_client_profile│            │ • load_client_profile│
-    │ • search_trends      │            │ • search_trends      │
-    │ • search_competitors │            │ • fetch_trending     │
-    │ • search_similar_ideas            │ • fetch_news         │
-    │ • fetch_news         │            │                      │
-    │ • fetch_trending     │            │                      │
-    └──────────────────────┘            └──────────────────────┘
+┌─ API / Orquestación ─────────────────────────────────────────────────┐
+│ FastAPI + Uvicorn   (orquestador, agentes, tools, gateway)           │
+│ LangGraph 1.2       (grafos del supervisor y de cada agente)         │
+│ langgraph-checkpoint-redis  (RedisSaver: checkpoints externos)       │
+│ Pydantic            (esquemas de API del gateway)                    │
+├─ Mensajería ─────────────────────────────────────────────────────────┤
+│ RabbitMQ (AMQP 0-9-1) + pika   (eventos durables + RPC)             │
+├─ Datos / Estado ─────────────────────────────────────────────────────┤
+│ PostgreSQL 16 + pgvector  (datos de negocio + historial de chat)     │
+│ Redis Stack 7.4           (checkpoints LangGraph, TaskStore,         │
+│                            caché de prompts, pub/sub de tareas)      │
+├─ LLM ────────────────────────────────────────────────────────────────┤
+│ LLM Gateway propio       (balanceo, backoff, fallback, caché)        │
+│ Ollama (host)             (gemma3:4b, mistral-nemo,                  │
+│                            nomic-embed-text, …)                      │
+│ httpx / requests          (transporte HTTP)                          │
+├─ Infraestructura ────────────────────────────────────────────────────┤
+│ Docker + docker compose   (13 servicios)                             │
+│ rss vía requests + xml.etree  (noticias y trending Google News)       │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Papel de cada tecnología
 
-## Stack general del proyecto
+### LangGraph 1.2 — el patrón de agentes, NO la coordinación
 
-### Orquestación y comunicación
-| Tecnología | Versión | Uso |
-|-----------|---------|-----|
-| Docker Compose | v2.40 | Orquestación de contenedores |
-| RabbitMQ | 3-management | Colas de mensajería entre agentes |
-| pika | 1.4.4 | Cliente Python de RabbitMQ |
+LangGraph se usa en **dos niveles** y sólo para lo que aporta:
 
-### Agentes y API
-| Tecnología | Versión | Uso |
-|-----------|---------|-----|
-| Python | 3.11 | Lenguaje principal |
-| FastAPI | 0.141 | Framework web + endpoints |
-| Uvicorn | 0.54 | Servidor ASGI |
-| Pydantic | 2.13 | Validación de modelos de datos |
+| Dónde | Qué modela | Por qué |
+|-------|-----------|---------|
+| `orchestrator/multi_agent/supervisor.py` | Grafo supervisor: `decide → dispatch_ideacion → dispatch_publicacion → END` | El ciclo de planificación queda como **grafo checkpointeable**: `interrupt()` suspende y `Command(resume=…)` retoma desde Redis sin memoria en el proceso |
+| `agente_ideacion/graph.py`, `agente_publicacion/graph.py` | Grafo de 4 nodos por agente | Cada agente microservicio posee su flujo (carga contexto → enriquece → genera → persiste) con su propio checkpointer |
 
-### Multi-agente (orquestador)
-| Tecnología | Versión | Uso |
-|-----------|---------|-----|
-| **LangGraph** | 1.2.12 | StateGraph, supervisor pattern, conditional edges |
-| **LangChain** | 1.4.2 | Framework base |
-| **langchain-core** | 1.6.5 | @tool, tipos base |
-| **langchain-ollama** | 1.1.0 | ChatOllama para LLM calls |
+Lo que **no** se hace con LangGraph (y es deliberado):
 
-### Base de datos y búsqueda semántica
-| Tecnología | Versión | Uso |
-|-----------|---------|-----|
-| PostgreSQL | 16 | Base de datos relacional |
-| pgvector | 0.5 | Extensión para vectores + similitud de coseno |
-| psycopg2-binary | 2.9 | Cliente PostgreSQL |
-| nomic-embed-text | (Ollama) | Modelo de embeddings (768 dimensiones) |
+- La coordinación entre orquestador y agentes **no** son subgrafos en memoria:
+  son **eventos `agent.task.triggered` / `agent.task.completed`** por RabbitMQ.
+- El estado del ciclo **no** vive en el `State` del proceso: vive en Redis
+  (`RedisSaver`, `thread_id = task_id`).
+- Los agentes **no** usan `@tool` de LangChain para la lógica de negocio:
+  usan `ToolRegistry` (Tool Discovery → contratos REST). Sí existe un puente
+  `as_langchain_tools()` que materializa los manifiestos como `BaseTool`
+  cuando un grafo quiera usarlos formalmente.
 
-### LLM
-| Tecnología | Versión | Uso |
-|-----------|---------|-----|
-| Ollama | local | Runtime de LLM local |
-| gemma3:4b | 3.3 GB | Modelo de generación de texto |
-| requests | 2.34 | Cliente HTTP (agentes individuales) |
-| ChatOllama | (LangChain) | Cliente LLM (orquestador) |
+### Patrones de agentes cubiertos (requisitos del proyecto)
 
-### Fuentes externas
-| Tecnología | Uso |
-|-----------|-----|
-| Google News RSS | Noticias reales vía RSS (sin API key) |
+| Requisito | Tecnología / módulo |
+|-----------|---------------------|
+| 1. Estado externo del ciclo (ReAct/plan) + historial de chat | `langgraph-checkpoint-redis` (`RedisSaver`) + `common/task_store.py` (Redis) + `orchestrator/history.py` (PostgreSQL `chat_history`) |
+| 2. Tools-as-a-Service + tool discovery | `common/contracts.py` (manifiesto `/.well-known/tool-manifest`, envelope) + `common/tool_client.py` (`ToolRegistry`: discover → call → `as_langchain_tools`) + FastAPI en cada tool |
+| 3. Resiliencia del bucle asíncrono en RabbitMQ | `common/events.py` (dataclass `Event`, colas durables, `EventConsumer` con reconexión y ack manual) + `common/rpc.py` (RPC sobre eventos) + `common/agent_runner.py` (idempotencia at-least-once) |
+| 4. LLM Gateway centralizado | `llm_gateway/` (`providers.py` balanceo ponderado + salud, `resilience.py` backoff exponencial + cadena de fallback, `cache.py` caché Redis) + `common/gateway_client.py` (único cliente) |
 
----
+### RabbitMQ vs Kafka
 
-## Comparativa: agentes individuales vs orquestador
+Se usa **RabbitMQ** (colas durables, acks, reentrega, RPC por eventos) porque
+ya estaba en la infraestructura y cubre el patrón requerido. **Kafka** sería
+la alternativa en producción si se necesita re-consumo histórico, retención
+larga de eventos o streaming de alto throughput — el contrato de `Event` es
+JSON plano, portable a un topic de Kafka sin cambiar los consumidores.
 
-| Aspecto | Agentes individuales | Orquestador LangGraph |
-|---------|---------------------|----------------------|
-| Coordinación | RabbitMQ (colas) | LangGraph supervisor (estado compartido) |
-| Tools | Funciones Python directas | LangChain `@tool` registradas |
-| LLM | HTTP directo (`requests`) | `ChatOllama` (LangChain) |
-| Estado | Se pasa por mensajes JSON | `SupervisorState` (TypedDict) |
-| Enrutamiento | Colas separadas | `decide_next()` con edges condicionales |
-| Observabilidad | Logs | Logs + estructura de grafo inspeccionable |
+### Redis Stack (no Redis simple)
 
-### ¿Cuándo usar cada uno?
+`langgraph-checkpoint-redis` exige **RedisJSON + RediSearch**, así que la
+imagen es `redis/redis-stack-server:7.4.0-v3`. Redis sostiene:
 
-- **Agentes individuales**: Para pruebas aisladas, integración con sistemas externos
-  que consumen una cola específica, o cuando no se necesita coordinación.
-- **Orquestador LangGraph**: Para el pipeline completo end-to-end, cuando se
-  necesita estado compartido entre agentes, o para inspeccionar el flujo de ejecución.
+- checkpoints del supervisor (`thread_id = task_id`) y de cada agente
+  (`thread_id = {agente}:{task_id}`),
+- `TaskStore` (metadatos/resultados de tarea) + canales pub/sub de espera,
+- caché de prompts y embeddings del gateway (`llm:{kind}:{sha256}`),
+- `agent.state:*` (serialización de estado de agente para su endpoint).
+
+### PostgreSQL + pgvector — datos de negocio y memoria
+
+| Tabla | Dueña | Rol |
+|-------|-------|-----|
+| `clientes` | tool-client | Perfil, tono, restricciones |
+| `tendencias` | tool-trends | Embeddings de tendencias (RAG) |
+| `referencias_competencia` | tool-competitors | Enfoques de competencia |
+| `ideas_generadas` | tool-rag | Memoria RAG de ideas (pgvector) |
+| `publicaciones_generadas` | tool-rag | Publicaciones (con `idea_id` FK) |
+| `chat_history` | orquestador | Historial durable de la conversación |
+
+### Ollama (LLM local)
+
+Modelos por defecto (`.env`):
+
+- `OLLAMA_MODEL=gemma3:4b` — generación de ideas y posts
+- `LLM_FALLBACK_MODEL=mistral-nemo` — cadena de fallback del gateway
+- `EMBEDDING_MODEL=nomic-embed-text` — embeddings (768 dimensiones)
+
+Acceso **exclusivamente** a través del LLM Gateway: ningún otro componente
+abre conexión con `:11434`.
+
+## Versiones mínimas verificadas
+
+| Paquete | Versión | Nota |
+|---------|---------|------|
+| Python | 3.10 (host) / 3.11 (imágenes) | LangGraph requiere ≥3.10 |
+| langgraph | 1.2.12 | `interrupt()` / `Command(resume=…)` |
+| langgraph-checkpoint-redis | 0.5.2 | RedisSaver |
+| fastapi / uvicorn | latest | APIs HTTP |
+| pika | latest | AMQP 0-9-1 |
+| psycopg2-binary | latest | PostgreSQL |
+| requests | latest | Cliente HTTP de tools y gateway |
+| redis (Stack) | 7.4.0-v3 | RedisJSON + RediSearch |
+| PostgreSQL | 16 + pgvector | Búsqueda vectorial |

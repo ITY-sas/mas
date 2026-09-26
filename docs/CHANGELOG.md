@@ -3,6 +3,113 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 Convención de commits: [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
 
+## [2.0.0] — 2026-09-26
+
+Reescritura como **arquitectura de microservicios** (13 contenedores) que
+cumple los 4 requisitos: orquestador stateless con estado externo, Tools-as-a-
+Service con tool discovery, resiliencia de eventos en RabbitMQ y LLM Gateway
+centralizado.
+
+### Added
+- **feat** (`common/`): kernel compartido que sustituye a `shared_tools` como
+  contrato entre servicios
+  - `events.py` — dataclass `Event` tipada (`agent.task.triggered`,
+    `agent.task.completed`, `tool.task.triggered`, `tool.task.completed`,
+    `task.completed`), colas durables, `EventConsumer` con reconexión y ack
+    manual, `publish_event`, RPC por eventos y fallback *raw* de `from_body`
+  - `contracts.py` — manifiesto `/.well-known/tool-manifest` + envelope
+    uniforme `{tool, status, data, error, duration_ms, …}`
+  - `tool_client.py` — `ToolRegistry` con Tool Discovery (discover → call →
+    `as_langchain_tools`), mapeo operación→endpoint y `TOOL_URLS` por entorno
+  - `gateway_client.py` — único cliente LLM (generate/embed/health)
+  - `task_store.py` — metadatos/resultados de tarea en Redis (estado externo)
+  - `agent_runner.py` — `run_agent_task` idempotente (nueva / retoma /
+    reentrega duplicada) con `thread_id = {agente}:{task_id}`
+  - `rpc.py` — servidor RPC por eventos para tool services
+- **feat** (`tool_services/`): 6 microservicios Tools-as-a-Service
+  (`tool-client:8010`, `tool-trends:8011`, `tool-competitors:8012`,
+  `tool-rag:8013`, `tool-news:8014`, `tool-trending:8015`)
+  - `/health`, manifiesto de descubrimiento, operaciones REST con envelope y
+    RPC AMQP (`tool.{nombre}.rpc`)
+  - propiedad de datos por servicio (`clientes`, `tendencias`,
+    `referencias_competencia`, `ideas_generadas`/`publicaciones_generadas`,
+    RSS externo en news/trending)
+  - `Dockerfile` parametrizado (`ARG TOOL_DIR`) + `requirements.txt` comunes
+- **feat** (`llm_gateway/`): LLM Gateway centralizado (:8003)
+  - `providers.py` — registro de proveedores, balanceo ponderado por peso y
+    salud en memoria (3 fallos → no sano; éxito → rehabilita)
+  - `resilience.py` — reintentos con exponential backoff + jitter y cadena de
+    fallback de proveedor (`AllProvidersFailed` con detalle; 4xx sin retry)
+  - `cache.py` — caché Redis de prompts/embeddings (`llm:{kind}:sha256`, TTL
+    por tipo, fallos de Redis degradan a «sin caché»)
+  - API: `GET /health`, `GET /v1/providers`, `POST /v1/generate`,
+    `POST /v1/embeddings`
+- **feat** (orquestador): reescritura como **orquestador stateless**
+  - `multi_agent/supervisor.py` — grafo supervisor con `interrupt()` en
+    `dispatch_ideacion`/`dispatch_publicacion` y `Command(resume=…)`
+  - `multi_agent/runtime.py` — máquina de estados event-driven **fuera** del
+    grafo (start → dispatch → resultado → finalize), guarda anti-duplicados
+    (sólo avanza el agente esperado) y `recover_running_tasks()` al arrancar
+  - `history.py` — historial de chat durable en PostgreSQL (`chat_history`)
+  - `main.py` — `/health` `/metrics` `/graph` `/tools` `/process`
+    (`wait`/`timeout`) `/tasks/{id}` `/tasks/{id}/history`, consumidor
+    `agent.results` e ingress `ideation_queue` (JSON crudo tolerado)
+- **feat** (agentes): `agente_ideacion/` y `agente_publicacion/` como
+  **paquetes microservicio** (`python -m agente_x`)
+  - `graph.py` — grafo propio de 4 nodos vía `ToolRegistry` + gateway con
+    trazabilidad `tool_calls`
+  - `prompts.py` — prompts propios de cada agente (persona)
+  - `/state/{task_id}` — checkpoint del agente en Redis
+  - consumidor `auto_ack=False` con reconexión (reentrega si hay crash)
+- **feat**: `docker-compose.yml` con los **13 servicios** (rabbitmq, postgres,
+  redis-stack, llm-gateway, 6 tools, 2 agentes, orquestador)
+- **test**: suite reescrita y ampliada a **201 tests** (antes 99)
+  - `tests/unit/test_kernel.py` (28) — eventos, envelope/manifiesto,
+    discovery, TaskStore y cliente del gateway
+  - `tests/unit/test_agentes.py` (15) — estados, grafos, contratos de
+    invocación de nodos y semántica idempotente del runner
+  - `tests/unit/test_llm_gateway.py` (29) — balanceo, backoff, retries,
+    fallback, salud de proveedores y claves de caché
+  - `tests/unit/test_orquestador.py` (17) — supervisor, ciclo
+    interrupt/resume y runtime completo con dobles
+  - `tests/unit/test_prompts.py` (10) — prompts de los agentes
+    (sustituye a `test_enrichment.py`)
+  - `tests/integration/test_tools_services.py` (20) — contrato completo de
+    los 6 tools + RPC AMQP
+  - `tests/integration/test_orquestador_integration.py` (12) — discovery,
+    nodos contra servicios reales y pipeline HTTP con estado externo
+  - `tests/performance/` (9) — P01-P09 con LLM Gateway y tools
+  - plan de pruebas movido a `tests/PLAN_DE_PRUEBAS.md` (IDs U-K/U-AG/U-ORQ/
+    U-LLM/I-T/I-ORQ/P01-P09)
+- **docs**: `docs/ARQUITECTURA.md` reescrito (topología, 4 requisitos,
+  secuencia, happy path, caso de uso TechStart, decisiones);
+  `docs/TECNOLOGIAS.md` reescrito; `README.md` reescrito
+
+### Changed
+- **refactor**: `shared_tools/embeddings.py` llama exclusivamente al LLM
+  Gateway (nadie habla directo con Ollama)
+- **refactor**: E2E `prueba_e2e.py` reescrito (HTTP + `--eventos` + verificación
+  de estado externo en Redis/PostgreSQL) y `prueba_orquestador.py` (modo
+  asíncrono + historial)
+- **fix**: `Event.from_body` rellena `task_id` en el fallback *raw*
+- **fix**: colas declaradas de forma coherente (`durable=True`) en
+  `enviar_brief.py`, `prueba_e2e.py` y `test_rabbitmq.py` (un `ideation_queue`
+  antiguo no durable provocaba `406 PRECONDITION_FAILED` en el consumidor)
+- **fix**: `test_postgres.test_connection` no depende de constantes internas
+  de psycopg2 (`SELECT 1`)
+- **test**: validación final en verde con el stack completo:
+  **201 passed, 0 skipped**; E2E HTTP + eventos + estado externo en 12 s
+
+### Removed
+- **remove**: `shared_tools/enrichment.py` (prompts duplicados → ahora viven
+  en `agente_ideacion/prompts.py` y `agente_publicacion/prompts.py`)
+- **remove**: `orchestrator/multi_agent/{ideacion,publicacion,tools}.py`
+  (subgrafos y `@tool` en memoria: los agentes son microservicios y las tools
+  son servicios con manifiesto)
+- **remove**: `tests/unit/test_enrichment.py` (sustituido por
+  `tests/unit/test_prompts.py`)
+- **remove**: script temporal `_validar_interrupt.py`
+
 ## [1.3.0] — 2026-09-26
 
 ### Added
