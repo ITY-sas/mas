@@ -24,7 +24,7 @@ def enviar_brief(content: str, client_id: int = 1):
         )
     )
     ch = conn.channel()
-    ch.queue_declare(queue="ideation_queue")
+    ch.queue_declare(queue="ideation_queue", durable=True)
 
     brief = {"client_id": client_id, "content": content}
     ch.basic_publish(exchange="", routing_key="ideation_queue", body=json.dumps(brief))
