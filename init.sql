@@ -11,17 +11,20 @@ CREATE TABLE ideas_generadas (
     id SERIAL PRIMARY KEY,
     client_id INT,
     content TEXT,
-    embedding VECTOR(1536)
+    embedding VECTOR(1536),
+    client_id INT,
+    content TEXT,
+    embedding VECTOR(1536),
 );
 
 CREATE TABLE tendencias (
     id SERIAL PRIMARY KEY,
     content TEXT,
-    embedding VECTOR(1536)
+    embedding VECTOR(1536),
 );
 
 CREATE TABLE referencias_competencia (
     id SERIAL PRIMARY KEY,
     content TEXT,
-    embedding VECTOR(1536)
+    embedding VECTOR(1536),
 );
