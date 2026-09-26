@@ -3,14 +3,14 @@ Tests de rendimiento
 P01-P09 del plan de pruebas.
 
 Umbrales:
-  P01 generate_embedding    < 2 seg
-  P02 get_relevant_trends   < 3 seg
-  P03 enrich_brief_context  < 10 seg
-  P04 Generación LLM        < 60 seg
-  P05 Pipeline completo     < 120 seg
-  P06 Health endpoint       < 500 ms
-  P07 Búsqueda vectorial    < 500 ms
-  P08 Conexión RabbitMQ     < 2 seg
+  P01 generate_embedding (vía LLM Gateway)  < 2 seg
+  P02 get_relevant_trends                   < 3 seg
+  P03 Contexto vía tool services (4 REST)   < 10 seg
+  P04 Generación LLM (vía LLM Gateway)      < 60 seg
+  P05 Pipeline completo                     < 120 seg
+  P06 Health endpoint                       < 500 ms
+  P07 Búsqueda vectorial                    < 500 ms
+  P08 Conexión RabbitMQ                     < 2 seg
 """
 import os
 import sys
@@ -24,6 +24,7 @@ requests = pytest.importorskip("requests", reason="requests no instalado")
 
 IDEACION_URL = os.getenv("IDEACION_URL", "http://localhost:8000")
 PUBLICACION_URL = os.getenv("PUBLICACION_URL", "http://localhost:8001")
+GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://localhost:8003")
 
 
 class TestPerformanceTools:
@@ -32,17 +33,18 @@ class TestPerformanceTools:
     @pytest.mark.performance
     @pytest.mark.slow
     def test_p01_generate_embedding_speed(self):
-        """P01: generate_embedding < 2 seg."""
+        """P01: generate_embedding (LLM Gateway) < 2 seg."""
         from shared_tools.embeddings import generate_embedding
 
         start = time.time()
         result = generate_embedding("campaña de marketing sostenible para jóvenes")
         elapsed = time.time() - start
+        if result is None:
+            pytest.skip("LLM Gateway no disponible (embeddings)")
 
         print(f"\n  P01 generate_embedding: {elapsed:.3f}s")
         assert elapsed < 2.0, f"Embedding tardó {elapsed:.3f}s (umbral: 2.0s)"
-        if result is not None:
-            assert len(result) == 768  # nomic-embed-text
+        assert len(result) == 768  # nomic-embed-text
 
     @pytest.mark.performance
     @pytest.mark.slow
@@ -62,22 +64,29 @@ class TestPerformanceTools:
 
     @pytest.mark.performance
     @pytest.mark.slow
-    def test_p03_enrich_brief_context_speed(self):
-        """P03: enrich_brief_context < 10 seg."""
-        pytest.importorskip("psycopg2")
-        from shared_tools.enrichment import enrich_brief_context
+    def test_p03_tool_context_speed(self):
+        """P03: contexto completo vía tool services (4 REST) < 10 seg."""
+        from common.tool_client import ToolRegistry
 
         start = time.time()
         try:
-            context = enrich_brief_context(
-                "Lanzamiento de producto eco-friendly", client_id=1
-            )
+            registry = ToolRegistry()
+            if "rag" not in registry.discover(timeout=2.0):
+                pytest.skip("tool services no descubiertos")
+            brief = "Lanzamiento de producto eco-friendly"
+            registry.call("client", "profile", params={"client_id": 1})
+            registry.call("trends", "search",
+                          params={"query": brief, "limit": 5})
+            registry.call("competitors", "search",
+                          params={"query": brief, "limit": 5})
+            registry.call("rag", "similar",
+                          json_body={"query": brief, "limit": 3,
+                                     "min_similarity": 0.3})
             elapsed = time.time() - start
-            print(f"\n  P03 enrich_brief_context: {elapsed:.3f}s")
-            print(f"      stats: {context.get('stats', {})}")
-            assert elapsed < 10.0, f"Tardó {elapsed:.3f}s (umbral: 10.0s)"
         except Exception as e:
             pytest.skip(f"No disponible: {e}")
+        print(f"\n  P03 tool context (4 REST): {elapsed:.3f}s")
+        assert elapsed < 10.0, f"Tardó {elapsed:.3f}s (umbral: 10.0s)"
 
     @pytest.mark.performance
     @pytest.mark.slow
@@ -180,27 +189,24 @@ class TestPerformanceLLM:
     @pytest.mark.performance
     @pytest.mark.slow
     def test_p04_llm_generation_speed(self):
-        """P04: Generación LLM < 60 seg."""
-        from shared_tools.embeddings import _build_ollama_url
+        """P04: Generación LLM (vía LLM Gateway) < 60 seg."""
         import requests as req
-
-        ollama_url = _build_ollama_url()
-        model = os.getenv("OLLAMA_MODEL", "gemma3:4b")
 
         try:
             start = time.time()
             resp = req.post(
-                f"{ollama_url}/api/generate",
+                f"{GATEWAY_URL}/v1/generate",
                 json={
-                    "model": model,
                     "prompt": "Escribe una idea de marketing para una marca ecológica. Sé breve.",
-                    "stream": False,
                 },
                 timeout=90,
             )
             elapsed = time.time() - start
-            assert resp.status_code == 200
-            print(f"\n  P04 LLM generation ({model}): {elapsed:.1f}s")
+            assert resp.status_code == 200, resp.text[:200]
+            data = resp.json()
+            print(f"\n  P04 LLM generation ({data.get('provider')}/{data.get('model')}): "
+                  f"{elapsed:.1f}s (cached={data.get('cached')}, attempts={data.get('attempts')})")
+            assert data["content"]
             assert elapsed < 60.0, f"Tardó {elapsed:.1f}s (umbral: 60s)"
         except Exception as e:
-            pytest.skip(f"Ollama no disponible: {e}")
+            pytest.skip(f"LLM Gateway no disponible: {e}")

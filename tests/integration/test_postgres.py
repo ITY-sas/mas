@@ -32,7 +32,9 @@ class TestPostgreSQL:
         """I05: Conexión a PostgreSQL exitosa."""
         try:
             conn = _get_conn()
-            assert conn.status == 2  # STATUS_READY
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            assert cur.fetchone()[0] == 1
             conn.close()
         except Exception as e:
             pytest.skip(f"PostgreSQL no disponible: {e}")

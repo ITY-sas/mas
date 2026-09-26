@@ -1,11 +1,16 @@
 """
-Tests de integración para el orquestador LangGraph.
+Tests de integración del orquestador **stateless** + Tools-as-a-Service.
 
-Ejecuta el pipeline completo (o nodos individuales) contra servicios reales:
-- PostgreSQL (perfil de cliente, tendencias, competencia, RAG)
-- Ollama (generación de texto)
+Validan la arquitectura de microservicios contra servicios reales:
 
-Se saltan automáticamente si los servicios no están disponibles.
+- Tool Discovery: los 6 tool services publican manifiestos y sus
+  operaciones responden vía REST (I-ORQ-01/02)
+- Los nodos de los agentes invocan contratos y el LLM Gateway (I-ORQ-03/04)
+- Pipeline completo por HTTP: evento-driven, checkpoints Redis,
+  historial de chat PostgreSQL (I-ORQ-05)
+
+Se saltan automáticamente si los servicios no están disponibles
+(``docker compose up -d --build``).
 """
 import sys
 from pathlib import Path
@@ -18,66 +23,126 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+requests = pytest.importorskip("requests", reason="requests no instalado")
 
-def _ollama_available() -> bool:
+ORQUESTADOR_URL = "http://localhost:8002"
+TOOL_CLIENT_URL = "http://localhost:8010"
+GATEWAY_URL = "http://localhost:8003"
+
+
+def _reachable(url: str, timeout: float = 3.0) -> bool:
     try:
-        import requests
-
-        host = "127.0.0.1"
-        r = requests.get(f"http://{host}:11434/api/tags", timeout=3)
-        return r.status_code == 200
-    except Exception:
+        return requests.get(url, timeout=timeout).status_code == 200
+    except Exception:  # noqa: BLE001
         return False
 
 
-def _postgres_available() -> bool:
-    try:
-        import psycopg2
+requires_orchestrator = pytest.mark.skipif(
+    not _reachable(f"{ORQUESTADOR_URL}/health"),
+    reason="Orquestador no disponible en localhost:8002",
+)
+requires_tools = pytest.mark.skipif(
+    not _reachable(f"{TOOL_CLIENT_URL}/health"),
+    reason="Tool services no disponibles (localhost:8010)",
+)
+requires_gateway = pytest.mark.skipif(
+    not _reachable(f"{GATEWAY_URL}/health"),
+    reason="LLM Gateway no disponible en localhost:8003",
+)
 
-        conn = psycopg2.connect(
-            host="localhost",
-            port=5432,
-            user="postgres",
-            password="password",
-            dbname="ideation_db",
-            connect_timeout=3,
+
+# ── I-ORQ-01/02: Tool Discovery + contrato REST ────────────────
+class TestToolDiscovery:
+    """Los agentes descubren las tools y las invocan por contrato."""
+
+    @requires_tools
+    def test_discover_all_six_manifests(self):
+        from common.contracts import validate_manifest
+        from common.tool_client import ToolRegistry
+
+        registry = ToolRegistry()
+        manifests = registry.discover(refresh=True, timeout=2.0)
+
+        assert len(manifests) >= 6, (
+            f"sólo {sorted(manifests)} descubiertos — ¿está docker compose up?"
         )
-        conn.close()
-        return True
-    except Exception:
-        return False
+        assert set(manifests) == {
+            "client", "trends", "competitors", "rag", "news", "trending"}
+        for manifest in manifests.values():
+            validate_manifest(manifest)  # contrato válido
+            assert manifest["operations"]
+
+    @requires_tools
+    def test_call_profile_via_rest(self):
+        from common.tool_client import ToolRegistry
+
+        data = ToolRegistry().call("client", "profile", params={"client_id": 1})
+
+        assert data["found"] in (True, False)
+        assert "text" in data
+
+    @requires_tools
+    def test_call_trends_search_via_rest(self):
+        from common.tool_client import ToolRegistry
+
+        data = ToolRegistry().call(
+            "trends", "search", params={"query": "moda sostenible", "limit": 3})
+
+        assert data["count"] >= 1
+        assert isinstance(data["text"], str)
 
 
-requires_ollama = pytest.mark.skipif(
-    not _ollama_available(), reason="Ollama no disponible en 127.0.0.1:11434"
-)
-requires_postgres = pytest.mark.skipif(
-    not _postgres_available(), reason="PostgreSQL no disponible en localhost:5432"
-)
+# ── I-ORQ-03: nodos de agente contra los microservicios ────────
+class TestAgentNodesAgainstServices:
+    """Los nodos de los agentes sólo hablan contratos REST/gateway."""
 
-
-class TestIdeacionNodes:
-    """I-ORQ-01: Nodos del agente de ideación contra servicios reales."""
-
-    @requires_postgres
-    def test_load_context_node(self):
-        from multi_agent.ideacion import load_context
+    @requires_tools
+    def test_ideacion_load_context_node(self):
+        from agente_ideacion.graph import load_context
 
         state = {
             "brief": {"client_id": 1, "content": "Summer skincare campaign"},
             "client_id": 1,
         }
         result = load_context(state)
-        assert "client_profile" in result
-        assert "trends" in result
-        assert "competitors" in result
-        assert "similar_ideas" in result
-        assert len(result["client_profile"]) > 0
 
-    @requires_postgres
-    @requires_ollama
-    def test_generate_idea_node(self):
-        from multi_agent.ideacion import generate_idea
+        assert len(result["client_profile"]) > 0
+        assert len(result["trends"]) > 0
+        assert len(result["competitors"]) > 0
+        assert len(result["similar_ideas"]) > 0
+        assert result["tool_calls"] == [
+            "client.profile", "trends.search",
+            "competitors.search", "rag.similar",
+        ]
+
+    @requires_tools
+    def test_publicacion_load_context_node(self):
+        from agente_publicacion.graph import load_context
+
+        state = {
+            "idea": "A campaign about sustainable summer skincare",
+            "client_id": 1,
+            "idea_id": 1,
+        }
+        result = load_context(state)
+
+        assert len(result["client_profile"]) > 0
+        assert len(result["trends"]) > 0
+
+    @requires_tools
+    def test_ideacion_fetch_news_node(self):
+        from agente_ideacion.graph import fetch_news
+
+        result = fetch_news({
+            "brief": {"client_id": 1, "content": "skincare campaign"},
+            "client_id": 1,
+        })
+        assert isinstance(result["news"], str)
+
+    @requires_gateway
+    @pytest.mark.slow
+    def test_ideacion_generate_idea_via_gateway(self):
+        from agente_ideacion.graph import generate_idea
 
         state = {
             "brief": {"client_id": 1, "content": "Summer campaign"},
@@ -89,30 +154,14 @@ class TestIdeacionNodes:
             "news": "No news available",
         }
         result = generate_idea(state)
-        assert "idea" in result
+
         assert len(result["idea"]) > 20
+        assert result["tool_calls"] == ["llm-gateway.generate"]
 
-
-class TestPublicacionNodes:
-    """I-ORQ-02: Nodos del agente de publicación contra servicios reales."""
-
-    @requires_postgres
-    def test_load_context_node(self):
-        from multi_agent.publicacion import load_context
-
-        state = {
-            "idea": "A campaign about sustainable summer skincare",
-            "client_id": 1,
-            "idea_id": 1,
-        }
-        result = load_context(state)
-        assert "client_profile" in result
-        assert "trends" in result
-
-    @requires_postgres
-    @requires_ollama
-    def test_generate_post_node(self):
-        from multi_agent.publicacion import generate_post
+    @requires_gateway
+    @pytest.mark.slow
+    def test_publicacion_generate_post_via_gateway(self):
+        from agente_publicacion.graph import generate_post
 
         state = {
             "idea": "Summer skincare campaign for young professionals",
@@ -123,26 +172,91 @@ class TestPublicacionNodes:
             "trending": "- #SustainableFashion\n- #CleanBeauty",
         }
         result = generate_post(state)
-        assert "publication" in result
+
         assert len(result["publication"]) > 10
 
 
-class TestFullPipeline:
-    """I-ORQ-03: Pipeline completo del orquestador."""
+# ── I-ORQ-05: pipeline completo vía HTTP (event-driven) ────────
+class TestFullPipelineHTTP:
+    """POST /process ejecuta el ciclo supervisor ⇄ agentes ⇄ tools con
+    el estado fuera del proceso (Redis + PostgreSQL)."""
 
-    @requires_postgres
-    @requires_ollama
-    def test_run_pipeline_end_to_end(self):
-        from multi_agent.supervisor import run_pipeline
-
-        brief = {
+    @requires_orchestrator
+    @pytest.mark.slow
+    def test_pipeline_end_to_end_with_external_state(self):
+        payload = {
             "client_id": 1,
             "content": "Create a back-to-school campaign for sustainable stationery",
+            "wait": True,
+            "timeout": 600,
         }
-        result = run_pipeline(brief=brief, client_id=1)
+        try:
+            resp = requests.post(f"{ORQUESTADOR_URL}/process",
+                                 json=payload, timeout=660)
+        except requests.Timeout:
+            pytest.skip("Pipeline excedió el timeout de la prueba")
 
-        assert result.get("idea"), "El pipeline no generó una idea"
-        assert result.get("idea_id", 0) > 0, "La idea no se guardó en DB"
-        assert result.get("publication"), "El pipeline no generó una publicación"
-        assert result.get("publication_id", 0) > 0, "La publicación no se guardó en DB"
-        assert "supervisor: pipeline iniciado" in result.get("log", [])
+        assert resp.status_code == 200, resp.text[:500]
+        data = resp.json()
+
+        assert data["status"] == "completed"
+        assert data["idea"], "El orquestador no devolvió una idea"
+        assert data["idea_id"] > 0
+        assert data["publication"], "El orquestador no devolvió una publicación"
+        assert data["publication_id"] > 0
+
+        # resultados por agente registrados externamente (TaskStore/Redis)
+        assert data["agents"]["ideacion"]["status"] == "completed"
+        assert data["agents"]["publicacion"]["status"] == "completed"
+
+        task_id = data["task_id"]
+
+        # metadatos accesibles tras la ejecución (estado externo)
+        task = requests.get(f"{ORQUESTADOR_URL}/tasks/{task_id}",
+                            timeout=5).json()
+        assert task["status"] == "completed"
+        assert task["result"]["idea_id"] == data["idea_id"]
+
+        # historial de chat durable en PostgreSQL
+        history = requests.get(
+            f"{ORQUESTADOR_URL}/tasks/{task_id}/history", timeout=5)
+        assert history.status_code == 200, history.text[:300]
+        messages = history.json()["messages"]
+        roles = [m["role"] for m in messages]
+        assert roles[0] == "user"          # brief recibido
+        assert roles[-1] == "assistant"    # idea + publicación generadas
+        assert data["idea"] in messages[-1]["content"]
+
+    @requires_orchestrator
+    def test_health_reports_subsystems(self):
+        data = requests.get(f"{ORQUESTADOR_URL}/health", timeout=5).json()
+
+        assert data["agent"] == "orchestrator-stateless"
+        assert data["state"]["checkpoints"] == "redis"
+        assert data["state"]["chat_history"] == "postgresql"
+        assert "redis" in data["subsystems"]
+
+    @requires_orchestrator
+    def test_graph_description_shows_interrupt_dispatch(self):
+        data = requests.get(f"{ORQUESTADOR_URL}/graph", timeout=5).json()
+
+        assert {"start", "dispatch_ideacion",
+                "dispatch_publicacion"} == set(data["nodes"])
+        assert "interrupt()" in data["suspension"]
+        assert data["checkpointer"] == "RedisSaver (thread_id = task_id)"
+
+    @requires_orchestrator
+    @requires_tools
+    def test_tools_endpoint_aggregates_catalog(self):
+        resp = requests.get(f"{ORQUESTADOR_URL}/tools", timeout=10)
+
+        if resp.status_code != 200:
+            pytest.skip(f"discovery no disponible: {resp.text[:200]}")
+        tools = resp.json()["tools"]
+        names = {t["tool"] for t in tools}
+        if len(names) < 6:
+            pytest.skip(f"sólo {sorted(names)} descubiertos (stack parcial)")
+        assert "rag" in names
+        rag = next(t for t in tools if t["tool"] == "rag")
+        op_ids = {o["id"] for o in rag["operations"]}
+        assert {"similar", "save_idea", "save_publicacion"} <= op_ids

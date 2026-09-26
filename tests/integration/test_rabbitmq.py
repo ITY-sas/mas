@@ -47,7 +47,7 @@ class TestRabbitMQConnection:
         try:
             conn = _get_connection()
             ch = conn.channel()
-            ch.queue_declare(queue="ideation_queue")
+            ch.queue_declare(queue="ideation_queue", durable=True)
             assert conn.is_open
             conn.close()
         except Exception as e:
