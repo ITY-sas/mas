@@ -1,19 +1,27 @@
 """
-Supervisor / Orquestador — LangGraph multi-agent coordinator.
+Supervisor / Orquestador — LangGraph **stateless** (patrón supervisor).
 
-Patrón supervisor:
-  START → route → [ideacion | publicacion | END]
-   ↑______________________________↓
+    START → decide → [dispatch_ideacion | dispatch_publicacion | END]
+       ↑___________________________________________________________↓
 
-El supervisor lee el estado global y decide qué agente ejecutar a continuación.
-Cada agente es un subgrafo compilado que se añade como nodo.
+Los agentes NO son subgrafos en memoria: son **microservicios
+independientes**. Cada nodo ``dispatch_*`` suspende el grafo con
+``interrupt()``; el runtime (:mod:`.runtime`) publica
+``agent.task.triggered`` en RabbitMQ y, al recibir ``agent.task.completed``,
+reanuda el grafo con ``Command(resume=...)``.
+
+Así el ciclo de planificación (re planificar → despachar → esperar →
+re planificar) queda checkpointeado en **Redis**: el proceso no guarda nada
+entre peticiones (recuperación ante caídas y escalado horizontal).
 """
 import logging
+from typing import Optional
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
-from .ideacion import create_ideacion_graph
-from .publicacion import create_publicacion_graph
+from common.events import AGENT_QUEUES
+
 from .state import SupervisorState
 
 logger = logging.getLogger("supervisor")
@@ -21,73 +29,115 @@ logger = logging.getLogger("supervisor")
 
 # ── Función de enrutamiento ────────────────────────────────────
 def decide_next(state: SupervisorState) -> str:
-    """Decide qué agente ejecutar a continuación basándose en el estado global.
+    """Decide qué agente ejecutar a continuación basándose en el estado.
 
-    - Si no hay idea todavía → agente de ideación.
-    - Si hay idea pero no publicación → agente de publicación.
-    - Si ambos existen → END (pipeline completo).
+    - Sin idea todavía → microservicio de ideación.
+    - Con idea pero sin publicación → microservicio de publicación.
+    - Ambos → END (pipeline completo).
     """
     if not state.get("idea"):
-        logger.info("[supervisor] → Enrutando a AGENTE DE IDEACIÓN")
-        return "ideacion_agent"
+        logger.info("[supervisor] → despachar AGENTE DE IDEACIÓN")
+        return "dispatch_ideacion"
     if not state.get("publication"):
-        logger.info("[supervisor] → Enrutando a AGENTE DE PUBLICACIÓN")
-        return "publicacion_agent"
-    logger.info("[supervisor] → Pipeline completo. END")
+        logger.info("[supervisor] → despachar AGENTE DE PUBLICACIÓN")
+        return "dispatch_publicacion"
+    logger.info("[supervisor] → pipeline completo. END")
     return END
 
 
-# ── Nodo de arranque (para log) ────────────────────────────────
+# ── Nodo de arranque ───────────────────────────────────────────
 def start(state: SupervisorState) -> dict:
     logger.info(
-        "[supervisor] Iniciando pipeline para client_id=%s brief=%r",
+        "[supervisor] pipeline iniciado client_id=%s brief=%r",
         state.get("client_id"),
         (state.get("brief") or {}).get("content", "")[:80],
     )
     return {"log": ["supervisor: pipeline iniciado"]}
 
 
-# ── Construcción del grafo ─────────────────────────────────────
-def create_orchestrator():
-    """Compila el grafo supervisor que coordina ambos agentes LangGraph."""
-    # Subgrafos compilados (cada uno es un StateGraph propio)
-    ideacion_graph = create_ideacion_graph()
-    publicacion_graph = create_publicacion_graph()
+# ── Nodos de despacho (suspensión → eventos → reanudación) ─────
+def _resume_value(result: object, agent: str) -> dict:
+    """Valida el resultado devuelto por el agente (Command resume)."""
+    if not isinstance(result, dict):
+        raise RuntimeError(f"resultado inválido del agente '{agent}': {result!r}")
+    if result.get("status") == "failed":
+        raise RuntimeError(
+            f"agente '{agent}' falló: {result.get('error') or 'error desconocido'}"
+        )
+    return result
 
+
+def dispatch_ideacion(state: SupervisorState) -> dict:
+    """Suspende el grafo esperando al microservicio de ideación.
+
+    La publicación del evento ``agent.task.triggered`` la hace el runtime
+    FUERA del grafo (aquí no hay efectos secundarios: el nodo se ejecuta
+    dos veces, al suspendérs y al reanudarse).
+    """
+    result = interrupt(
+        {
+            "agent": "ideacion",
+            "queue": AGENT_QUEUES["ideacion"],
+            "payload": {
+                "brief": state["brief"],
+                "client_id": state["client_id"],
+            },
+        }
+    )
+    data = _resume_value(result, "ideacion")
+    idea = data.get("idea", "") or ""
+    idea_id = data.get("idea_id", 0) or 0
+    logger.info("[supervisor] ideación completada idea_id=%s", idea_id)
+    return {
+        "idea": idea,
+        "idea_id": idea_id,
+        "log": [f"ideacion: completado (idea_id={idea_id})"],
+    }
+
+
+def dispatch_publicacion(state: SupervisorState) -> dict:
+    """Suspende el grafo esperando al microservicio de publicación."""
+    result = interrupt(
+        {
+            "agent": "publicacion",
+            "queue": AGENT_QUEUES["publicacion"],
+            "payload": {
+                "idea": state["idea"],
+                "client_id": state["client_id"],
+                "idea_id": state["idea_id"],
+            },
+        }
+    )
+    data = _resume_value(result, "publicacion")
+    publication = data.get("publication", "") or ""
+    publication_id = data.get("publication_id", 0) or 0
+    logger.info("[supervisor] publicación completada publication_id=%s", publication_id)
+    return {
+        "publication": publication,
+        "publication_id": publication_id,
+        "log": [f"publicacion: completado (publication_id={publication_id})"],
+    }
+
+
+# ── Construcción del grafo ─────────────────────────────────────
+def create_orchestrator(checkpointer: Optional[object] = None):
+    """Compila el grafo supervisor.
+
+    ``checkpointer`` debe ser un checkpointer externo (``RedisSaver``):
+    es lo que permite que el orquestador sea stateless. Sin checkpointer
+    ``interrupt()`` no funciona, así que se exige en producción.
+    """
     builder = StateGraph(SupervisorState)
 
-    # Nodo de arranque
     builder.add_node("start", start)
+    builder.add_node("dispatch_ideacion", dispatch_ideacion)
+    builder.add_node("dispatch_publicacion", dispatch_publicacion)
 
-    # Los agentes se añaden como nodos (subgrafos compilados)
-    builder.add_node("ideacion_agent", ideacion_graph)
-    builder.add_node("publicacion_agent", publicacion_graph)
-
-    # Arista inicial: START → start
     builder.add_edge(START, "start")
 
-    # Aristas condicionales desde start y desde cada agente
-    # (tras cada agente volvemos a evaluar el estado)
-    possible_next = ["ideacion_agent", "publicacion_agent", END]
+    possible_next = ["dispatch_ideacion", "dispatch_publicacion", END]
     builder.add_conditional_edges("start", decide_next, possible_next)
-    builder.add_conditional_edges("ideacion_agent", decide_next, possible_next)
-    builder.add_conditional_edges("publicacion_agent", decide_next, possible_next)
+    builder.add_conditional_edges("dispatch_ideacion", decide_next, possible_next)
+    builder.add_conditional_edges("dispatch_publicacion", decide_next, possible_next)
 
-    return builder.compile()
-
-
-# ── Ejecución directa (helper) ─────────────────────────────────
-def run_pipeline(brief: dict, client_id: int) -> dict:
-    """Ejecuta el pipeline completo devolviendo el estado final."""
-    graph = create_orchestrator()
-    initial: SupervisorState = {
-        "brief": brief,
-        "client_id": client_id,
-        "idea": "",
-        "idea_id": 0,
-        "publication": "",
-        "publication_id": 0,
-        "log": [],
-    }
-    final_state = graph.invoke(initial)
-    return final_state
+    return builder.compile(checkpointer=checkpointer)

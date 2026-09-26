@@ -1,188 +1,297 @@
 """
-Orquestador multi-agente con LangGraph.
+Orquestador multi-agente **stateless** (LangGraph + eventos).
 
 Servicio FastAPI que:
-- Expone endpoints de salud, tools y ejecución directa del pipeline.
-- Consume briefs desde RabbitMQ (ideation_queue).
-- Ejecuta el grafo supervisor de LangGraph que coordina los agentes
-  de ideación y publicación como subgrafos.
+
+- Expone ``/health``, ``/metrics``, ``/tools`` (catálogo por Tool
+  Discovery), ``/graph``, ``/process``, ``/tasks/{id}`` y
+  ``/tasks/{id}/history``.
+- Consume ``agent.task.completed`` de RabbitMQ y reanuda el grafo
+  supervisor con ``Command(resume=...)`` (ciclo checkpointeado en Redis).
+- Acepta briefs también por ``ideation_queue`` (ingreso por eventos).
+
+No guarda estado en memoria entre peticiones: Redis (ciclo de
+planificación + metadatos) y PostgreSQL (historial de chat).
 """
-import json
 import logging
 import os
 import sys
-import threading
 import time
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import pika
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
-from multi_agent import ALL_TOOLS, create_orchestrator
-from multi_agent.supervisor import run_pipeline
+from common.events import AGENT_RESULTS_QUEUE, Event, EventConsumer
+from common.gateway_client import health as gateway_health
+from common.task_store import (
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_RUNNING,
+    TaskStore,
+)
+from common.tool_client import ToolRegistry
+
+from multi_agent.runtime import OrchestratorRuntime, build_checkpointer
 
 # ── Configuración ──────────────────────────────────────────────
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "user")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "password")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("orchestrator")
 
-app = FastAPI(title="Orquestador Multi-Agente (LangGraph)")
+app = FastAPI(title="Orquestador Multi-Agente stateless (LangGraph + eventos)")
 
-# Grafo supervisor compilado (una sola vez)
-_orchestrator = None
-
-
-def get_orchestrator():
-    global _orchestrator
-    if _orchestrator is None:
-        logger.info("Compilando grafo supervisor de LangGraph …")
-        _orchestrator = create_orchestrator()
-        logger.info("Grafo supervisor compilado ✓")
-    return _orchestrator
+runtime: OrchestratorRuntime | None = None
+registry = ToolRegistry()
 
 
 # ── Modelos ────────────────────────────────────────────────────
 class Brief(BaseModel):
     client_id: int
     content: str
+    wait: bool = Field(True, description="Esperar a que el pipeline termine")
+    timeout: float = Field(300.0, description="Segundos máximos de espera (si wait=true)")
+
+
+def _get_runtime() -> OrchestratorRuntime:
+    if runtime is None:
+        raise HTTPException(status_code=503, detail="orquestador aún inicializando")
+    return runtime
 
 
 # ── Endpoints ──────────────────────────────────────────────────
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "orchestrator-langgraph"}
+def health():
+    """Salud con verificación best-effort de cada subsistema externo."""
+    subsystems: dict[str, str] = {}
+    try:
+        TaskStore().r.ping()
+        subsystems["redis"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        subsystems["redis"] = f"down: {exc}"
+    subsystems["rabbitmq"] = "ok" if _rabbit_reachable() else "down"
+    try:
+        import history
+
+        history._connection().close()
+        subsystems["postgres"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        subsystems["postgres"] = f"down: {exc}"
+    gw = gateway_health()
+    subsystems["llm-gateway"] = "ok" if gw.get("status") == "healthy" else str(gw.get("status"))
+    healthy = all(v == "ok" for v in subsystems.values())
+    return {
+        "status": "healthy" if healthy else "degraded",
+        "agent": "orchestrator-stateless",
+        "pattern": "supervisor + interrupt/eventos",
+        "state": {"checkpoints": "redis", "chat_history": "postgresql"},
+        "subsystems": subsystems,
+    }
 
 
 @app.get("/metrics")
-async def metrics():
+def metrics():
     return {
         "agent": "orchestrator",
         "framework": "langgraph",
         "status": "running",
-        "queue": "ideation_queue",
-        "llm_model": OLLAMA_MODEL,
-        "agents": ["ideacion", "publicacion"],
         "pattern": "supervisor",
+        "stateless": True,
+        "state_layer": ["redis (checkpoints + task store)", "postgresql (chat history)"],
+        "agents": ["ideacion", "publicacion"],
+        "event_bus": ["agent.task.triggered", "agent.task.completed", "task.completed"],
+        "ingress": ["POST /process", "ideation_queue"],
     }
 
 
 @app.get("/tools")
-async def tools_info():
-    """Lista las LangChain tools registradas en el orquestador."""
+def tools_info(refresh: bool = False):
+    """Catálogo de tools agregado por Tool Discovery (manifiestos REST)."""
+    try:
+        manifests = registry.discover(refresh=refresh, timeout=1.5)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"discovery falló: {exc}")
+    if not manifests:
+        raise HTTPException(status_code=503, detail="ningún tool service descubierto")
     return {
         "agent": "orchestrator",
         "framework": "langgraph",
-        "tools": [
-            {"name": t.name, "description": t.description}
-            for t in ALL_TOOLS
-        ],
+        "discovery": "GET /.well-known/tool-manifest por servicio",
+        "tools": registry.catalog(),
     }
 
 
 @app.get("/graph")
-async def graph_info():
-    """Devuelve la estructura del grafo supervisor."""
-    graph = get_orchestrator()
+def graph_info():
     return {
-        "nodes": ["start", "ideacion_agent", "publicacion_agent"],
+        "nodes": ["start", "dispatch_ideacion", "dispatch_publicacion"],
         "edges": [
             "START → start",
-            "start → [ideacion_agent | publicacion_agent | END]",
-            "ideacion_agent → [ideacion_agent | publicacion_agent | END]",
-            "publicacion_agent → [ideacion_agent | publicacion_agent | END]",
+            "start → [dispatch_ideacion | dispatch_publicacion | END]",
+            "dispatch_ideacion → [dispatch_ideacion | dispatch_publicacion | END]",
+            "dispatch_publicacion → [dispatch_ideacion | dispatch_publicacion | END]",
         ],
-        "subgraphs": {
-            "ideacion_agent": ["load_context", "fetch_news", "generate_idea", "save_idea"],
-            "publicacion_agent": ["load_context", "fetch_trending", "generate_post", "save_post"],
+        "suspension": "interrupt() en cada dispatch → agent.task.triggered / resume con agent.task.completed",
+        "checkpointer": "RedisSaver (thread_id = task_id)",
+        "agents": {
+            "ideacion": "microservicio independiente (agente_ideacion:8000)",
+            "publicacion": "microservicio independiente (agente_publicacion:8001)",
         },
     }
 
 
 @app.post("/process")
-async def process_brief(brief: Brief):
-    """Ejecuta el pipeline completo directamente (sin RabbitMQ)."""
-    logger.info("Solicitud directa: client_id=%s", brief.client_id)
-    result = run_pipeline(
-        brief={"client_id": brief.client_id, "content": brief.content},
-        client_id=brief.client_id,
-    )
+def process_brief(brief: Brief):
+    """Lanza el pipeline multi-agente.
+
+    - ``wait=true`` (por defecto): bloquea hasta completar/timeout.
+    - ``wait=false``: devuelve ``task_id`` al instante (modo asíncrono).
+    """
+    rt = _get_runtime()
+    logger.info("POST /process client_id=%s wait=%s", brief.client_id, brief.wait)
+    try:
+        task_id = rt.start_task(
+            brief={"client_id": brief.client_id, "content": brief.content},
+            client_id=brief.client_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("no se pudo iniciar la tarea")
+        raise HTTPException(status_code=503, detail=f"no se pudo iniciar: {exc}")
+
+    if not brief.wait:
+        return {"task_id": task_id, "status": STATUS_RUNNING, "mode": "async"}
+
+    try:
+        task = rt.store.wait_for_status(
+            task_id, (STATUS_COMPLETED, STATUS_FAILED), timeout=brief.timeout
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc))
+
+    if task.get("status") == STATUS_FAILED:
+        raise HTTPException(status_code=500, detail=task.get("error") or "tarea fallida")
+
+    result = task.get("result") or {}
     return {
+        "task_id": task_id,
+        "status": STATUS_COMPLETED,
         "idea": result.get("idea", ""),
         "idea_id": result.get("idea_id", 0),
         "publication": result.get("publication", ""),
         "publication_id": result.get("publication_id", 0),
-        "log": result.get("log", []),
+        "agents": task.get("agents", {}),
     }
 
 
-# ── RabbitMQ ───────────────────────────────────────────────────
-def _rabbitmq_params() -> pika.ConnectionParameters:
-    return pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        port=5672,
-        credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS),
+@app.get("/tasks/{task_id}")
+def get_task(task_id: str):
+    task = _get_runtime().store.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="tarea no encontrada")
+    return task
+
+
+@app.get("/tasks/{task_id}/history")
+def get_task_history(task_id: str):
+    try:
+        import history
+    except ImportError:  # pragma: no cover
+        raise HTTPException(status_code=501, detail="historial no disponible")
+    rows = history.get_history(task_id)
+    if not rows:
+        raise HTTPException(status_code=404, detail="sin historial para esa tarea")
+    return {"task_id": task_id, "messages": rows}
+
+
+# ── Utilidades de conexión ─────────────────────────────────────
+def _rabbit_reachable() -> bool:
+    try:
+        import pika
+
+        params = __import__("common.events", fromlist=["default_rabbit_params"]).default_rabbit_params()
+        conn = pika.BlockingConnection(params)
+        conn.close()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ── Consumidores ───────────────────────────────────────────────
+def _ingress_handler(event: Event) -> None:
+    """Brief recibido por ideation_queue → arranca una tarea."""
+    payload = event.payload or {}
+    if event.event_type == "raw":
+        data = payload
+    else:
+        data = payload.get("brief") or payload
+    client_id = data.get("client_id")
+    content = data.get("content")
+    if client_id is None or not content:
+        logger.warning("brief inválido en ideation_queue: %s", data)
+        return
+    try:
+        rt = _get_runtime()
+    except HTTPException:
+        logger.warning("brief recibido antes de inicializar; se descarta")
+        return
+    rt.start_task(
+        brief={"client_id": int(client_id), "content": content},
+        client_id=int(client_id),
     )
 
 
-def consume_messages():
-    while True:
-        try:
-            conn = pika.BlockingConnection(_rabbitmq_params())
-            ch = conn.channel()
-            ch.queue_declare(queue="ideation_queue")
-
-            def on_message(ch, method, properties, body):
-                try:
-                    data = json.loads(body)
-                    brief = Brief(**data)
-                    logger.info("━" * 60)
-                    logger.info("Brief recibido (client_id=%s)", brief.client_id)
-                    result = run_pipeline(
-                        brief={"client_id": brief.client_id, "content": brief.content},
-                        client_id=brief.client_id,
-                    )
-                    logger.info("Pipeline completado: idea_id=%s pub_id=%s",
-                                result.get("idea_id"), result.get("publication_id"))
-                    logger.info("Log: %s", result.get("log"))
-                    logger.info("━" * 60)
-                except json.JSONDecodeError as exc:
-                    logger.error("Mensaje no es JSON válido: %s", exc)
-                except Exception as exc:
-                    logger.exception("Error procesando mensaje: %s", exc)
-
-            ch.basic_consume(
-                queue="ideation_queue", on_message_callback=on_message, auto_ack=True
-            )
-            logger.info("Esperando briefs en ideation_queue …")
-            ch.start_consuming()
-        except pika.exceptions.AMQPConnectionError:
-            logger.warning("RabbitMQ no disponible. Reintentando en 5 s …")
-            time.sleep(5)
-        except Exception as exc:
-            logger.error("Error inesperado: %s. Reintentando en 5 s …", exc)
-            time.sleep(5)
-
-
 # ── Arranque ───────────────────────────────────────────────────
+def _retry(desc: str, fn, attempts: int = 10, delay: float = 3.0):
+    last = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            logger.warning("%s no disponible (%s). Reintento %d/%d …", desc, exc, i + 1, attempts)
+            time.sleep(delay)
+    raise RuntimeError(f"{desc} inaccesible tras {attempts} intentos: {last}")
+
+
 @app.on_event("startup")
 async def startup_event():
-    # Pre-compilar el grafo
-    get_orchestrator()
-    # Iniciar consumidor RabbitMQ en hilo separado
-    t = threading.Thread(target=consume_messages, daemon=True)
-    t.start()
+    global runtime
+
+    # 1) Historial de chat (PostgreSQL)
+    def _history():
+        import history
+
+        history.init_history_table()
+
+    _retry("PostgreSQL", _history, attempts=10, delay=3)
+
+    # 2) Checkpoints del ciclo de planificación (Redis)
+    checkpointer = _retry("Redis (checkpoints)", build_checkpointer, attempts=10, delay=3)
+
+    # 3) Runtime stateless
+    runtime = OrchestratorRuntime(checkpointer=checkpointer)
+    runtime.start_consumers()
+
+    # 4) Recuperación de tareas pendientes (antes de la caída)
+    runtime.recover_running_tasks()
+
+    # 5) Ingreso de briefs por eventos (compatibilidad)
+    EventConsumer("ideation_queue", _ingress_handler, name="ideation-ingress").start()
+
+    # 6) Tool Discovery (best-effort, no bloquea el arranque)
+    try:
+        registry.discover(timeout=1.5)
+        logger.info("Tool Discovery: %d servicios descubiertos", len(registry.manifests))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tool Discovery al arrancar: %s", exc)
+
     logger.info(
-        "Orquestador LangGraph iniciado — agentes: ideación + publicación (patrón supervisor)"
+        "Orquestador STATELESS listo — supervisor LangGraph, estado en Redis, "
+        "historial en PostgreSQL, agentes vía eventos"
     )
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8002")))

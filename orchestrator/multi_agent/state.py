@@ -1,74 +1,53 @@
 """
-LangGraph state schemas for the multi-agent system.
-Each agent has its own state; the SupervisorState is the global shared state.
+Esquema de estado del supervisor (orquestador stateless).
+
+El estado global del pipeline se persiste EXTERNAMENTE:
+
+- **Ciclo de planificación / dispatch** → checkpoints de LangGraph en Redis
+  (``RedisSaver`` con ``thread_id = task_id``).
+- **Metadatos y resultados** → ``common.task_store.TaskStore`` (Redis).
+- **Historial de chat** → PostgreSQL (``orchestrator.history``).
+
+El proceso del orquestador no mantiene estado entre peticiones: puede
+reiniciarse o escalar horizontalmente sin perder el ciclo en curso.
 """
 from typing import Annotated, TypedDict
 
 import operator
 
 
-class IdeacionState(TypedDict):
-    """State for the Ideación agent subgraph.
-
-    Shared keys with SupervisorState: brief, client_id (input), idea, idea_id (output).
-    """
-
-    # ── Input (from supervisor) ──
-    brief: dict
-    client_id: int
-
-    # ── Internal working state ──
-    client_profile: str
-    trends: str
-    competitors: str
-    similar_ideas: str
-    news: str
-
-    # ── Output (to supervisor) ──
-    idea: str
-    idea_id: int
-
-
-class PublicacionState(TypedDict):
-    """State for the Publicación agent subgraph.
-
-    Shared keys with SupervisorState: idea, client_id, idea_id (input),
-    publication, publication_id (output).
-    """
-
-    # ── Input (from supervisor) ──
-    idea: str
-    client_id: int
-    idea_id: int
-
-    # ── Internal working state ──
-    client_profile: str
-    trends: str
-    trending: str
-
-    # ── Output (to supervisor) ──
-    publication: str
-    publication_id: int
-
-
 class SupervisorState(TypedDict):
-    """Global state shared across the whole multi-agent graph.
+    """Estado global compartido por todo el ciclo supervisor → agentes.
 
-    The supervisor reads this to decide which agent runs next.
-    Each agent subgraph reads its inputs from and writes its outputs back to this state.
+    El supervisor lee esto para decidir qué microservicio de agente
+    invocar a continuación; los agentes devuelven sus resultados vía
+    ``agent.task.completed`` y se inyectan con ``Command(resume=...)``.
     """
 
-    # ── Input ──
+    # ── Entrada ──
     brief: dict
     client_id: int
 
-    # ── Ideación agent output ──
+    # ── Resultado del agente de ideación ──
     idea: str
     idea_id: int
 
-    # ── Publicación agent output ──
+    # ── Resultado del agente de publicación ──
     publication: str
     publication_id: int
 
-    # ── Audit log (append-only via operator.add) ──
+    # ── Registro de auditoría (append-only vía operator.add) ──
     log: Annotated[list[str], operator.add]
+
+
+def initial_state(brief: dict, client_id: int) -> SupervisorState:
+    """Estado inicial para una tarea nueva."""
+    return {
+        "brief": brief,
+        "client_id": client_id,
+        "idea": "",
+        "idea_id": 0,
+        "publication": "",
+        "publication_id": 0,
+        "log": [],
+    }

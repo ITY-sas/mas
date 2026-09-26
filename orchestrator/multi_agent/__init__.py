@@ -1,33 +1,27 @@
 """
-Multi-agent system using LangGraph.
-Contains: state schemas, tools, agent graphs, and supervisor.
+Sistema multi-agente con LangGraph — orquestador stateless.
+
+Contiene el esquema de estado del supervisor, el grafo de despacho con
+``interrupt()`` (eventos RabbitMQ) y el runtime event-driven externo.
+Los agentes de ideación/publicación son microservicios independientes;
+las tools son microservicios independientes (Tools-as-a-Service).
 """
-from .state import IdeacionState, PublicacionState, SupervisorState
-from .tools import (
-    ALL_TOOLS,
-    load_client_profile,
-    search_trends,
-    search_competitors,
-    search_similar_ideas_tool,
-    fetch_news,
-    fetch_trending,
+from .state import SupervisorState, initial_state
+from .supervisor import (
+    create_orchestrator,
+    decide_next,
+    dispatch_ideacion,
+    dispatch_publicacion,
 )
-from .ideacion import create_ideacion_graph
-from .publicacion import create_publicacion_graph
-from .supervisor import create_orchestrator
+from .runtime import OrchestratorRuntime, build_checkpointer
 
 __all__ = [
-    "IdeacionState",
-    "PublicacionState",
     "SupervisorState",
-    "ALL_TOOLS",
-    "load_client_profile",
-    "search_trends",
-    "search_competitors",
-    "search_similar_ideas_tool",
-    "fetch_news",
-    "fetch_trending",
-    "create_ideacion_graph",
-    "create_publicacion_graph",
+    "initial_state",
     "create_orchestrator",
+    "decide_next",
+    "dispatch_ideacion",
+    "dispatch_publicacion",
+    "OrchestratorRuntime",
+    "build_checkpointer",
 ]

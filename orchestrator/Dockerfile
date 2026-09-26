@@ -6,8 +6,9 @@ WORKDIR /app
 COPY orchestrator/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Copiar tools compartidas
-COPY shared_tools/ /app/shared_tools/
+# Kernel común: eventos, contrato de tools, TaskStore (SIN shared_tools:
+# el orquestador no ejecuta código de negocio — es stateless)
+COPY common/ /app/common/
 
 # Copiar código del orquestador
 COPY orchestrator/ /app/
