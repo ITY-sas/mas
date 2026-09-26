@@ -34,6 +34,9 @@ Convención de commits: [Conventional Commits](https://www.conventionalcommits.o
 ### Changed
 - **refactor**: `docker-compose.yml` añade servicio `orchestrator` (puerto 8002)
 - **refactor**: Suite completa: **99 passed, 1 skipped** (antes: 79 passed)
+- **docs**: `README.md` reescrito completo — explicación de LangGraph (State,
+  Node, Edge, patrón supervisor), arquitectura, 3 formas de uso, happy path
+  y caso de uso real documentado con salida obtenida
 
 ## [1.2.0] — 2026-09-26
 
