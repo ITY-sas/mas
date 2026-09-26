@@ -1,6 +1,7 @@
+langgraph>=1.0.0
+langgraph-checkpoint-redis>=0.5.0
 fastapi
 uvicorn
 pika
-psycopg2-binary
-pgvector
+redis
 requests

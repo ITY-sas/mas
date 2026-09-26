@@ -6,12 +6,13 @@ WORKDIR /app
 COPY agente_ideacion/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Copiar tools compartidas
-COPY shared_tools/ /app/shared_tools/
+# Kernel común: eventos + runner + Tool Discovery.
+# NO se copia shared_tools: el agente no ejecuta código de negocio.
+COPY common/ /app/common/
 
 # Copiar código del agente
-COPY agente_ideacion/ /app/
+COPY agente_ideacion/ /app/agente_ideacion/
 
 EXPOSE 8000
 
-CMD ["python", "main.py"]
+CMD ["python", "-m", "agente_ideacion"]

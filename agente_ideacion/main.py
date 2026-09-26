@@ -1,245 +1,197 @@
 """
-Agente de Ideación
-Pipeline: brief → tools de contexto → LLM enriquecido → PostgreSQL → publication_queue
+Agente de Ideación — microservicio independiente (event-driven + LangGraph).
+
+- Consume ``agent.task.triggered`` (RabbitMQ) y responde con
+  ``agent.task.completed`` en ``agent.results``.
+- Ejecuta su propio grafo LangGraph cuyo estado se checkpointea en
+  **Redis** (``{agente}:{task_id}``) → retoma tras caída y deduplica
+  reentregas (idempotente).
+- Tools vía contratos REST (Tool Discovery) y LLM vía LLM Gateway:
+  el agente NO importa ``shared_tools`` (no ejecuta negocio directo).
 """
-import json
+from __future__ import annotations
+
 import logging
 import os
 import sys
-import threading
 import time
 
-# Fix encoding en Windows
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import pika
-import requests
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
 
-# ── Tools compartidas ──────────────────────────────────────────
-from shared_tools import (
-    build_ideacion_prompt,
-    enrich_brief_context,
-    embedding_to_vector,
-    execute_db,
-    fetch_google_news,
-    format_news_for_prompt,
-    generate_embedding,
+from common.agent_runner import run_agent_task
+from common.events import (
+    AGENT_QUEUES,
+    AGENT_RESULTS_QUEUE,
+    AGENT_TASK_COMPLETED,
+    Event,
+    EventConsumer,
+    publish_event,
 )
+from common.tool_client import ToolRegistry
 
-# ── Configuración ──────────────────────────────────────────────
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "user")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "password")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+from .graph import create_ideacion_graph
 
-
-def _ollama_url() -> str:
-    """Construye la URL de Ollama manejando host con o sin puerto."""
-    host = os.getenv("OLLAMA_HOST", "ollama")
-    port = os.getenv("OLLAMA_PORT", "11434")
-    # 0.0.0.0 es dirección de escucha, no válida como cliente
-    if host.startswith("0.0.0.0"):
-        host = host.replace("0.0.0.0", "127.0.0.1", 1)
-    if ":" in host and not host.startswith("["):
-        return f"http://{host}"
-    if not port:
-        port = "11434"
-    return f"http://{host}:{port}"
-
-
-OLLAMA_BASE = _ollama_url()
+SERVICE = "agente-ideacion"
+AGENT = "ideacion"
+QUEUE = AGENT_QUEUES[AGENT]
+PORT = int(os.getenv("PORT", "8000"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger = logging.getLogger("agente_ideacion")
+logger = logging.getLogger(SERVICE)
 
-app = FastAPI(title="Agente de Ideación")
-
-
-# ── Modelos de datos ───────────────────────────────────────────
-class Brief(BaseModel):
-    client_id: int
-    content: str
+app = FastAPI(title="Agente de Ideación (microservicio)")
+registry = ToolRegistry()
+GRAPH = None
 
 
-class Idea(BaseModel):
-    client_id: int
-    content: str
-    brief_id: int | None = None
-
-
-# ── Endpoints FastAPI ──────────────────────────────────────────
+# ── Endpoints ──────────────────────────────────────────────────
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "ideacion"}
+def health():
+    return {
+        "status": "healthy",
+        "agent": AGENT,
+        "service": SERVICE,
+        "queue": QUEUE,
+        "framework": "langgraph",
+        "state": "redis-checkpoint",
+    }
 
 
 @app.get("/metrics")
-async def metrics():
+def metrics():
     return {
-        "agent": "ideacion",
+        "agent": AGENT,
         "status": "running",
-        "queue": "ideation_queue",
-        "llm_model": OLLAMA_MODEL,
-        "tools": ["cliente", "tendencias", "competencia", "rag", "fuentes_externas"],
+        "queue_in": QUEUE,
+        "queue_out": AGENT_RESULTS_QUEUE,
+        "state": "redis (thread_id=ideacion:{task_id})",
+        "event_in": "agent.task.triggered",
+        "event_out": "agent.task.completed",
+        "tools": sorted(registry.manifests.keys()),
     }
 
 
 @app.get("/tools")
-async def tools_info():
-    """Lista las tools disponibles en este agente."""
+def tools_info():
+    """Tools descubiertas por este agente (manifiestos → endpoints)."""
     return {
-        "agent": "ideacion",
-        "tools": [
-            {"name": "get_client_profile", "desc": "Lee el perfil de marca del cliente"},
-            {"name": "get_relevant_trends", "desc": "Busca tendencias relevantes (RAG)"},
-            {"name": "get_relevant_competitors", "desc": "Busca referencias de competencia (RAG)"},
-            {"name": "search_similar_ideas", "desc": "Busca ideas previas similares (RAG)"},
-            {"name": "fetch_google_news", "desc": "Obtiene noticias de Google News RSS"},
-            {"name": "enrich_brief_context", "desc": "Combina todas las tools para enriquecer el contexto"},
-            {"name": "generate_idea_with_ollama", "desc": "Genera la idea con LLM usando contexto enriquecido"},
-            {"name": "save_idea", "desc": "Guarda la idea + embedding en PostgreSQL"},
-        ],
+        "agent": AGENT,
+        "discovery": "GET /.well-known/tool-manifest por servicio",
+        "tools": registry.catalog(),
     }
 
 
-# ── PostgreSQL ─────────────────────────────────────────────────
-def save_idea(client_id: int, content: str) -> int:
-    """Guarda la idea generada (con embedding) y devuelve su ID."""
-    embedding = generate_embedding(content)
-    vector_str = embedding_to_vector(embedding)
+@app.get("/state/{task_id}")
+def task_state(task_id: str):
+    """Checkpoint del ciclo del agente en Redis (estado externo)."""
+    if GRAPH is None:
+        raise HTTPException(status_code=503, detail="grafo no inicializado")
+    snap = GRAPH.get_state({"configurable": {"thread_id": f"{AGENT}:{task_id}"}})
+    if snap is None or not snap.values:
+        raise HTTPException(status_code=404, detail="sin estado para esa tarea")
+    return {
+        "task_id": task_id,
+        "thread_id": f"{AGENT}:{task_id}",
+        "pending_nodes": list(snap.next or ()),
+        "values": snap.values,
+    }
 
-    if vector_str:
-        return execute_db(
-            "INSERT INTO ideas_generadas (client_id, content, embedding) "
-            "VALUES (%s, %s, %s::vector) RETURNING id",
-            (client_id, content, vector_str),
-        )
+
+# ── Procesamiento de agent.task.triggered ──────────────────────
+def handle_triggered(event: Event) -> None:
+    task_id = event.task_id
+    if not task_id:
+        logger.warning("evento sin task_id: %s", event.event_type)
+        return
+    correlation_id = event.correlation_id or task_id
+    payload = event.payload or {}
+    brief = payload.get("brief") or {}
+    client_id = payload.get("client_id", brief.get("client_id"))
+    started = time.perf_counter()
+    status, result, error = "completed", {}, None
+
+    logger.info("━" * 60)
+    logger.info("agent.task.triggered [%s] task=%s client_id=%s", AGENT, task_id, client_id)
+
+    if GRAPH is None:
+        status, error = "failed", "grafo no inicializado"
+    elif not brief.get("content") or client_id is None:
+        status, error = "failed", f"payload inválido: {payload}"
     else:
-        return execute_db(
-            "INSERT INTO ideas_generadas (client_id, content) VALUES (%s, %s) RETURNING id",
-            (client_id, content),
-        )
-
-
-# ── Ollama (LLM) ───────────────────────────────────────────────
-def generate_idea_with_ollama(prompt: str) -> str:
-    """Llama a Ollama con el prompt enriquecido."""
-    try:
-        resp = requests.post(
-            f"{OLLAMA_BASE}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=180,
-        )
-        resp.raise_for_status()
-        return resp.json()["response"].strip()
-    except Exception as exc:
-        logger.error("Ollama error: %s", exc)
-        return f"[FALLBACK] Idea generada para el brief. Error: {exc}"
-
-
-# ── Pipeline principal ─────────────────────────────────────────
-def process_brief(brief: Brief):
-    """Pipeline completo: brief → tools → LLM enriquecido → DB → publicación."""
-    logger.info("━" * 60)
-    logger.info("Brief recibido (client_id=%s): %s", brief.client_id, brief.content)
-
-    # ═══ PASO 1: Enriquecer contexto con tools ═══
-    logger.info("[1/5] Ejecutando tools de enriquecimiento …")
-    context = enrich_brief_context(brief.content, brief.client_id)
-    logger.info(
-        "  ✓ Contexto: %d tendencias, %d competidores, %d ideas similares",
-        context["stats"]["trends_found"],
-        context["stats"]["competitors_found"],
-        context["stats"]["similar_ideas_found"],
-    )
-
-    # ═══ PASO 2: Obtener noticias externas (Google News) ═══
-    logger.info("[2/5] Consultando fuentes externas (Google News) …")
-    news = fetch_google_news(brief.content, limit=3)
-    news_text = format_news_for_prompt(news)
-    logger.info("  ✓ %d noticias obtenidas", len(news))
-    context["news"] = news_text
-
-    # ═══ PASO 3: Construir prompt enriquecido ═══
-    logger.info("[3/5] Construyendo prompt enriquecido …")
-    prompt = build_ideacion_prompt(brief.content, context)
-    prompt += f"\n\n## Recent News & Signals\n{news_text}"
-    logger.info("  ✓ Prompt de %d caracteres", len(prompt))
-
-    # ═══ PASO 4: Generar idea con Ollama ═══
-    logger.info("[4/5] Generando idea con %s (puede tardar) …", OLLAMA_MODEL)
-    idea_content = generate_idea_with_ollama(prompt)
-    logger.info("  ✓ Idea generada: %s", idea_content[:150])
-
-    # ═══ PASO 5: Guardar en PostgreSQL + publicar ═══
-    logger.info("[5/5] Guardando en PostgreSQL …")
-    idea_id = save_idea(brief.client_id, idea_content)
-    logger.info("  ✓ Idea guardada con id=%s + embedding", idea_id)
-
-    publish_idea(Idea(client_id=brief.client_id, content=idea_content, brief_id=idea_id))
-    logger.info("  ✓ Idea publicada en publication_queue")
-    logger.info("━" * 60)
-
-
-# ── RabbitMQ ───────────────────────────────────────────────────
-def _rabbitmq_params() -> pika.ConnectionParameters:
-    return pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        port=5672,
-        credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS),
-    )
-
-
-def publish_idea(idea: Idea):
-    conn = pika.BlockingConnection(_rabbitmq_params())
-    ch = conn.channel()
-    ch.queue_declare(queue="publication_queue")
-    ch.basic_publish(exchange="", routing_key="publication_queue", body=idea.json())
-    conn.close()
-
-
-def consume_messages():
-    while True:
         try:
-            conn = pika.BlockingConnection(_rabbitmq_params())
-            ch = conn.channel()
-            ch.queue_declare(queue="ideation_queue")
-
-            def on_message(ch, method, properties, body):
-                try:
-                    data = json.loads(body)
-                    brief = Brief(**data)
-                    process_brief(brief)
-                except json.JSONDecodeError as exc:
-                    logger.error("Mensaje no es JSON válido: %s", exc)
-                except Exception as exc:
-                    logger.exception("Error procesando mensaje: %s", exc)
-
-            ch.basic_consume(
-                queue="ideation_queue", on_message_callback=on_message, auto_ack=True
+            result = run_agent_task(
+                agent=AGENT,
+                task_id=task_id,
+                graph=GRAPH,
+                initial_state={
+                    "brief": brief,
+                    "client_id": int(client_id),
+                    "tool_calls": [],
+                },
+                extract=lambda s: {
+                    "idea": s.get("idea", ""),
+                    "idea_id": s.get("idea_id", 0),
+                },
+                is_done=lambda s: bool(s.get("idea")),
             )
-            logger.info("Esperando briefs en ideation_queue …")
-            ch.start_consuming()
-        except pika.exceptions.AMQPConnectionError:
-            logger.warning("RabbitMQ no disponible. Reintentando en 5 s …")
-            time.sleep(5)
-        except Exception as exc:
-            logger.error("Error inesperado: %s. Reintentando en 5 s …", exc)
-            time.sleep(5)
+            logger.info("idea_id=%s → agent.task.completed", result.get("idea_id"))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("ejecución fallida")
+            status, result, error = "failed", {}, str(exc)
+
+    publish_event(
+        AGENT_RESULTS_QUEUE,
+        Event(
+            event_type=AGENT_TASK_COMPLETED,
+            task_id=task_id,
+            correlation_id=correlation_id,
+            source=AGENT,
+            agent=AGENT,
+            payload={"result": result},
+            status=status,
+            error=error,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        ),
+    )
+    logger.info("fin tarea %s (%s, %d ms)", task_id, status,
+                (time.perf_counter() - started) * 1000)
+    logger.info("━" * 60)
 
 
 # ── Arranque ───────────────────────────────────────────────────
+def _retry(desc: str, fn, attempts: int = 10, delay: float = 3.0):
+    last = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            logger.warning("%s no disponible (%s). Reintento %d/%d …",
+                           desc, exc, i + 1, attempts)
+            time.sleep(delay)
+    raise RuntimeError(f"{desc} inaccesible: {last}")
+
+
+def _build_graph():
+    from langgraph.checkpoint.redis import RedisSaver
+
+    saver = RedisSaver(os.getenv("REDIS_URL", "redis://localhost:6379"))
+    saver.setup()
+    return create_ideacion_graph(checkpointer=saver)
+
+
 @app.on_event("startup")
 async def startup_event():
-    t = threading.Thread(target=consume_messages, daemon=True)
-    t.start()
-    logger.info("Agente de Ideación iniciado — tools: cliente, tendencias, competencia, RAG, noticias")
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    global GRAPH
+    GRAPH = _retry("Redis (checkpoints)", _build_graph)
+    # auto_ack=False → si el proceso cae a mitad, RabbitMQ reentrega el
+    # evento y el grafo se retoma desde el checkpoint (idempotente).
+    EventConsumer(QUEUE, handle_triggered, auto_ack=False, name=AGENT).start()
+    try:
+        registry.discover(timeout=1.5)
+        logger.info("Tool Discovery: %s", sorted(registry.manifests.keys()))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tool Discovery al arrancar: %s", exc)
+    logger.info("Agente de Ideación listo — escuchando '%s'", QUEUE)

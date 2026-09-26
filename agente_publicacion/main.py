@@ -1,216 +1,203 @@
 """
-Agente de Publicación
-Pipeline: idea → tools de contexto (tono cliente, tendencias) → LLM enriquecido → PostgreSQL
+Agente de Publicación — microservicio independiente (event-driven + LangGraph).
+
+- Consume ``agent.task.triggered`` (RabbitMQ) y responde con
+  ``agent.task.completed`` en ``agent.results``.
+- Estado del ciclo checkpointeado en **Redis**
+  (``{agente}:{task_id}``) → retoma tras caída + deduplica reentregas.
+- Tools vía contratos REST (Tool Discovery) y LLM vía LLM Gateway.
 """
-import json
+from __future__ import annotations
+
 import logging
 import os
 import sys
-import threading
 import time
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import pika
-import requests
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
 
-# ── Tools compartidas ──────────────────────────────────────────
-from shared_tools import (
-    build_publicacion_prompt,
-    embedding_to_vector,
-    enrich_idea_context,
-    execute_db,
-    fetch_trending_topics,
-    format_news_for_prompt,
-    generate_embedding,
+from common.agent_runner import run_agent_task
+from common.events import (
+    AGENT_QUEUES,
+    AGENT_RESULTS_QUEUE,
+    AGENT_TASK_COMPLETED,
+    Event,
+    EventConsumer,
+    publish_event,
 )
+from common.tool_client import ToolRegistry
 
-# ── Configuración ──────────────────────────────────────────────
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "user")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "password")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+from .graph import create_publicacion_graph
 
-
-def _ollama_url() -> str:
-    """Construye la URL de Ollama manejando host con o sin puerto."""
-    host = os.getenv("OLLAMA_HOST", "ollama")
-    port = os.getenv("OLLAMA_PORT", "11434")
-    # 0.0.0.0 es dirección de escucha, no válida como cliente
-    if host.startswith("0.0.0.0"):
-        host = host.replace("0.0.0.0", "127.0.0.1", 1)
-    if ":" in host and not host.startswith("["):
-        return f"http://{host}"
-    if not port:
-        port = "11434"
-    return f"http://{host}:{port}"
-
-
-OLLAMA_BASE = _ollama_url()
+SERVICE = "agente-publicacion"
+AGENT = "publicacion"
+QUEUE = AGENT_QUEUES[AGENT]
+PORT = int(os.getenv("PORT", "8001"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger = logging.getLogger("agente_publicacion")
+logger = logging.getLogger(SERVICE)
 
-app = FastAPI(title="Agente de Publicación")
-
-
-# ── Modelos de datos ───────────────────────────────────────────
-class Idea(BaseModel):
-    client_id: int
-    content: str
-    brief_id: int | None = None
+app = FastAPI(title="Agente de Publicación (microservicio)")
+registry = ToolRegistry()
+GRAPH = None
 
 
-# ── Endpoints FastAPI ──────────────────────────────────────────
+# ── Endpoints ──────────────────────────────────────────────────
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "publicacion"}
+def health():
+    return {
+        "status": "healthy",
+        "agent": AGENT,
+        "service": SERVICE,
+        "queue": QUEUE,
+        "framework": "langgraph",
+        "state": "redis-checkpoint",
+    }
 
 
 @app.get("/metrics")
-async def metrics():
+def metrics():
     return {
-        "agent": "publicacion",
+        "agent": AGENT,
         "status": "running",
-        "queue": "publication_queue",
-        "llm_model": OLLAMA_MODEL,
-        "tools": ["cliente", "tendencias", "fuentes_externas"],
+        "queue_in": QUEUE,
+        "queue_out": AGENT_RESULTS_QUEUE,
+        "state": "redis (thread_id=publicacion:{task_id})",
+        "event_in": "agent.task.triggered",
+        "event_out": "agent.task.completed",
+        "tools": sorted(registry.manifests.keys()),
     }
 
 
 @app.get("/tools")
-async def tools_info():
+def tools_info():
+    """Tools descubiertas por este agente (manifiestos → endpoints)."""
     return {
-        "agent": "publicacion",
-        "tools": [
-            {"name": "get_client_profile", "desc": "Lee perfil y restricciones de tono del cliente"},
-            {"name": "get_relevant_trends", "desc": "Busca tendencias relevantes para hashtags"},
-            {"name": "fetch_trending_topics", "desc": "Obtiene topics en tendencia (Google News)"},
-            {"name": "enrich_idea_context", "desc": "Combina tools para enriquecer la publicación"},
-            {"name": "generate_publicacion_with_ollama", "desc": "Genera el post con LLM"},
-            {"name": "save_publicacion", "desc": "Guarda la publicación + embedding en PostgreSQL"},
-        ],
+        "agent": AGENT,
+        "discovery": "GET /.well-known/tool-manifest por servicio",
+        "tools": registry.catalog(),
     }
 
 
-# ── PostgreSQL ─────────────────────────────────────────────────
-def save_publicacion(client_id: int, idea_id: int | None, content: str) -> int:
-    embedding = generate_embedding(content)
-    vector_str = embedding_to_vector(embedding)
+@app.get("/state/{task_id}")
+def task_state(task_id: str):
+    """Checkpoint del ciclo del agente en Redis (estado externo)."""
+    if GRAPH is None:
+        raise HTTPException(status_code=503, detail="grafo no inicializado")
+    snap = GRAPH.get_state({"configurable": {"thread_id": f"{AGENT}:{task_id}"}})
+    if snap is None or not snap.values:
+        raise HTTPException(status_code=404, detail="sin estado para esa tarea")
+    return {
+        "task_id": task_id,
+        "thread_id": f"{AGENT}:{task_id}",
+        "pending_nodes": list(snap.next or ()),
+        "values": snap.values,
+    }
 
-    if vector_str:
-        return execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, idea_id, content, embedding) "
-            "VALUES (%s, %s, %s, %s::vector) RETURNING id",
-            (client_id, idea_id, content, vector_str),
-        )
+
+# ── Procesamiento de agent.task.triggered ──────────────────────
+def handle_triggered(event: Event) -> None:
+    task_id = event.task_id
+    if not task_id:
+        logger.warning("evento sin task_id: %s", event.event_type)
+        return
+    correlation_id = event.correlation_id or task_id
+    payload = event.payload or {}
+    idea = payload.get("idea", "")
+    client_id = payload.get("client_id")
+    idea_id = payload.get("idea_id", 0)
+    started = time.perf_counter()
+    status, result, error = "completed", {}, None
+
+    logger.info("━" * 60)
+    logger.info("agent.task.triggered [%s] task=%s client_id=%s idea_id=%s",
+                AGENT, task_id, client_id, idea_id)
+
+    if GRAPH is None:
+        status, error = "failed", "grafo no inicializado"
+    elif not idea or client_id is None:
+        status, error = "failed", f"payload inválido: {payload}"
     else:
-        return execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, idea_id, content) "
-            "VALUES (%s, %s, %s) RETURNING id",
-            (client_id, idea_id, content),
-        )
-
-
-# ── Ollama (LLM) ───────────────────────────────────────────────
-def generate_publicacion_with_ollama(prompt: str) -> str:
-    try:
-        resp = requests.post(
-            f"{OLLAMA_BASE}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=180,
-        )
-        resp.raise_for_status()
-        return resp.json()["response"].strip()
-    except Exception as exc:
-        logger.error("Ollama error: %s", exc)
-        return f"[FALLBACK] Publicación generada. Error: {exc}"
-
-
-# ── Pipeline principal ─────────────────────────────────────────
-def process_idea(idea: Idea):
-    logger.info("━" * 60)
-    logger.info("Idea recibida (client_id=%s): %s", idea.client_id, idea.content[:120])
-
-    # ═══ PASO 1: Enriquecir contexto con tools ═══
-    logger.info("[1/4] Ejecutando tools de enriquecimiento …")
-    context = enrich_idea_context(idea.content, idea.client_id)
-    logger.info("  ✓ Perfil de cliente y %d tendencias cargadas", context["stats"]["trends_found"])
-
-    # ═══ PASO 2: Obtener topics en tendencia ═══
-    logger.info("[2/4] Consultando topics en tendencia …")
-    trending = fetch_trending_topics("marketing")
-    trending_text = format_news_for_prompt(trending)
-    logger.info("  ✓ %d trending topics", len(trending))
-    context["trending"] = trending_text
-
-    # ═══ PASO 3: Construir prompt enriquecido ═══
-    logger.info("[3/4] Construyendo prompt enriquecido …")
-    prompt = build_publicacion_prompt(idea.content, context)
-    prompt += f"\n\n## Trending Topics (for hashtags)\n{trending_text}"
-    logger.info("  ✓ Prompt de %d caracteres", len(prompt))
-
-    # ═══ PASO 4: Generar publicación + guardar ═══
-    logger.info("[4/4] Generando publicación con %s …", OLLAMA_MODEL)
-    pub_content = generate_publicacion_with_ollama(prompt)
-    logger.info("  ✓ Publicación: %s", pub_content[:150])
-
-    pub_id = save_publicacion(idea.client_id, idea.brief_id, pub_content)
-    logger.info("  ✓ Publicación guardada con id=%s + embedding", pub_id)
-    logger.info("━" * 60)
-
-
-# ── RabbitMQ ───────────────────────────────────────────────────
-def _rabbitmq_params() -> pika.ConnectionParameters:
-    return pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        port=5672,
-        credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS),
-    )
-
-
-def consume_messages():
-    while True:
         try:
-            conn = pika.BlockingConnection(_rabbitmq_params())
-            ch = conn.channel()
-            ch.queue_declare(queue="publication_queue")
-
-            def on_message(ch, method, properties, body):
-                try:
-                    data = json.loads(body)
-                    idea = Idea(**data)
-                    process_idea(idea)
-                except json.JSONDecodeError as exc:
-                    logger.error("Mensaje no es JSON válido: %s", exc)
-                except Exception as exc:
-                    logger.exception("Error procesando mensaje: %s", exc)
-
-            ch.basic_consume(
-                queue="publication_queue", on_message_callback=on_message, auto_ack=True
+            result = run_agent_task(
+                agent=AGENT,
+                task_id=task_id,
+                graph=GRAPH,
+                initial_state={
+                    "idea": idea,
+                    "client_id": int(client_id),
+                    "idea_id": idea_id or 0,
+                    "tool_calls": [],
+                },
+                extract=lambda s: {
+                    "publication": s.get("publication", ""),
+                    "publication_id": s.get("publication_id", 0),
+                },
+                is_done=lambda s: bool(s.get("publication")),
             )
-            logger.info("Esperando ideas en publication_queue …")
-            ch.start_consuming()
-        except pika.exceptions.AMQPConnectionError:
-            logger.warning("RabbitMQ no disponible. Reintentando en 5 s …")
-            time.sleep(5)
-        except Exception as exc:
-            logger.error("Error inesperado: %s. Reintentando en 5 s …", exc)
-            time.sleep(5)
+            logger.info("publication_id=%s → agent.task.completed",
+                        result.get("publication_id"))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("ejecución fallida")
+            status, result, error = "failed", {}, str(exc)
+
+    publish_event(
+        AGENT_RESULTS_QUEUE,
+        Event(
+            event_type=AGENT_TASK_COMPLETED,
+            task_id=task_id,
+            correlation_id=correlation_id,
+            source=AGENT,
+            agent=AGENT,
+            payload={"result": result},
+            status=status,
+            error=error,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        ),
+    )
+    logger.info("fin tarea %s (%s, %d ms)", task_id, status,
+                (time.perf_counter() - started) * 1000)
+    logger.info("━" * 60)
 
 
 # ── Arranque ───────────────────────────────────────────────────
+def _retry(desc: str, fn, attempts: int = 10, delay: float = 3.0):
+    last = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            logger.warning("%s no disponible (%s). Reintento %d/%d …",
+                           desc, exc, i + 1, attempts)
+            time.sleep(delay)
+    raise RuntimeError(f"{desc} inaccesible: {last}")
+
+
+def _build_graph():
+    from langgraph.checkpoint.redis import RedisSaver
+
+    saver = RedisSaver(os.getenv("REDIS_URL", "redis://localhost:6379"))
+    saver.setup()
+    return create_publicacion_graph(checkpointer=saver)
+
+
 @app.on_event("startup")
 async def startup_event():
-    t = threading.Thread(target=consume_messages, daemon=True)
-    t.start()
-    logger.info("Agente de Publicación iniciado — tools: cliente, tendencias, fuentes_externas")
+    global GRAPH
+    GRAPH = _retry("Redis (checkpoints)", _build_graph)
+    EventConsumer(QUEUE, handle_triggered, auto_ack=False, name=AGENT).start()
+    try:
+        registry.discover(timeout=1.5)
+        logger.info("Tool Discovery: %s", sorted(registry.manifests.keys()))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tool Discovery al arrancar: %s", exc)
+    logger.info("Agente de Publicación listo — escuchando '%s'", QUEUE)
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)

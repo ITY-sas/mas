@@ -1,6 +1,9 @@
 """
-Tools compartidas para los agentes multi-agente.
-Incluye: cliente, tendencias, competencia, RAG, embeddings, fuentes externas, enrichment.
+Tools compartidas para los microservicios de tools (Tools-as-a-Service).
+Incluye: cliente, tendencias, competencia, RAG, embeddings, fuentes externas.
+
+NB: los agentes NO importan este paquete (no ejecutan código de negocio):
+las consumen exclusivamente los tool services vía contratos REST/AMQP.
 """
 from .db import get_db_connection, query_db, execute_db
 from .embeddings import generate_embedding, generate_embeddings_batch, embedding_to_vector
@@ -14,10 +17,6 @@ from .competencia import (
     add_competitor_reference, format_competitors,
 )
 from .rag import search_similar_ideas, search_similar_content, store_embedding, format_ideas_for_prompt
-from .enrichment import (
-    enrich_brief_context, build_ideacion_prompt,
-    enrich_idea_context, build_publicacion_prompt,
-)
 from .fuentes_externas import (
     fetch_google_news, fetch_trending_topics, format_news_for_prompt,
 )
