@@ -23,6 +23,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from fastapi import FastAPI, Query  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
 
 from common.contracts import TOOL_MANIFEST_PATH, build_manifest, make_envelope  # noqa: E402
 from common.events import tool_rpc_queue  # noqa: E402
@@ -37,6 +38,28 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger(SERVICE)
 
 app = FastAPI(title=SERVICE, version="1.0.0")
+
+
+class BrandBody(BaseModel):
+    organization_id: int
+    name: str
+    profile_marca: str = ""
+    restricciones_tono: str = ""
+    producto_servicio: str = ""
+    audiencia_objetivo: str = ""
+    objetivo_marketing: str = ""
+    propuesta_valor: str = ""
+    pilares_contenido: str = ""
+    canales_objetivo: str = ""
+    pais: str = "Colombia"
+    zona_horaria: str = "America/Bogota"
+    restricciones_legales: str = ""
+
+
+def _brand_slug(name: str) -> str:
+    import re
+
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
 @app.on_event("startup")
@@ -60,6 +83,37 @@ def op_profile(client_id: int) -> dict:
     }
 
 
+def op_create_brand(body: BrandBody) -> dict:
+    from shared_tools.db import execute_db
+
+    brand_id = execute_db(
+        "INSERT INTO brands (organization_id, name, slug, profile_marca, "
+        "restricciones_tono, producto_servicio, audiencia_objetivo, "
+        "objetivo_marketing, propuesta_valor, pilares_contenido, "
+        "canales_objetivo, pais, zona_horaria, restricciones_legales) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "RETURNING id",
+        (
+            body.organization_id, body.name, _brand_slug(body.name), body.profile_marca,
+            body.restricciones_tono, body.producto_servicio, body.audiencia_objetivo,
+            body.objetivo_marketing, body.propuesta_valor, body.pilares_contenido,
+            body.canales_objetivo, body.pais, body.zona_horaria,
+            body.restricciones_legales,
+        ),
+    )
+    return {"brand_id": brand_id, "organization_id": body.organization_id, "name": body.name}
+
+
+def op_list_brands(organization_id: int) -> list[dict]:
+    from shared_tools.db import query_db
+
+    return query_db(
+        "SELECT id, organization_id, name, slug, status, pais, zona_horaria "
+        "FROM brands WHERE organization_id = %s ORDER BY id",
+        (organization_id,),
+    )
+
+
 OPERATIONS: dict = {
     "profile": {
         "id": "profile",
@@ -80,6 +134,24 @@ OPERATIONS: dict = {
         ],
         "returns": "objeto {client_id, found, profile, text}",
         "handler": op_profile,
+    },
+    "create_brand": {
+        "id": "create_brand",
+        "method": "POST",
+        "path": "/brands",
+        "description": "Crea una marca y su perfil inicial dentro de una organización.",
+        "params": [],
+        "returns": "objeto {brand_id, organization_id, name}",
+        "handler": op_create_brand,
+    },
+    "list_brands": {
+        "id": "list_brands",
+        "method": "GET",
+        "path": "/brands",
+        "description": "Lista las marcas de una organización.",
+        "params": [{"name": "organization_id", "in": "query", "type": "integer", "required": True}],
+        "returns": "lista de marcas",
+        "handler": op_list_brands,
     },
 }
 
@@ -125,11 +197,37 @@ def profile(client_id: int = Query(..., description="Identificador del cliente")
         )
 
 
+@app.post("/brands")
+def create_brand(body: BrandBody):
+    started = time.perf_counter()
+    try:
+        data = op_create_brand(body)
+        return make_envelope(f"{TOOL}.create_brand", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("create_brand falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            f"{TOOL}.create_brand", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/brands")
+def list_brands(organization_id: int = Query(...)):
+    started = time.perf_counter()
+    try:
+        data = op_list_brands(organization_id)
+        return make_envelope(f"{TOOL}.list_brands", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("list_brands falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            f"{TOOL}.list_brands", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
 # ── AMQP RPC (modo asíncrono) ──────────────────────────────────
 def _rpc_handler(event) -> dict:
     op_id = event.operation or ""
     if op_id not in OPERATIONS:
         raise ValueError(f"operación desconocida: {op_id}")
+    if op_id == "create_brand":
+        return op_create_brand(BrandBody(**dict(event.payload or {})))
     return OPERATIONS[op_id]["handler"](**dict(event.payload or {}))
 
 

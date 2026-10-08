@@ -14,6 +14,8 @@ import logging
 import os
 import sys
 import time
+import hashlib
+import json
 
 # Permite ejecutar el servicio desde cualquier cwd (repo root)
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -61,6 +63,17 @@ class PublicacionBody(BaseModel):
     client_id: int
     content: str
     idea_id: int | None = None
+
+
+class DocumentBody(BaseModel):
+    title: str
+    content: str
+    scope: str = "brand"
+    organization_id: int | None = None
+    brand_id: int | None = None
+    source_type: str = "manual"
+    source_url: str | None = None
+    metadata: dict = {}
 
 
 # ── Operaciones (lógica compartida REST ⇄ AMQP) ─────────────────
@@ -128,6 +141,55 @@ def op_stats() -> dict:
     ideas = query_db("SELECT count(*) AS n FROM ideas_generadas")[0]["n"]
     publicaciones = query_db("SELECT count(*) AS n FROM publicaciones_generadas")[0]["n"]
     return {"ideas": int(ideas), "publicaciones": int(publicaciones)}
+
+
+def op_ingest_document(body: DocumentBody) -> dict:
+    """Ingesta texto autorizado con chunks, embeddings y procedencia."""
+    from shared_tools.db import execute_db
+    from shared_tools.embeddings import embedding_to_vector, generate_embeddings_batch
+
+    if body.scope not in {"global", "organization", "brand"}:
+        raise ValueError("scope debe ser global, organization o brand")
+    if body.scope == "brand" and body.brand_id is None:
+        raise ValueError("brand_id es obligatorio para scope=brand")
+    if body.scope == "organization" and body.organization_id is None:
+        raise ValueError("organization_id es obligatorio para scope=organization")
+    if body.scope == "global" and (body.organization_id is not None or body.brand_id is not None):
+        raise ValueError("scope=global no admite organization_id ni brand_id")
+    if not body.content.strip():
+        raise ValueError("content no puede estar vacío")
+
+    content_hash = hashlib.sha256(body.content.encode("utf-8")).hexdigest()
+    source_id = execute_db(
+        "INSERT INTO brand_sources (organization_id, brand_id, scope, source_type, title, url, content_hash, metadata, fetched_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, now()) RETURNING id",
+        (body.organization_id, body.brand_id, body.scope, body.source_type, body.title,
+         body.source_url, content_hash, json.dumps(body.metadata)),
+    )
+    document_id = execute_db(
+        "INSERT INTO brand_documents (source_id, organization_id, brand_id, scope, title, content, content_hash, metadata) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb) RETURNING id",
+        (source_id, body.organization_id, body.brand_id, body.scope, body.title,
+         body.content, content_hash, json.dumps(body.metadata)),
+    )
+    chunk_size = 1200
+    chunks = [body.content[index:index + chunk_size] for index in range(0, len(body.content), chunk_size)]
+    embeddings = generate_embeddings_batch(chunks)
+    for index, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        vector = embedding_to_vector(embedding) if embedding else None
+        if vector:
+            execute_db(
+                "INSERT INTO brand_chunks (document_id, organization_id, brand_id, scope, chunk_index, content, embedding) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s::vector)",
+                (document_id, body.organization_id, body.brand_id, body.scope, index, chunk, vector),
+            )
+        else:
+            execute_db(
+                "INSERT INTO brand_chunks (document_id, organization_id, brand_id, scope, chunk_index, content) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (document_id, body.organization_id, body.brand_id, body.scope, index, chunk),
+            )
+    return {"source_id": source_id, "document_id": document_id, "chunks": len(chunks), "content_hash": content_hash}
 
 
 OPERATIONS: dict = {
@@ -238,6 +300,15 @@ OPERATIONS: dict = {
         "params": [],
         "returns": "objeto {ideas, publicaciones}",
         "handler": op_stats,
+    },
+    "ingest_document": {
+        "id": "ingest_document",
+        "method": "POST",
+        "path": "/documents",
+        "description": "Ingesta un documento autorizado con chunks, embeddings y procedencia.",
+        "params": [],
+        "returns": "objeto {source_id, document_id, chunks, content_hash}",
+        "handler": op_ingest_document,
     },
 }
 
@@ -352,11 +423,24 @@ def stats():
         )
 
 
+@app.post("/documents")
+def ingest_document(body: DocumentBody):
+    started = time.perf_counter()
+    try:
+        data = op_ingest_document(body)
+        return make_envelope(TOOL + ".ingest_document", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ingest_document falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            TOOL + ".ingest_document", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
 # ── AMQP RPC (modo asíncrono) ──────────────────────────────────
 def _rpc_handler(event) -> dict:
     op_id = event.operation or ""
     if op_id not in OPERATIONS:
         raise ValueError(f"operación desconocida: {op_id}")
+    if op_id == "ingest_document":
+        return op_ingest_document(DocumentBody(**dict(event.payload or {})))
     return OPERATIONS[op_id]["handler"](**dict(event.payload or {}))
 
 

@@ -128,6 +128,7 @@ def schedule_post(state: PublicacionState) -> dict:
         "postiz",
         "create_post",
         json_body={
+            "brand_id": state["brand_id"],
             "content": state["publication"],
             "integration_ids": integration_ids,
             "mode": state.get("publish_mode", "draft"),

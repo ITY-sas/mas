@@ -40,6 +40,7 @@ app = FastAPI(title=SERVICE, version="1.0.0")
 
 
 class CreatePostBody(BaseModel):
+    brand_id: int
     content: str
     integration_ids: list[str] = Field(default_factory=list)
     mode: str = "draft"
@@ -73,16 +74,33 @@ def op_integrations(group: str | None = None) -> Any:
 
 
 def op_create_post(body: CreatePostBody) -> Any:
+    from shared_tools.db import query_db
+
     if body.mode not in {"draft", "schedule", "now"}:
         raise ValueError("mode debe ser draft, schedule o now")
-    if not body.integration_ids:
-        raise ValueError("integration_ids no puede estar vacío")
     if body.mode == "schedule" and not body.publish_at:
         raise ValueError("publish_at es obligatorio con mode=schedule")
 
+    channels = query_db(
+        "SELECT external_id, provider, settings FROM brand_channels "
+        "WHERE brand_id = %s AND status = 'active'",
+        (body.brand_id,),
+    )
+    channel_map = {channel["external_id"]: channel for channel in channels}
+    integration_ids = body.integration_ids or list(channel_map)
+    if not integration_ids:
+        raise ValueError("la marca no tiene canales Postiz activos")
+    unknown = [integration_id for integration_id in integration_ids if integration_id not in channel_map]
+    if unknown:
+        raise ValueError(f"canales no vinculados a la marca: {unknown}")
+
     posts = []
-    for integration_id in body.integration_ids:
-        platform_settings = dict(body.settings.get(integration_id) or {})
+    for integration_id in integration_ids:
+        platform_settings = dict(
+            body.settings.get(integration_id)
+            or channel_map[integration_id].get("settings")
+            or {}
+        )
         if "__type" not in platform_settings:
             raise ValueError(
                 f"falta settings[{integration_id}].__type; consulta /integrations"
