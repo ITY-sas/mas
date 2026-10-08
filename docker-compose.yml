@@ -11,7 +11,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 x-tool-urls: &tool-urls
-  TOOL_URLS: '{"client":"http://tool-client:8010","trends":"http://tool-trends:8011","competitors":"http://tool-competitors:8012","rag":"http://tool-rag:8013","news":"http://tool-news:8014","trending":"http://tool-trending:8015"}'
+  TOOL_URLS: '{"client":"http://tool-client:8010","trends":"http://tool-trends:8011","competitors":"http://tool-competitors:8012","rag":"http://tool-rag:8013","news":"http://tool-news:8014","trending":"http://tool-trending:8015","postiz":"http://tool-postiz:8016"}'
 
 services:
   rabbitmq:
@@ -197,6 +197,23 @@ services:
         condition: service_healthy
     restart: on-failure
 
+  tool-postiz:
+    build:
+      context: .
+      dockerfile: tool_services/Dockerfile
+      args:
+        TOOL_DIR: tool_postiz
+    ports:
+      - "8016:8016"
+    environment:
+      POSTIZ_API_URL: ${POSTIZ_API_URL:-https://api.postiz.com/public/v1}
+      POSTIZ_API_KEY: ${POSTIZ_API_KEY:-}
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
   # ── Agentes (microservicios independientes) ─────────────────
   agente-ideacion:
     build:
@@ -230,6 +247,8 @@ services:
       redis:
         condition: service_healthy
       llm-gateway:
+        condition: service_started
+      tool-postiz:
         condition: service_started
     environment:
       RABBITMQ_HOST: rabbitmq

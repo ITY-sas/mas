@@ -22,6 +22,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from typing import Literal
 
 from common.events import AGENT_RESULTS_QUEUE, Event, EventConsumer
 from common.gateway_client import health as gateway_health
@@ -51,6 +52,15 @@ class Brief(BaseModel):
     content: str
     wait: bool = Field(True, description="Esperar a que el pipeline termine")
     timeout: float = Field(300.0, description="Segundos máximos de espera (si wait=true)")
+    publish_mode: Literal["draft", "schedule", "now"] = Field(
+        "draft", description="Postiz: guardar borrador, programar o publicar ahora"
+    )
+    publish_at: str | None = Field(None, description="Fecha UTC ISO 8601 para Postiz")
+    postiz_integration_ids: list[str] = Field(default_factory=list)
+    postiz_settings: dict[str, dict] = Field(default_factory=dict)
+    content_format: Literal["auto", "reel", "post"] = Field(
+        "auto", description="Tipo de dossier: auto, reel o post"
+    )
 
 
 def _get_runtime() -> OrchestratorRuntime:
@@ -151,7 +161,17 @@ def process_brief(brief: Brief):
     logger.info("POST /process client_id=%s wait=%s", brief.client_id, brief.wait)
     try:
         task_id = rt.start_task(
-            brief={"client_id": brief.client_id, "content": brief.content},
+            brief={
+                "client_id": brief.client_id,
+                "content": brief.content,
+                "content_format": brief.content_format,
+                "publication": {
+                    "mode": brief.publish_mode,
+                    "publish_at": brief.publish_at,
+                    "integration_ids": brief.postiz_integration_ids,
+                    "settings": brief.postiz_settings,
+                },
+            },
             client_id=brief.client_id,
         )
     except Exception as exc:  # noqa: BLE001
@@ -177,8 +197,10 @@ def process_brief(brief: Brief):
         "status": STATUS_COMPLETED,
         "idea": result.get("idea", ""),
         "idea_id": result.get("idea_id", 0),
+        "preproduction": result.get("preproduction", {}),
         "publication": result.get("publication", ""),
         "publication_id": result.get("publication_id", 0),
+        "postiz": result.get("postiz", {}),
         "agents": task.get("agents", {}),
     }
 

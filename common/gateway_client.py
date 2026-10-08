@@ -35,6 +35,7 @@ def generate(
     max_tokens: Optional[int] = None,
     timeout: float = 180.0,
     cache: bool = True,
+    format: Any = None,
 ) -> dict:
     """Generación de texto vía gateway.
 
@@ -49,6 +50,8 @@ def generate(
         body["temperature"] = temperature
     if max_tokens is not None:
         body["max_tokens"] = max_tokens
+    if format is not None:
+        body["format"] = format
     try:
         resp = requests.post(f"{gateway_base()}/v1/generate", json=body, timeout=timeout)
     except requests.RequestException as exc:

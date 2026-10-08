@@ -36,6 +36,7 @@ DEFAULT_TOOL_URLS = {
     "rag": "http://localhost:8013",
     "news": "http://localhost:8014",
     "trending": "http://localhost:8015",
+    "postiz": "http://localhost:8016",
 }
 
 _TYPE_MAP = {"string": str, "integer": int, "number": float, "boolean": bool}

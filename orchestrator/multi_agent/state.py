@@ -31,6 +31,7 @@ class SupervisorState(TypedDict):
     # ── Resultado del agente de ideación ──
     idea: str
     idea_id: int
+    preproduction: dict
 
     # ── Resultado del agente de publicación ──
     publication: str
@@ -47,6 +48,7 @@ def initial_state(brief: dict, client_id: int) -> SupervisorState:
         "client_id": client_id,
         "idea": "",
         "idea_id": 0,
+        "preproduction": {},
         "publication": "",
         "publication_id": 0,
         "log": [],

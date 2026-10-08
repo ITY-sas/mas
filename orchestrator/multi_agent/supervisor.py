@@ -91,6 +91,7 @@ def dispatch_ideacion(state: SupervisorState) -> dict:
     return {
         "idea": idea,
         "idea_id": idea_id,
+        "preproduction": data.get("preproduction", {}),
         "log": [f"ideacion: completado (idea_id={idea_id})"],
     }
 
@@ -105,6 +106,8 @@ def dispatch_publicacion(state: SupervisorState) -> dict:
                 "idea": state["idea"],
                 "client_id": state["client_id"],
                 "idea_id": state["idea_id"],
+                "preproduction": state.get("preproduction", {}),
+                "publication": state.get("brief", {}).get("publication", {}),
             },
         }
     )
@@ -115,6 +118,7 @@ def dispatch_publicacion(state: SupervisorState) -> dict:
     return {
         "publication": publication,
         "publication_id": publication_id,
+        "postiz": data.get("postiz", {}),
         "log": [f"publicacion: completado (publication_id={publication_id})"],
     }
 

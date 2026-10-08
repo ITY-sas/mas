@@ -80,6 +80,7 @@ class GenerateRequest(BaseModel):
     max_tokens: Optional[int] = None
     timeout: float = 180.0
     cache: bool = True
+    format: Any = None
 
 
 class EmbeddingsRequest(BaseModel):
@@ -127,6 +128,7 @@ def chat_completion(
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     timeout: float = 180.0,
+    response_format: Any = None,
 ) -> str:
     """POST {base_url}/api/chat (Ollama) → contenido del mensaje."""
     messages: List[Dict[str, str]] = []
@@ -146,6 +148,8 @@ def chat_completion(
         options["num_predict"] = max_tokens
     if options:
         payload["options"] = options
+    if response_format is not None:
+        payload["format"] = response_format
 
     data = _post_json(f"{provider.base_url}/api/chat", payload, timeout, provider, "chat")
     content = ((data or {}).get("message") or {}).get("content")
@@ -255,7 +259,7 @@ def generate(body: GenerateRequest) -> Any:
     if body.cache:
         key = gateway_cache.cache_key(
             "generate",
-            [model_key, body.system or "", body.prompt, str(body.temperature)],
+            [model_key, body.system or "", body.prompt, str(body.temperature), str(body.format)],
         )
         cached = _cached_payload(gateway_cache.cache_get(key))
         if cached is not None and "content" in cached:
@@ -282,6 +286,7 @@ def generate(body: GenerateRequest) -> Any:
                 temperature=body.temperature,
                 max_tokens=body.max_tokens,
                 timeout=body.timeout,
+                response_format=body.format,
             )
         except Exception:
             registry.record_failure(provider.name)

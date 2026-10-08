@@ -16,6 +16,53 @@ from shared_tools import (
     get_all_trends,
     get_all_competitors,
 )
+from shared_tools.db import execute_db
+
+
+def seed_clientes():
+    """Completa perfiles de prueba con contexto de marketing para Colombia."""
+    print("═══ Poblando perfiles de clientes ═══")
+    profiles = [
+        (
+            "EcoBrand",
+            "Protector solar y cosmética natural con ingredientes de origen responsable.",
+            "Personas de 18 a 35 años en Colombia interesadas en sostenibilidad y autocuidado.",
+            "Aumentar reconocimiento y contenido compartible en Instagram y Facebook.",
+            "Cuidado personal efectivo con transparencia y menor impacto ambiental.",
+            "Educación, detrás de cámaras, sostenibilidad verificable y testimonios reales.",
+            "Instagram, Facebook, TikTok",
+            "No prometer protección absoluta ni afirmaciones médicas sin respaldo.",
+        ),
+        (
+            "TechStart",
+            "Aplicación móvil para recibir pagos y administrar ventas de pequeños negocios.",
+            "Panaderías, cafeterías y comercios independientes de Colombia.",
+            "Generar registros y demostrar que cobrar digitalmente es sencillo y seguro.",
+            "Pagos rápidos y simples sin exigir conocimientos técnicos.",
+            "Tutoriales, casos de clientes, datos y demostraciones de producto.",
+            "Instagram, Facebook, LinkedIn",
+            "No prometer aprobación financiera ni usar datos sin autorización.",
+        ),
+        (
+            "FitLife",
+            "Suplementos naturales y planes de entrenamiento personalizados.",
+            "Adultos de 25 a 45 años en Colombia interesados en salud integral.",
+            "Aumentar consideración de producto y participación en retos saludables.",
+            "Acompañamiento personalizado basado en hábitos sostenibles y evidencia.",
+            "Ciencia sencilla, comunidad, rutinas, hábitos y testimonios verificables.",
+            "Instagram, Facebook, TikTok",
+            "No prometer curas ni resultados garantizados.",
+        ),
+    ]
+    for profile in profiles:
+        execute_db(
+            "UPDATE clientes SET producto_servicio=%s, audiencia_objetivo=%s, "
+            "objetivo_marketing=%s, propuesta_valor=%s, pilares_contenido=%s, "
+            "canales_objetivo=%s, pais='Colombia', zona_horaria='America/Bogota', "
+            "restricciones_legales=%s WHERE nombre=%s",
+            (*profile[1:], profile[0]),
+        )
+    print(f"  → {len(profiles)} perfiles preparados\n")
 
 
 def seed_tendencias():
@@ -105,6 +152,7 @@ if __name__ == "__main__":
     print(" Seed Data — Población de datos ejemplo")
     print("═══════════════════════════════════════\n")
 
+    seed_clientes()
     seed_tendencias()
     seed_competencia()
 

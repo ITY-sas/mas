@@ -30,6 +30,12 @@ class PublicacionState(TypedDict):
     idea: str
     client_id: int
     idea_id: int
+    preproduction: dict
+    postiz_config: dict
+    publish_mode: str
+    publish_at: str | None
+    postiz_integration_ids: list[str]
+    postiz_settings: dict
 
     # ── Contexto recuperado vía tool services ──
     client_profile: str
@@ -39,6 +45,7 @@ class PublicacionState(TypedDict):
     # ── Salida (hacia agent.task.completed) ──
     publication: str
     publication_id: int
+    postiz: dict
 
     # ── Trazabilidad de herramientas usadas ──
     tool_calls: Annotated[list[str], operator.add]
@@ -75,6 +82,7 @@ def generate_post(state: PublicacionState) -> dict:
     context = {
         "client_profile": state["client_profile"],
         "trends": state["trends"],
+        "preproduction": state.get("preproduction", {}),
     }
     prompt = build_publicacion_prompt(state["idea"], context)
     if state.get("trending"):
@@ -108,6 +116,34 @@ def save_post(state: PublicacionState) -> dict:
     return {"publication_id": publication_id, "tool_calls": ["rag.save_publicacion"]}
 
 
+def schedule_post(state: PublicacionState) -> dict:
+    """Crea un borrador/programación en Postiz cuando el brief lo solicita."""
+    integration_ids = state.get("postiz_integration_ids", [])
+    if not integration_ids:
+        return {"postiz": {"status": "skipped", "reason": "sin canales Postiz"}}
+
+    result = REGISTRY.call(
+        "postiz",
+        "create_post",
+        json_body={
+            "content": state["publication"],
+            "integration_ids": integration_ids,
+            "mode": state.get("publish_mode", "draft"),
+            "publish_at": state.get("publish_at"),
+            "settings": state.get("postiz_settings", {}),
+        },
+    )
+    return {
+        "postiz": {
+            "status": "created",
+            "mode": state.get("publish_mode", "draft"),
+            "integrations": integration_ids,
+            "result": result,
+        },
+        "tool_calls": ["postiz.create_post"],
+    }
+
+
 # ── Grafo ──────────────────────────────────────────────────────
 def create_publicacion_graph(checkpointer=None):
     """Compila el StateGraph del agente de publicación."""
@@ -117,11 +153,13 @@ def create_publicacion_graph(checkpointer=None):
     builder.add_node("fetch_trending", fetch_trending)
     builder.add_node("generate_post", generate_post)
     builder.add_node("save_post", save_post)
+    builder.add_node("schedule_post", schedule_post)
 
     builder.add_edge(START, "load_context")
     builder.add_edge("load_context", "fetch_trending")
     builder.add_edge("fetch_trending", "generate_post")
     builder.add_edge("generate_post", "save_post")
-    builder.add_edge("save_post", END)
+    builder.add_edge("save_post", "schedule_post")
+    builder.add_edge("schedule_post", END)
 
     return builder.compile(checkpointer=checkpointer)

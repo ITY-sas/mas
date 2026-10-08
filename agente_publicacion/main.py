@@ -108,6 +108,7 @@ def handle_triggered(event: Event) -> None:
     idea = payload.get("idea", "")
     client_id = payload.get("client_id")
     idea_id = payload.get("idea_id", 0)
+    publication_config = payload.get("publication") or {}
     started = time.perf_counter()
     status, result, error = "completed", {}, None
 
@@ -129,11 +130,18 @@ def handle_triggered(event: Event) -> None:
                     "idea": idea,
                     "client_id": int(client_id),
                     "idea_id": idea_id or 0,
+                    "preproduction": payload.get("preproduction") or {},
+                    "postiz_config": publication_config,
+                    "publish_mode": publication_config.get("mode", "draft"),
+                    "publish_at": publication_config.get("publish_at"),
+                    "postiz_integration_ids": publication_config.get("integration_ids", []),
+                    "postiz_settings": publication_config.get("settings", {}),
                     "tool_calls": [],
                 },
                 extract=lambda s: {
                     "publication": s.get("publication", ""),
                     "publication_id": s.get("publication_id", 0),
+                    "postiz": s.get("postiz", {}),
                 },
                 is_done=lambda s: bool(s.get("publication")),
             )

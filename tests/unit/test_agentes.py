@@ -167,7 +167,31 @@ class TestIdeacionNodeContracts:
         def fake_generate(prompt, **kwargs):
             captured["prompt"] = prompt
             captured["kwargs"] = kwargs
-            return {"content": "IDEA GENERADA", "provider": "p", "model": "m",
+            return {"content": """{
+                "content_type": "reel",
+                "title": "Idea",
+                "concept": "IDEA GENERADA",
+                "objective": "Objetivo",
+                "audience": "Audiencia",
+                "key_message": "Mensaje",
+                "format": "Reel",
+                "duration_seconds": 30,
+                "script": [{"scene": 1, "duration_seconds": 30,
+                             "visual": "Visual", "action": "Acción",
+                             "dialogue_or_voiceover": "Voz",
+                             "on_screen_text": "Texto"}],
+                "camera": [{"scene": 1, "shot": "Plano medio",
+                            "angle": "Frontal", "movement": "Estático",
+                            "framing": "Sujeto centrado"}],
+                "performance_direction": "Natural",
+                "location_and_art_direction": "Estudio",
+                "audio": "Música",
+                "editing_notes": "Cortes rápidos",
+                "post_spec": {"visual_concept": "", "composition": "", "image_direction": "", "text_on_asset": "", "caption_direction": "", "carousel_slides": [], "alt_text": "", "platform_adaptations": ""},
+                "cta": "Conoce más",
+                "deliverables": ["Video 9:16"],
+                "why_it_works": "Es relevante"
+            }""", "provider": "p", "model": "m",
                     "cached": False, "attempts": 1}
 
         monkeypatch.setattr(g.gateway_client, "generate", fake_generate)
@@ -179,7 +203,9 @@ class TestIdeacionNodeContracts:
         )
         result = g.generate_idea(state)
 
-        assert result["idea"] == "IDEA GENERADA"
+        assert result["preproduction"]["concept"] == "IDEA GENERADA"
+        assert '"script"' in result["idea"]
+        assert result["preproduction"]["camera"]
         assert result["tool_calls"] == ["llm-gateway.generate"]
         prompt = captured["prompt"]
         for fragment in ("perfil eco", "tendencia x", "competidor y",

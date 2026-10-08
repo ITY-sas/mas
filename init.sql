@@ -10,6 +10,15 @@ CREATE TABLE clientes (
     perfil_marca TEXT,
     restricciones_tono TEXT,
     historico TEXT,
+    producto_servicio TEXT,
+    audiencia_objetivo TEXT,
+    objetivo_marketing TEXT,
+    propuesta_valor TEXT,
+    pilares_contenido TEXT,
+    canales_objetivo TEXT,
+    pais VARCHAR(80) DEFAULT 'Colombia',
+    zona_horaria VARCHAR(80) DEFAULT 'America/Bogota',
+    restricciones_legales TEXT,
     embedding VECTOR(768)
 );
 

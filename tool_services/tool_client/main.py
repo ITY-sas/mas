@@ -39,6 +39,13 @@ logger = logging.getLogger(SERVICE)
 app = FastAPI(title=SERVICE, version="1.0.0")
 
 
+@app.on_event("startup")
+async def startup_event():
+    from shared_tools.cliente import ensure_client_profile_fields
+
+    ensure_client_profile_fields()
+
+
 # ── Operaciones (lógica compartida REST ⇄ AMQP) ─────────────────
 def op_profile(client_id: int) -> dict:
     """Perfil de marca + tono + histórico, con texto listo para prompt."""

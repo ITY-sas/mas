@@ -133,6 +133,7 @@ def handle_triggered(event: Event) -> None:
                 extract=lambda s: {
                     "idea": s.get("idea", ""),
                     "idea_id": s.get("idea_id", 0),
+                    "preproduction": s.get("preproduction", {}),
                 },
                 is_done=lambda s: bool(s.get("idea")),
             )

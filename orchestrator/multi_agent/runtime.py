@@ -190,8 +190,10 @@ class OrchestratorRuntime:
             result={
                 "idea": outcome.get("idea", ""),
                 "idea_id": outcome.get("idea_id", 0),
+                "preproduction": outcome.get("preproduction", {}),
                 "publication": outcome.get("publication", ""),
                 "publication_id": outcome.get("publication_id", 0),
+                "postiz": outcome.get("postiz", {}),
             },
         )
         logger.info(

@@ -1,7 +1,7 @@
 # Prueba de Concepto — Sistema Multi-Agente de Microservicios
 
 Sistema multi-agente para generación automatizada de contenido de marketing,
-implementado como **arquitectura de microservicios** (13 contenedores) con
+implementado como **arquitectura de microservicios** (14 contenedores) con
 patrones de agentes sobre infraestructura de servicios:
 
 - **Orquestador stateless** — un supervisor LangGraph que se suspende con
@@ -159,6 +159,27 @@ curl -X POST http://localhost:8002/process \
 }
 ```
 
+La respuesta incluye `preproduction` con el dossier audiovisual de ideación:
+concepto, objetivo, audiencia, mensaje, formato, escenas del guion, planos y
+ángulos de cámara, dirección de actuación, arte, audio, edición y entregables.
+El campo `idea` se conserva como texto compatible con el contrato anterior.
+
+El brief acepta `content_format` con los valores `auto`, `reel` o `post`:
+
+```json
+{
+  "client_id": 1,
+  "content": "Presentar una crema solar natural para el verano colombiano",
+  "content_format": "reel"
+}
+```
+
+Un dossier `reel` exige escenas, guion, cámara, actuación, arte, audio y
+edición. Un dossier `post` no exige guion ni cámara: entrega concepto visual,
+composición, dirección de imagen, texto sobre la pieza, slides de carrusel,
+caption direction, alt text y adaptaciones por plataforma. `auto` permite al
+modelo elegir el formato más adecuado.
+
 ### B) HTTP asíncrono (devuelve `task_id` al instante)
 
 ```bash
@@ -176,6 +197,44 @@ curl http://localhost:8002/tasks/<task_id>/history    # historial en PostgreSQL
 ```bash
 python enviar_brief.py      # publica {client_id, content} en ideation_queue
 ```
+
+### D) Preparar o programar en Postiz
+
+Postiz es opcional y se configura mediante variables de entorno antes de
+levantar Compose:
+
+```powershell
+$env:POSTIZ_API_URL = "https://api.postiz.com/public/v1"
+$env:POSTIZ_API_KEY = "tu-api-key"
+docker compose up -d --build
+```
+
+Primero se consultan los canales conectados:
+
+```powershell
+curl.exe http://localhost:8016/integrations
+```
+
+Después se puede pedir un borrador (modo seguro por defecto), publicación
+inmediata o programación. `postiz_integration_ids` contiene los IDs devueltos
+por `/integrations` y `postiz_settings` debe incluir el `__type` de cada canal:
+
+```json
+{
+  "client_id": 1,
+  "content": "Campaña de verano para cosmética natural",
+  "publish_mode": "schedule",
+  "publish_at": "2026-10-15T15:00:00Z",
+  "postiz_integration_ids": ["integration-instagram", "integration-linkedin"],
+  "postiz_settings": {
+    "integration-instagram": {"__type": "instagram", "post_type": "post"},
+    "integration-linkedin": {"__type": "linkedin"}
+  }
+}
+```
+
+Los modos válidos son `draft`, `schedule` y `now`. Si no se proporcionan
+integraciones, el contenido se guarda localmente pero no se envía a Postiz.
 
 ---
 
@@ -216,7 +275,7 @@ orchestrator/          supervisor LangGraph + runtime event-driven + API (:8002)
 agente_ideacion/       microservicio de ideación (:8000): graph · prompts · main
 agente_publicacion/    microservicio de publicación (:8001)
 llm_gateway/           gateway LLM (:8003): providers · resilience · cache · main
-tool_services/         6 tools (:8010-8015) + Dockerfile parametrizado
+tool_services/         6 tools (:8010-8015) + tool-postiz (:8016) + Dockerfile parametrizado
 shared_tools/          librería de dominio (la usan SÓLO los tool services)
 tests/                 unit · integration · performance + PLAN_DE_PRUEBAS.md
 docs/                  ARQUITECTURA · TECNOLOGIAS · CHANGELOG
