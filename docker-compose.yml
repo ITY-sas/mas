@@ -38,6 +38,7 @@ services:
       POSTGRES_DB: ideation_db
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./migrations/001_multi_tenant_foundation.sql:/docker-entrypoint-initdb.d/zz_multi_tenant_foundation.sql
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ideation_db"]

@@ -109,6 +109,7 @@ def handle_triggered(event: Event) -> None:
     payload = event.payload or {}
     brief = payload.get("brief") or {}
     client_id = payload.get("client_id", brief.get("client_id"))
+    brand_id = payload.get("brand_id", brief.get("brand_id", client_id))
     started = time.perf_counter()
     status, result, error = "completed", {}, None
 
@@ -128,6 +129,7 @@ def handle_triggered(event: Event) -> None:
                 initial_state={
                     "brief": brief,
                     "client_id": int(client_id),
+                    "brand_id": int(brand_id),
                     "tool_calls": [],
                 },
                 extract=lambda s: {

@@ -80,7 +80,7 @@ class TestPerformanceTools:
             registry.call("competitors", "search",
                           params={"query": brief, "limit": 5})
             registry.call("rag", "similar",
-                          json_body={"query": brief, "limit": 3,
+                          json_body={"brand_id": 1, "query": brief, "limit": 3,
                                      "min_similarity": 0.3})
             elapsed = time.time() - start
         except Exception as e:

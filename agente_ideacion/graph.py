@@ -205,6 +205,7 @@ class IdeacionState(TypedDict):
     # ── Entrada (desde agent.task.triggered) ──
     brief: dict
     client_id: int
+    brand_id: int
 
     # ── Contexto recuperado vía tool services ──
     client_profile: str
@@ -236,7 +237,7 @@ def load_context(state: IdeacionState) -> dict:
     )
     similar = REGISTRY.call(
         "rag", "similar",
-        json_body={"query": content, "limit": 3, "min_similarity": 0.3},
+        json_body={"brand_id": state["brand_id"], "query": content, "limit": 3, "min_similarity": 0.3},
     )
 
     stats = {
@@ -322,7 +323,7 @@ def save_idea(state: IdeacionState) -> dict:
     logger.info("[save_idea] POST tool-rag /ideas …")
     data = REGISTRY.call(
         "rag", "save_idea",
-        json_body={"client_id": state["client_id"], "content": state["idea"]},
+        json_body={"brand_id": state["brand_id"], "client_id": state["client_id"], "content": state["idea"]},
     )
     idea_id = data.get("id", 0)
     logger.info("[save_idea] idea_id=%s", idea_id)

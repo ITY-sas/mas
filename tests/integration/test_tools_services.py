@@ -29,7 +29,7 @@ TOOLS = {
     "trends": (8011, ("GET", "/search", {"query": "moda sostenible", "limit": 3})),
     "competitors": (8012, ("GET", "/search", {"query": "moda sostenible", "limit": 3})),
     "rag": (8013, ("POST", "/similar",
-                   {"query": "moda sostenible", "limit": 3, "min_similarity": 0.3})),
+                   {"brand_id": 1, "query": "moda sostenible", "limit": 3, "min_similarity": 0.3})),
     "news": (8014, ("GET", "/news", {"query": "marketing", "limit": 2})),
     "trending": (8015, ("GET", "/trending", {"query": "marketing"})),
 }

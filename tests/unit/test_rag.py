@@ -19,14 +19,14 @@ class TestSearchSimilarIdeas:
     @pytest.mark.integration
     def test_search_returns_list(self):
         """U19: search_similar_ideas retorna lista."""
-        results = search_similar_ideas("campaña ropa sostenible", limit=3)
+        results = search_similar_ideas(1, "campaña ropa sostenible", limit=3)
         assert isinstance(results, list)
 
     @pytest.mark.unit
     @pytest.mark.integration
     def test_search_with_no_results(self):
         """U19b: Query irrelevante puede retornar lista vacía."""
-        results = search_similar_ideas("xyzabc123 nonexistent query", limit=5, min_similarity=0.95)
+        results = search_similar_ideas(1, "xyzabc123 nonexistent query", limit=5, min_similarity=0.95)
         assert isinstance(results, list)
         # Con min_similarity alto, probablemente vacío
         assert len(results) <= 5
@@ -39,20 +39,20 @@ class TestSearchSimilarContent:
     def test_invalid_table_raises(self):
         """U20: Tabla no permitida lanza ValueError."""
         with pytest.raises(ValueError, match="no permitida"):
-            search_similar_content("tabla_hackeada", "query")
+            search_similar_content("tabla_hackeada", None, "query")
 
     @pytest.mark.unit
     @pytest.mark.integration
     def test_valid_table(self):
         """U20b: Tabla válida funciona."""
-        results = search_similar_content("tendencias", "marketing sostenible", limit=3)
+        results = search_similar_content("tendencias", None, "marketing sostenible", limit=3)
         assert isinstance(results, list)
 
     @pytest.mark.unit
     @pytest.mark.integration
     def test_valid_table_ideas(self):
         """U20c: Tabla ideas_generadas funciona."""
-        results = search_similar_content("ideas_generadas", "eco-friendly campaign", limit=3)
+        results = search_similar_content("ideas_generadas", 1, "eco-friendly campaign", limit=3)
         assert isinstance(results, list)
 
 

@@ -44,29 +44,33 @@ app = FastAPI(title=SERVICE, version="1.0.0")
 
 # ── Bodies (REST) ──────────────────────────────────────────────
 class SimilarBody(BaseModel):
+    brand_id: int
     query: str
     limit: int = 3
     min_similarity: float = 0.3
 
 
 class IdeaBody(BaseModel):
+    brand_id: int
     client_id: int
     content: str
 
 
 class PublicacionBody(BaseModel):
+    brand_id: int
     client_id: int
     content: str
     idea_id: int | None = None
 
 
 # ── Operaciones (lógica compartida REST ⇄ AMQP) ─────────────────
-def op_similar(query: str, limit: int = 3, min_similarity: float = 0.3) -> dict:
+def op_similar(brand_id: int, query: str, limit: int = 3, min_similarity: float = 0.3) -> dict:
     """Búsqueda semántica de ideas previas con texto listo para prompt."""
     from shared_tools.rag import format_ideas_for_prompt, search_similar_ideas
 
-    ideas = search_similar_ideas(query, limit, min_similarity)
+    ideas = search_similar_ideas(brand_id, query, limit, min_similarity)
     return {
+        "brand_id": brand_id,
         "query": query,
         "count": len(ideas),
         "ideas": ideas,
@@ -74,7 +78,7 @@ def op_similar(query: str, limit: int = 3, min_similarity: float = 0.3) -> dict:
     }
 
 
-def op_save_idea(client_id: int, content: str) -> dict:
+def op_save_idea(brand_id: int, client_id: int, content: str) -> dict:
     """Persiste una idea generada (+ embedding vía LLM Gateway)."""
     from shared_tools.db import execute_db
     from shared_tools.embeddings import embedding_to_vector, generate_embedding
@@ -83,19 +87,19 @@ def op_save_idea(client_id: int, content: str) -> dict:
     vec = embedding_to_vector(embedding)
     if vec:
         new_id = execute_db(
-            "INSERT INTO ideas_generadas (client_id, content, embedding) "
-            "VALUES (%s, %s, %s::vector) RETURNING id",
-            (client_id, content, vec),
+            "INSERT INTO ideas_generadas (client_id, brand_id, content, embedding) "
+            "VALUES (%s, %s, %s, %s::vector) RETURNING id",
+            (client_id, brand_id, content, vec),
         )
     else:
         new_id = execute_db(
-            "INSERT INTO ideas_generadas (client_id, content) VALUES (%s, %s) RETURNING id",
-            (client_id, content),
+            "INSERT INTO ideas_generadas (client_id, brand_id, content) VALUES (%s, %s, %s) RETURNING id",
+            (client_id, brand_id, content),
         )
     return {"id": new_id}
 
 
-def op_save_publicacion(client_id: int, content: str, idea_id: int | None = None) -> dict:
+def op_save_publicacion(brand_id: int, client_id: int, content: str, idea_id: int | None = None) -> dict:
     """Persiste una publicación generada (+ embedding vía LLM Gateway)."""
     from shared_tools.db import execute_db
     from shared_tools.embeddings import embedding_to_vector, generate_embedding
@@ -104,15 +108,15 @@ def op_save_publicacion(client_id: int, content: str, idea_id: int | None = None
     vec = embedding_to_vector(embedding)
     if vec:
         new_id = execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, idea_id, content, embedding) "
-            "VALUES (%s, %s, %s, %s::vector) RETURNING id",
-            (client_id, idea_id, content, vec),
+            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, content, embedding) "
+            "VALUES (%s, %s, %s, %s, %s::vector) RETURNING id",
+            (client_id, brand_id, idea_id, content, vec),
         )
     else:
         new_id = execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, idea_id, content) "
-            "VALUES (%s, %s, %s) RETURNING id",
-            (client_id, idea_id, content),
+            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, content) "
+            "VALUES (%s, %s, %s, %s)",
+            (client_id, brand_id, idea_id, content),
         )
     return {"id": new_id}
 
@@ -136,6 +140,13 @@ OPERATIONS: dict = {
             "similitud mínima y texto listo para prompt."
         ),
         "params": [
+            {
+                "name": "brand_id",
+                "in": "body",
+                "type": "integer",
+                "required": True,
+                "description": "Marca cuyo cerebro RAG se puede consultar",
+            },
             {
                 "name": "query",
                 "in": "body",
@@ -257,7 +268,7 @@ def manifest() -> dict:
 def similar(body: SimilarBody):
     started = time.perf_counter()
     try:
-        data = op_similar(body.query, body.limit, body.min_similarity)
+        data = op_similar(body.brand_id, body.query, body.limit, body.min_similarity)
         return make_envelope(
             f"{TOOL}.similar", data, (time.perf_counter() - started) * 1000
         )
@@ -279,7 +290,7 @@ def similar(body: SimilarBody):
 def save_idea(body: IdeaBody):
     started = time.perf_counter()
     try:
-        data = op_save_idea(body.client_id, body.content)
+        data = op_save_idea(body.brand_id, body.client_id, body.content)
         return make_envelope(
             f"{TOOL}.save_idea", data, (time.perf_counter() - started) * 1000
         )
@@ -301,7 +312,7 @@ def save_idea(body: IdeaBody):
 def save_publicacion(body: PublicacionBody):
     started = time.perf_counter()
     try:
-        data = op_save_publicacion(body.client_id, body.content, body.idea_id)
+        data = op_save_publicacion(body.brand_id, body.client_id, body.content, body.idea_id)
         return make_envelope(
             f"{TOOL}.save_publicacion", data, (time.perf_counter() - started) * 1000
         )

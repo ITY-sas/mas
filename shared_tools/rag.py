@@ -7,8 +7,13 @@ from .embeddings import embedding_to_vector, generate_embedding
 logger = logging.getLogger(__name__)
 
 
-def search_similar_ideas(query_text: str, limit: int = 5, min_similarity: float = 0.0) -> list[dict]:
-    """Busca ideas similares en la base de datos usando similitud de coseno."""
+def search_similar_ideas(
+    brand_id: int,
+    query_text: str,
+    limit: int = 5,
+    min_similarity: float = 0.0,
+) -> list[dict]:
+    """Busca ideas similares dentro de una marca usando similitud de coseno."""
     embedding = generate_embedding(query_text)
     if embedding is None:
         logger.warning("No se pudo generar embedding para la búsqueda")
@@ -19,10 +24,10 @@ def search_similar_ideas(query_text: str, limit: int = 5, min_similarity: float 
         "SELECT id, client_id, content, "
         "1 - (embedding <=> %s::vector) as similarity "
         "FROM ideas_generadas "
-        "WHERE embedding IS NOT NULL "
+        "WHERE brand_id = %s AND embedding IS NOT NULL "
         "ORDER BY embedding <=> %s::vector "
         "LIMIT %s",
-        (vector_str, vector_str, limit),
+        (vector_str, brand_id, vector_str, limit),
     )
     # Filtrar por similitud mínima
     results = [r for r in rows if r.get("similarity", 0) >= min_similarity]
@@ -31,26 +36,36 @@ def search_similar_ideas(query_text: str, limit: int = 5, min_similarity: float 
 
 
 def search_similar_content(
-    table: str, query_text: str, limit: int = 5, min_similarity: float = 0.0
+    table: str,
+    brand_id: int | None,
+    query_text: str,
+    limit: int = 5,
+    min_similarity: float = 0.0,
 ) -> list[dict]:
     """Búsqueda RAG genérica en cualquier tabla con columna embedding."""
     # Whitelist de tablas permitidas para evitar SQL injection
     allowed_tables = {"ideas_generadas", "publicaciones_generadas", "tendencias", "referencias_competencia", "clientes"}
     if table not in allowed_tables:
         raise ValueError(f"Tabla no permitida: {table}")
+    if table in {"ideas_generadas", "publicaciones_generadas"} and brand_id is None:
+        raise ValueError(f"brand_id es obligatorio para buscar en {table}")
 
     embedding = generate_embedding(query_text)
     if embedding is None:
         return []
 
     vector_str = embedding_to_vector(embedding)
+    scope_sql = " AND brand_id = %s" if brand_id is not None and table in {
+        "ideas_generadas", "publicaciones_generadas"
+    } else ""
+    params = (vector_str, brand_id, vector_str, limit) if scope_sql else (vector_str, vector_str, limit)
     rows = query_db(
         f"SELECT id, content, 1 - (embedding <=> %s::vector) as similarity "
         f"FROM {table} "
-        f"WHERE embedding IS NOT NULL "
+        f"WHERE embedding IS NOT NULL{scope_sql} "
         f"ORDER BY embedding <=> %s::vector "
         f"LIMIT %s",
-        (vector_str, vector_str, limit),
+        params,
     )
     return [r for r in rows if r.get("similarity", 0) >= min_similarity]
 

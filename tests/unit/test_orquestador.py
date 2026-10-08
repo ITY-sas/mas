@@ -129,6 +129,7 @@ class TestDispatchInterrupts:
         return {
             "brief": {"client_id": 1, "content": "campana verano"},
             "client_id": 1,
+            "brand_id": 1,
             "idea": "", "idea_id": 0,
             "publication": "", "publication_id": 0,
             "log": [],

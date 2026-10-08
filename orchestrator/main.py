@@ -49,6 +49,7 @@ registry = ToolRegistry()
 # ── Modelos ────────────────────────────────────────────────────
 class Brief(BaseModel):
     client_id: int
+    brand_id: int | None = None
     content: str
     wait: bool = Field(True, description="Esperar a que el pipeline termine")
     timeout: float = Field(300.0, description="Segundos máximos de espera (si wait=true)")
@@ -163,6 +164,7 @@ def process_brief(brief: Brief):
         task_id = rt.start_task(
             brief={
                 "client_id": brief.client_id,
+                "brand_id": brief.brand_id or brief.client_id,
                 "content": brief.content,
                 "content_format": brief.content_format,
                 "publication": {

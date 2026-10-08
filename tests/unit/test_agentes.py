@@ -70,6 +70,7 @@ def _ideacion_state(**extra):
     state = {
         "brief": {"client_id": 1, "content": "brief de prueba"},
         "client_id": 1,
+        "brand_id": 1,
     }
     state.update(extra)
     return state
@@ -140,6 +141,7 @@ class TestIdeacionNodeContracts:
         assert fake.calls[1]["params"]["query"] == "brief de prueba"
         assert fake.calls[1]["params"]["limit"] == 5
         assert fake.calls[3]["json_body"]["min_similarity"] == 0.3
+        assert fake.calls[3]["json_body"]["brand_id"] == 1
         # textos listos para prompt + trazabilidad
         assert result["client_profile"].startswith("texto de client")
         assert "rag.similar" in result["tool_calls"]
@@ -223,7 +225,9 @@ class TestIdeacionNodeContracts:
 
         assert fake.calls[0]["tool"] == "rag"
         assert fake.calls[0]["operation"] == "save_idea"
-        assert fake.calls[0]["json_body"] == {"client_id": 1, "content": "mi idea"}
+        assert fake.calls[0]["json_body"] == {
+            "brand_id": 1, "client_id": 1, "content": "mi idea"
+        }
         assert result["idea_id"] == 77
 
 
@@ -234,7 +238,7 @@ class TestPublicacionNodeContracts:
         fake = FakeRegistry()
         monkeypatch.setattr(g, "REGISTRY", fake)
 
-        state = {"idea": "idea para publicar", "client_id": 2, "idea_id": 5}
+        state = {"idea": "idea para publicar", "client_id": 2, "brand_id": 2, "idea_id": 5}
         result = g.load_context(state)
 
         pairs = [(c["tool"], c["operation"]) for c in fake.calls]
@@ -274,12 +278,12 @@ class TestPublicacionNodeContracts:
         fake = FakeRegistry(response={"id": 33})
         monkeypatch.setattr(g, "REGISTRY", fake)
 
-        state = {"idea": "idea eco", "client_id": 2, "idea_id": 5,
+        state = {"idea": "idea eco", "client_id": 2, "brand_id": 2, "idea_id": 5,
                  "publication": "mi post"}
         result = g.save_post(state)
 
         assert fake.calls[0]["json_body"] == {
-            "client_id": 2, "content": "mi post", "idea_id": 5,
+            "brand_id": 2, "client_id": 2, "content": "mi post", "idea_id": 5,
         }
         assert result["publication_id"] == 33
 

@@ -107,6 +107,7 @@ def handle_triggered(event: Event) -> None:
     payload = event.payload or {}
     idea = payload.get("idea", "")
     client_id = payload.get("client_id")
+    brand_id = payload.get("brand_id", client_id)
     idea_id = payload.get("idea_id", 0)
     publication_config = payload.get("publication") or {}
     started = time.perf_counter()
@@ -129,6 +130,7 @@ def handle_triggered(event: Event) -> None:
                 initial_state={
                     "idea": idea,
                     "client_id": int(client_id),
+                    "brand_id": int(brand_id),
                     "idea_id": idea_id or 0,
                     "preproduction": payload.get("preproduction") or {},
                     "postiz_config": publication_config,

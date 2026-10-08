@@ -29,6 +29,7 @@ class PublicacionState(TypedDict):
     # ── Entrada (desde agent.task.triggered) ──
     idea: str
     client_id: int
+    brand_id: int
     idea_id: int
     preproduction: dict
     postiz_config: dict
@@ -106,6 +107,7 @@ def save_post(state: PublicacionState) -> dict:
     data = REGISTRY.call(
         "rag", "save_publicacion",
         json_body={
+            "brand_id": state["brand_id"],
             "client_id": state["client_id"],
             "content": state["publication"],
             "idea_id": state.get("idea_id") or None,

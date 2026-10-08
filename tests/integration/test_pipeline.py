@@ -126,7 +126,7 @@ class TestContextViaToolServices:
             competitors = registry.call("competitors", "search",
                                         params={"query": brief, "limit": 5})
             similar = registry.call("rag", "similar",
-                                    json_body={"query": brief, "limit": 3,
+                                    json_body={"brand_id": 1, "query": brief, "limit": 3,
                                                "min_similarity": 0.3})
         except Exception as e:
             pytest.skip(f"Tool services no disponibles: {e}")

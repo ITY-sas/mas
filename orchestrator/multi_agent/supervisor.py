@@ -81,6 +81,7 @@ def dispatch_ideacion(state: SupervisorState) -> dict:
             "payload": {
                 "brief": state["brief"],
                 "client_id": state["client_id"],
+                "brand_id": state["brand_id"],
             },
         }
     )
@@ -105,6 +106,7 @@ def dispatch_publicacion(state: SupervisorState) -> dict:
             "payload": {
                 "idea": state["idea"],
                 "client_id": state["client_id"],
+                "brand_id": state["brand_id"],
                 "idea_id": state["idea_id"],
                 "preproduction": state.get("preproduction", {}),
                 "publication": state.get("brief", {}).get("publication", {}),
