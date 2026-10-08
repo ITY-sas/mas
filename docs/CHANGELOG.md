@@ -3,6 +3,24 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 Convención de commits: [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
 
+## [2.1.0] — 2026-10-07
+
+### Added
+- **feat(multitenant)**: fundación de organizaciones, usuarios, membresías y
+  marcas, con migración compatible desde `clientes`.
+- **feat(rag)**: `brand_id` obligatorio en búsquedas semánticas privadas y
+  propagado por los agentes; se añade prueba anti-mezcla.
+- **feat(knowledge)**: fuentes, documentos, chunks, embeddings y procedencia
+  con scopes `global`, `organization` y `brand`.
+- **feat(onboarding)**: creación y listado inicial de marcas en `tool-client`.
+- **feat(postiz)**: canales Postiz asociados a una marca y validación de
+  integraciones pertenecientes a esa marca.
+
+### Pending
+- Aplicar las migraciones en instalaciones existentes con Docker/PostgreSQL.
+- Añadir autenticación real y autorización por organización/marca.
+- Completar pruebas E2E multi-tenant y conectores oficiales de plataformas.
+
 ## [2.0.0] — 2026-09-26
 
 Reescritura como **arquitectura de microservicios** (13 contenedores) que

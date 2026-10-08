@@ -20,7 +20,7 @@ sobre infraestructura de servicios:
 
 ---
 
-## 1. Topología (13 contenedores)
+## 1. Topología (14 contenedores)
 
 ```
                               ┌───────────────────────────────────────────┐
@@ -91,6 +91,19 @@ sobre infraestructura de servicios:
 | rabbitmq | 5672/15672 | Bus de eventos + RPC |
 | postgres | 5432 | Datos de negocio + historial de chat |
 | redis (redis-stack) | 6379 | Checkpoints LangGraph, TaskStore, caché de prompts |
+
+### 1.1 Aislamiento multi-tenant
+
+La memoria privada se organiza como `organization -> brand -> user`. Las tablas
+de ideas, publicaciones, documentos, chunks, evidencias y canales contienen
+`brand_id`; las búsquedas semánticas privadas deben recibir ese identificador y
+filtrar antes de ordenar por similitud. Las fuentes también tienen un scope:
+`global`, `organization` o `brand`.
+
+`tool-client` gestiona el onboarding inicial de marcas. `tool-rag` gestiona la
+ingesta documental, embeddings y procedencia. `tool-postiz` sólo acepta canales
+activos vinculados a la marca que solicita publicar. La migración de clientes
+existentes y las tablas nuevas viven en `migrations/`.
 
 ---
 

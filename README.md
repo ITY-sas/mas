@@ -20,13 +20,13 @@ patrones de agentes sobre infraestructura de servicios:
 
 ## 1. ¿Qué hace el sistema?
 
-Dado un **brief** de marketing (texto libre + `client_id`), el sistema devuelve:
+Dado un **brief** de marketing (texto libre + `brand_id`; `client_id` queda como compatibilidad legacy), el sistema devuelve:
 
 1. Una **idea de campaña** original (título, descripción, rationale)
 2. Una **publicación lista para redes** (hook, hashtags, CTA, ≤280 caracteres)
 
-Ambas quedan guardadas en PostgreSQL **con embedding vectorial**, de modo que
-las siguientes consultas RAG las usen como memoria («¿qué ideas ya hice?»), y
+Ambas quedan guardadas en PostgreSQL **con embedding vectorial y scope de marca**, de modo que
+las siguientes consultas RAG sólo usen la memoria de esa marca («¿qué ideas ya hice?»), y
 el **historial de la conversación** queda durable en `chat_history`.
 
 ---
@@ -235,6 +235,27 @@ por `/integrations` y `postiz_settings` debe incluir el `__type` de cada canal:
 
 Los modos válidos son `draft`, `schedule` y `now`. Si no se proporcionan
 integraciones, el contenido se guarda localmente pero no se envía a Postiz.
+
+### E) Onboarding e ingesta de marca
+
+Crear una marca dentro de una organización:
+
+```powershell
+$brand = @{ organization_id = 1; name = "Cafe Andino"; producto_servicio = "Cafe especial colombiano"; audiencia_objetivo = "Adultos cafeteros de Colombia"; objetivo_marketing = "Aumentar ventas online"; pais = "Colombia" } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8010/brands -ContentType "application/json" -Body $brand | ConvertTo-Json -Depth 8
+```
+
+Ingerir un documento autorizado en la memoria de una marca:
+
+```powershell
+$document = @{ brand_id = 4; title = "Manual de marca"; content = "..."; scope = "brand"; source_type = "brand_manual" } | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Method Post -Uri http://localhost:8013/documents -ContentType "application/json" -Body $document | ConvertTo-Json -Depth 8
+```
+
+Las migraciones multi-tenant están en `migrations/001_multi_tenant_foundation.sql`
+y `migrations/002_brand_knowledge_and_channels.sql`. En bases existentes se
+ejecutan con PostgreSQL disponible; las instalaciones nuevas las montan Compose
+después de `init.sql`.
 
 ---
 

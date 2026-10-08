@@ -20,7 +20,7 @@
 │                            nomic-embed-text, …)                      │
 │ httpx / requests          (transporte HTTP)                          │
 ├─ Infraestructura ────────────────────────────────────────────────────┤
-│ Docker + docker compose   (13 servicios)                             │
+│ Docker + docker compose   (14 servicios)                             │
 │ rss vía requests + xml.etree  (noticias y trending Google News)       │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -75,15 +75,20 @@ imagen es `redis/redis-stack-server:7.4.0-v3`. Redis sostiene:
 - caché de prompts y embeddings del gateway (`llm:{kind}:{sha256}`),
 - `agent.state:*` (serialización de estado de agente para su endpoint).
 
-### PostgreSQL + pgvector — datos de negocio y memoria
+### PostgreSQL + pgvector — datos de negocio y memoria multi-tenant
 
 | Tabla | Dueña | Rol |
 |-------|-------|-----|
-| `clientes` | tool-client | Perfil, tono, restricciones |
+| `organizations`, `users`, `organization_members` | tool-client | Tenancy y membresías |
+| `brands`, `brand_members` | tool-client | Marca, perfil, audiencia y permisos |
+| `clientes`, `legacy_client_brand` | Compatibilidad | Migración de clientes existentes |
 | `tendencias` | tool-trends | Embeddings de tendencias (RAG) |
 | `referencias_competencia` | tool-competitors | Enfoques de competencia |
-| `ideas_generadas` | tool-rag | Memoria RAG de ideas (pgvector) |
-| `publicaciones_generadas` | tool-rag | Publicaciones (con `idea_id` FK) |
+| `ideas_generadas` | tool-rag | Memoria RAG de ideas filtrada por `brand_id` |
+| `publicaciones_generadas` | tool-rag | Publicaciones filtradas por `brand_id` |
+| `brand_sources`, `brand_documents`, `brand_chunks` | tool-rag | Ingesta y memoria documental con scopes |
+| `brand_evidence` | tool-rag | Procedencia y evidencias |
+| `brand_channels` | tool-postiz | Canales de publicación por marca |
 | `chat_history` | orquestador | Historial durable de la conversación |
 
 ### Ollama (LLM local)
