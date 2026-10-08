@@ -172,8 +172,6 @@ def validate_dossier(dossier: dict) -> None:
         for key in ("visual_concept", "composition", "image_direction", "text_on_asset", "caption_direction", "alt_text", "platform_adaptations"):
             if not str(post_spec.get(key, "")).strip():
                 missing.append(f"post_spec.{key}")
-        if not isinstance(post_spec.get("carousel_slides"), list) or not post_spec.get("carousel_slides"):
-            missing.append("post_spec.carousel_slides")
     if missing:
         raise ValueError("dossier de ideación incompleto: " + ", ".join(missing))
 
@@ -295,8 +293,9 @@ def generate_idea(state: IdeacionState) -> dict:
         repair_prompt = (
             f"{prompt}\n\nREPAIR REQUIRED: The previous draft was incomplete: {first_error}. "
             "Return the complete JSON again. Every script scene must contain a non-empty "
-            "dialogue_or_voiceover, even for B-roll scenes; every camera entry must contain "
-            "shot, angle, movement and framing. Do not leave any required field empty."
+            "dialogue_or_voiceover and on_screen_text, even for B-roll scenes; every camera "
+            "entry must contain shot, angle, movement and framing. Do not leave any required "
+            "field empty."
         )
         response = gateway_client.generate(
             repair_prompt,
@@ -307,6 +306,7 @@ def generate_idea(state: IdeacionState) -> dict:
         )
         preproduction = _parse_dossier(response.get("content", ""))
         validate_dossier(preproduction)
+    preproduction["brand_id"] = state["brand_id"]
     idea = json.dumps(preproduction, ensure_ascii=False, indent=2)
     logger.info("[generate_idea] idea vía %s/%s (cached=%s): %s",
                 response.get("provider"), response.get("model"),

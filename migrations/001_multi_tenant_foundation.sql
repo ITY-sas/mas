@@ -121,6 +121,31 @@ SET brand_id = m.brand_id
 FROM legacy_client_brand m
 WHERE p.client_id = m.client_id AND p.brand_id IS NULL;
 
+-- Preserve historical rows with unknown client_id in a quarantine scope instead
+-- of assigning them to a real brand or deleting them.
+INSERT INTO organizations (name, slug)
+VALUES ('Legacy quarantine', 'legacy-quarantine')
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO brands (organization_id, name, slug, status, profile_marca)
+SELECT id, 'Legacy unassigned', 'legacy-unassigned', 'quarantined',
+       'Historical records without a resolvable client_id; never use as brand context.'
+FROM organizations
+WHERE slug = 'legacy-quarantine'
+ON CONFLICT (organization_id, slug) DO NOTHING;
+
+UPDATE ideas_generadas i
+SET brand_id = b.id
+FROM brands b
+JOIN organizations o ON o.id = b.organization_id
+WHERE o.slug = 'legacy-quarantine' AND i.brand_id IS NULL;
+
+UPDATE publicaciones_generadas p
+SET brand_id = b.id
+FROM brands b
+JOIN organizations o ON o.id = b.organization_id
+WHERE o.slug = 'legacy-quarantine' AND p.brand_id IS NULL;
+
 ALTER TABLE ideas_generadas
     DROP CONSTRAINT IF EXISTS ideas_generadas_brand_id_fkey;
 ALTER TABLE ideas_generadas

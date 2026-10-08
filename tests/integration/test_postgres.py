@@ -65,8 +65,8 @@ class TestPostgreSQL:
             conn = _get_conn()
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO ideas_generadas (client_id, content) "
-                "VALUES (999, 'TEST_ROUNDTRIP_ID') RETURNING id"
+                "INSERT INTO ideas_generadas (client_id, brand_id, content) "
+                "VALUES (1, 1, 'TEST_ROUNDTRIP_ID') RETURNING id"
             )
             row_id = cur.fetchone()[0]
             conn.commit()

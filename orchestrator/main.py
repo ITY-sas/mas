@@ -64,6 +64,17 @@ class Brief(BaseModel):
     )
 
 
+class DemoRequest(BaseModel):
+    brand_id: int = Field(1, description="Marca demo; 1 es EcoBrand")
+    content: str = Field(
+        "Crear un Reel para presentar una crema solar natural durante el verano colombiano",
+        description="Brief reproducible de la demo",
+    )
+    content_format: Literal["auto", "reel", "post"] = "reel"
+    wait: bool = True
+    timeout: float = 300.0
+
+
 def _get_runtime() -> OrchestratorRuntime:
     if runtime is None:
         raise HTTPException(status_code=503, detail="orquestador aún inicializando")
@@ -205,6 +216,21 @@ def process_brief(brief: Brief):
         "postiz": result.get("postiz", {}),
         "agents": task.get("agents", {}),
     }
+
+
+@app.post("/demo")
+def process_demo(demo: DemoRequest):
+    """Ruta reproducible para validar una marca, su RAG y el dossier."""
+    return process_brief(
+        Brief(
+            client_id=demo.brand_id,
+            brand_id=demo.brand_id,
+            content=demo.content,
+            content_format=demo.content_format,
+            wait=demo.wait,
+            timeout=demo.timeout,
+        )
+    )
 
 
 @app.get("/tasks/{task_id}")
