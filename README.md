@@ -81,7 +81,8 @@ Detalle completo (secuencia, happy path, caso de uso, decisiones):
 **[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md)** ·
 Stack: **[`docs/TECNOLOGIAS.md`](docs/TECNOLOGIAS.md)** ·
 Plan de pruebas: **[`tests/PLAN_DE_PRUEBAS.md`](tests/PLAN_DE_PRUEBAS.md)** ·
-Demo multi-tenant: **[`docs/DEMO_MULTI_TENANT.md`](docs/DEMO_MULTI_TENANT.md)**
+Demo multi-tenant: **[`docs/DEMO_MULTI_TENANT.md`](docs/DEMO_MULTI_TENANT.md)** ·
+Modelo de datos: **[`docs/DATOS.md`](docs/DATOS.md)**
 
 ---
 

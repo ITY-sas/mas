@@ -105,6 +105,9 @@ ingesta documental, embeddings y procedencia. `tool-postiz` sólo acepta canales
 activos vinculados a la marca que solicita publicar. La migración de clientes
 existentes y las tablas nuevas viven en `migrations/`.
 
+El diagrama entidad-relación, los flujos de persistencia/RAG y las consultas de
+control están documentados en [`docs/DATOS.md`](DATOS.md).
+
 ---
 
 ## 2. Patrones de agentes implementados
