@@ -37,6 +37,7 @@ class PublicacionState(TypedDict):
     publish_at: str | None
     postiz_integration_ids: list[str]
     postiz_settings: dict
+    target_channels: list[dict]
 
     # ── Contexto recuperado vía tool services ──
     client_profile: str
@@ -61,19 +62,30 @@ def load_context(state: PublicacionState) -> dict:
 
     profile = REGISTRY.call("client", "profile", params={"client_id": client_id})
     trends = REGISTRY.call("trends", "search", params={"query": idea, "limit": 3})
+    integration_ids = state.get("postiz_integration_ids", [])
+    target_channels = []
+    if integration_ids:
+        channel_data = REGISTRY.call(
+            "postiz",
+            "channels",
+            params={"brand_id": state["brand_id"], "integration_ids": integration_ids},
+        )
+        target_channels = channel_data.get("channels", [])
 
     logger.info("[load_context] %s tendencias para la idea", trends.get("count", 0))
     return {
         "client_profile": profile.get("text", ""),
         "trends": trends.get("text", ""),
-        "tool_calls": ["client.profile", "trends.search"],
+        "target_channels": target_channels,
+        "tool_calls": ["client.profile", "trends.search"]
+        + (["postiz.channels"] if integration_ids else []),
     }
 
 
 def fetch_trending(state: PublicacionState) -> dict:
     """Topics en tendencia (hashtags) vía tool service."""
     logger.info("[fetch_trending] GET tool-trending …")
-    data = REGISTRY.call("trending", "trending", params={"query": "marketing"})
+    data = REGISTRY.call("trending", "trending", params={"query": state["idea"]})
     logger.info("[fetch_trending] %s topics", data.get("count", 0))
     return {"trending": data.get("text", ""), "tool_calls": ["trending.trending"]}
 
@@ -85,37 +97,74 @@ def generate_post(state: PublicacionState) -> dict:
         "trends": state["trends"],
         "preproduction": state.get("preproduction", {}),
     }
-    prompt = build_publicacion_prompt(state["idea"], context)
-    if state.get("trending"):
-        prompt += f"\n\n## Trending Topics (for hashtags)\n{state['trending']}"
+    channels = state.get("target_channels", [])
+    platform_groups: dict[str, list[dict]] = {}
+    if channels:
+        for channel in channels:
+            platform = str(channel.get("provider") or "social").strip().lower()
+            platform = "x" if platform == "twitter" else platform
+            platform_groups.setdefault(platform, []).append(channel)
+    else:
+        platform_groups[""] = []
 
-    logger.info("[generate_post] POST llm-gateway (/v1/generate, prompt=%d chars)",
-                len(prompt))
-    response = gateway_client.generate(
-        prompt, system=SYSTEM_PROMPT, temperature=0.7, timeout=240.0
-    )
-    publication = response.get("content", "")
-    logger.info("[generate_post] publicación vía %s/%s (cached=%s): %s",
-                response.get("provider"), response.get("model"),
-                response.get("cached"), publication[:100])
-    return {"publication": publication, "tool_calls": ["llm-gateway.generate"]}
+    variants = []
+    tool_calls = []
+    for platform, platform_channels in platform_groups.items():
+        prompt = build_publicacion_prompt(state["idea"], context, platform=platform or None)
+        if state.get("trending"):
+            prompt += f"\n\n## Trending Topics (for hashtags)\n{state['trending']}"
+
+        logger.info("[generate_post] generando variante platform=%s prompt=%d chars",
+                    platform or "platform-neutral", len(prompt))
+        response = gateway_client.generate(
+            prompt, system=SYSTEM_PROMPT, temperature=0.7, timeout=240.0
+        )
+        content = response.get("content", "").strip()
+        variants.append({
+            "platform": platform or "platform-neutral",
+            "integration_ids": [channel["external_id"] for channel in platform_channels],
+            "content": content,
+        })
+        tool_calls.append("llm-gateway.generate")
+        logger.info("[generate_post] variante %s vía %s/%s (cached=%s)",
+                    platform or "platform-neutral", response.get("provider"),
+                    response.get("model"), response.get("cached"))
+
+    return {
+        "publication": variants[0]["content"] if variants else "",
+        "publication_variants": variants,
+        "tool_calls": tool_calls,
+    }
 
 
 def save_post(state: PublicacionState) -> dict:
     """Persiste la publicación (con embedding) — dueño: tool-rag."""
     logger.info("[save_post] POST tool-rag /publicaciones …")
-    data = REGISTRY.call(
-        "rag", "save_publicacion",
-        json_body={
-            "brand_id": state["brand_id"],
-            "client_id": state["client_id"],
-            "content": state["publication"],
-            "idea_id": state.get("idea_id") or None,
-        },
-    )
-    publication_id = data.get("id", 0)
-    logger.info("[save_post] publication_id=%s", publication_id)
-    return {"publication_id": publication_id, "tool_calls": ["rag.save_publicacion"]}
+    variants = state.get("publication_variants") or [{
+        "platform": "platform-neutral",
+        "integration_ids": [],
+        "content": state["publication"],
+    }]
+    saved_variants = []
+    for variant in variants:
+        logger.info("[save_post] persistiendo variante %s", variant["platform"])
+        data = REGISTRY.call(
+            "rag", "save_publicacion",
+            json_body={
+                "brand_id": state["brand_id"],
+                "client_id": state["client_id"],
+                "content": variant["content"],
+                "idea_id": state.get("idea_id") or None,
+                "platform": variant["platform"],
+            },
+        )
+        saved_variants.append({**variant, "publication_id": data.get("id", 0)})
+
+    return {
+        "publication_id": saved_variants[0]["publication_id"] if saved_variants else 0,
+        "publication_variants": saved_variants,
+        "tool_calls": ["rag.save_publicacion"] * len(saved_variants),
+    }
 
 
 def schedule_post(state: PublicacionState) -> dict:
@@ -124,23 +173,62 @@ def schedule_post(state: PublicacionState) -> dict:
     if not integration_ids:
         return {"postiz": {"status": "skipped", "reason": "sin canales Postiz"}}
 
-    result = REGISTRY.call(
-        "postiz",
-        "create_post",
-        json_body={
-            "brand_id": state["brand_id"],
-            "content": state["publication"],
-            "integration_ids": integration_ids,
-            "mode": state.get("publish_mode", "draft"),
-            "publish_at": state.get("publish_at"),
-            "settings": state.get("postiz_settings", {}),
-        },
-    )
+    channels_by_id = {
+        channel["external_id"]: channel
+        for channel in state.get("target_channels", [])
+    }
+    ready_ids = [
+        integration_id
+        for integration_id in integration_ids
+        if channels_by_id.get(integration_id, {}).get("configured")
+    ]
+    skipped_ids = [integration_id for integration_id in integration_ids if integration_id not in ready_ids]
+    if not ready_ids:
+        return {
+            "postiz": {
+                "status": "skipped",
+                "reason": "canales sin settings Postiz __type",
+                "integrations": skipped_ids,
+            }
+        }
+
+    try:
+        result = REGISTRY.call(
+            "postiz",
+            "create_post",
+            json_body={
+                "brand_id": state["brand_id"],
+                "content": state["publication"],
+                "integration_ids": ready_ids,
+                "contents": {
+                    integration_id: variant["content"]
+                    for variant in state.get("publication_variants", [])
+                    for integration_id in variant.get("integration_ids", [])
+                    if integration_id in ready_ids
+                },
+                "mode": state.get("publish_mode", "draft"),
+                "publish_at": state.get("publish_at"),
+                "settings": state.get("postiz_settings", {}),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 - keep generated copies available if external publishing fails
+        logger.exception("[schedule_post] Postiz falló; se conserva el copy generado")
+        return {
+            "postiz": {
+                "status": "failed",
+                "mode": state.get("publish_mode", "draft"),
+                "integrations": ready_ids,
+                "skipped_integrations": skipped_ids,
+                "error": str(exc),
+            },
+            "tool_calls": ["postiz.create_post"],
+        }
     return {
         "postiz": {
             "status": "created",
             "mode": state.get("publish_mode", "draft"),
-            "integrations": integration_ids,
+            "integrations": ready_ids,
+            "skipped_integrations": skipped_ids,
             "result": result,
         },
         "tool_calls": ["postiz.create_post"],
