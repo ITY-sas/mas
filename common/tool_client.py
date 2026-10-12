@@ -149,7 +149,18 @@ class ToolRegistry:
                     json=json_body if json_body is not None else params,
                     timeout=timeout or self.timeout,
                 )
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                try:
+                    error_payload = resp.json()
+                except ValueError:
+                    resp.raise_for_status()
+                    raise
+                if isinstance(error_payload, dict) and error_payload.get("status") == "error":
+                    raise EnvelopeError(
+                        f"{tool}.{operation}",
+                        str(error_payload.get("error") or "error desconocido"),
+                    )
+                resp.raise_for_status()
             data = parse_envelope(resp.json(), tool=f"{tool}.{operation}")
         except EnvelopeError:
             raise
