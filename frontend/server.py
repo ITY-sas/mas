@@ -119,6 +119,14 @@ class PublishIdeaRequest(BaseModel):
     settings: dict[str, dict] = Field(default_factory=dict)
 
 
+class DeliverPreparedPublicationRequest(PublishIdeaRequest):
+    publication_variants: list[dict] = Field(default_factory=list)
+
+
+class DeliverPreparedPublicationRequest(PublishIdeaRequest):
+    publication_variants: list[dict] = Field(default_factory=list)
+
+
 # ── Clientes auxiliares (Redis y Postgres) ─────────────────────
 def get_redis_client():
     try:
@@ -503,6 +511,44 @@ def publish_saved_idea(idea_id: int, req: PublishIdeaRequest):
         raise HTTPException(status_code=502, detail="No se pudo contactar al publicador") from exc
 
 
+@app.post("/api/publications/{prepare_task_id}/deliver")
+def deliver_prepared_publication(
+    prepare_task_id: str,
+    req: DeliverPreparedPublicationRequest,
+):
+    payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    try:
+        response = requests.post(
+            f"{ORCHESTRATOR_URL}/publications/{prepare_task_id}/deliver",
+            json=payload,
+            timeout=15,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        return response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo contactar al orquestador") from exc
+
+
+@app.post("/api/publications/{prepare_task_id}/deliver")
+def deliver_prepared_publication(
+    prepare_task_id: str,
+    req: DeliverPreparedPublicationRequest,
+):
+    payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    try:
+        response = requests.post(
+            f"{ORCHESTRATOR_URL}/publications/{prepare_task_id}/deliver",
+            json=payload,
+            timeout=15,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        return response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo contactar al orquestador") from exc
+
+
 @app.post("/api/tasks")
 def create_task(req: TaskBriefRequest):
     """
@@ -685,7 +731,11 @@ def get_task_trace(task_id: str):
     publicacion_meta = agents_data.get("publicacion", {})
     result_data = task.get("result", {})
     brief_data = task.get("brief", {})
-    is_publish_workflow = brief_data.get("workflow") == "publish_idea"
+    workflow = brief_data.get("workflow")
+    is_publish_workflow = workflow in {
+        "publish_idea", "prepare_publication", "deliver_publication",
+    }
+    is_delivery_workflow = workflow == "deliver_publication"
 
     created_at = task.get("created_at")
     updated_at = task.get("updated_at")
@@ -761,7 +811,13 @@ def get_task_trace(task_id: str):
                 ),
                 "details": {
                     "event_received": "idea cargada desde PostgreSQL" if is_publish_workflow else "agent.task.completed (cola: agent.results)",
-                    "next_dispatch": "publicación manual solicitada" if is_publish_workflow else "fin de generación; publicación requiere selección manual",
+                    "next_dispatch": (
+                        "entrega aprobada enviada a Postiz"
+                        if is_delivery_workflow else
+                        "copies preparados; Postiz espera aprobación"
+                        if workflow == "prepare_publication" else
+                        "fin de generación; publicación requiere selección manual"
+                    ),
                 },
             },
             {

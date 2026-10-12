@@ -106,6 +106,27 @@ const API = {
     });
   },
 
+  async deliverPreparedPublication(taskId, publication) {
+    return this.request(`/api/publications/${encodeURIComponent(taskId)}/deliver`, {
+      method: 'POST',
+      body: JSON.stringify(publication),
+    });
+  },
+
+  async deliverPreparedPublication(taskId, publication) {
+    return this.request(`/api/publications/${encodeURIComponent(taskId)}/deliver`, {
+      method: 'POST',
+      body: JSON.stringify(publication),
+    });
+  },
+
+  async deliverPreparedPublication(taskId, publication) {
+    return this.request(`/api/publications/${encodeURIComponent(taskId)}/deliver`, {
+      method: 'POST',
+      body: JSON.stringify(publication),
+    });
+  },
+
   // ── Gestión de Tareas y Briefs ──────────────────────
   async createTask(briefData) {
     return this.request('/api/tasks', {

@@ -11,7 +11,7 @@ Panel web interactivo y BFF (Backend-For-Frontend) para generar lotes de ideas, 
 ### 🚀 1. Centro de Interacción (Studio)
 - **Generación por lotes**: De una a cinco ideas; brief compartido opcional, briefs individuales por línea, temas/pilares y formato (`auto`, `reel`, `post`). Sin brief, la ideación usa el perfil de marca y señales de mercado.
 - **Biblioteca persistente**: Búsqueda paginada por marca, progreso del lote, dossiers completos y selección explícita de la idea que se desea trabajar.
-- **Publicación manual**: Selección de canales Postiz vinculados y modo `draft`, `schedule` o `now`. La acción carga el dossier guardado y despacha solo al publicador; publicar ahora requiere confirmación.
+- **Publicación manual**: Selección de canales/modo/fecha; el agente prepara variantes editables sin publicar. El usuario revisa cada copy y aprueba el envío a Postiz; `now` requiere confirmación.
 - **Vinculación de canales**: Consulta integraciones Postiz y las asocia a la marca activa desde Studio.
 
 ### 🔍 2. Observabilidad & Trazabilidad (Traceability)
@@ -109,7 +109,8 @@ El `docker-compose.yml` actual no declara el frontend. Para el camino documentad
 | `GET` | `/api/idea-batches/{id}?brand_id=` | Consulta progreso/resultados del lote |
 | `GET` | `/api/ideas?brand_id=&query=&limit=&offset=` | Busca en la biblioteca de una marca |
 | `GET` | `/api/ideas/{id}?brand_id=` | Abre el dossier persistido |
-| `POST` | `/api/ideas/{id}/publish` | Aprueba y despacha la publicación manual |
+| `POST` | `/api/ideas/{id}/publish` | Prepara variantes para revisar; no llama a Postiz |
+| `POST` | `/api/publications/{task_id}/deliver` | Entrega a Postiz los copies revisados y aprobados |
 | `POST` | `/api/tasks` | Compatibilidad: genera una idea sin publicar |
 | `POST` | `/api/demo` | Genera una idea demo sin publicar |
 | `GET` | `/api/tasks` | Historial de tareas almacenadas en Redis |
