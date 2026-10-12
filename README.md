@@ -95,9 +95,11 @@ Modelo de datos: **[`docs/DATOS.md`](docs/DATOS.md)**
   infiere que una idea deba publicarse.
 3. Studio consulta `GET /ideas/batches/{id}` para el avance y usa
   `GET /ideas` / `GET /ideas/{id}` para buscar y revisar dossiers.
-4. Tras una selección explícita, **`POST /ideas/{id}/publish`** valida la marca
-  y canales Postiz, carga el dossier persistido y despacha solo al publicador.
-  `draft`, `schedule` y `now` son elecciones de esa acción manual.
+4. Tras seleccionar canales y modo, **`POST /ideas/{id}/publish`** carga el
+  dossier y le pide al publicador preparar variantes; aún no llama a Postiz.
+5. El usuario revisa/edita cada copy en Resultados y pulsa aprobar. Solo
+  entonces **`POST /publications/{prepare_task_id}/deliver`** valida la marca,
+  los canales y fecha, y despacha al publicador para enviar/programar en Postiz.
 
 Cada paso es **recuperable**: si un contenedor muere, el estado está en Redis
 y los mensajes en RabbitMQ (semántica *at-least-once* + idempotencia por
@@ -202,8 +204,14 @@ curl -X POST http://localhost:8002/ideas/13/publish \
   -d '{"brand_id": 1, "publish_mode": "draft", "integration_ids": ["integration-id"]}'
 ```
 
-La operación valida que idea y canales pertenezcan a `brand_id`, carga el
-dossier guardado y devuelve un `task_id` de publicación.
+Esta primera operación valida la idea/canales y devuelve una tarea de
+preparación. Cuando termina, abre Resultados, donde se revisa/edita el copy de
+cada plataforma. La operación no crea todavía un post en Postiz.
+
+Después de revisar, Studio solicita `POST /publications/{prepare_task_id}/deliver`
+con `brand_id`, `publish_mode`, fecha, canales y las variantes aprobadas. Esa
+segunda tarea llama a Postiz; su resultado registra modo, canales, respuesta o
+error para inspeccionarlo en Trazabilidad.
 
 ### D) Por eventos RabbitMQ (compatibilidad)
 
@@ -259,7 +267,8 @@ Las migraciones están en `migrations/`. En volúmenes existentes, aplica 004 y
 |----------|---------------|-------------|
 | orchestrator | GET `/health` `/metrics` `/graph` `/tools` | Salud, métricas, grafo, catálogo descubierto |
 | orchestrator | POST `/ideas/generate` · GET `/ideas/batches/{id}` | Genera lote y consulta progreso |
-| orchestrator | POST `/ideas/{id}/publish` | Publicación manual del dossier guardado |
+| orchestrator | POST `/ideas/{id}/publish` | Prepara variantes por canal; no llama a Postiz |
+| orchestrator | POST `/publications/{task_id}/deliver` | Envía a Postiz los copies aprobados |
 | orchestrator | POST `/process` | Compatibilidad: generación individual, sin publicación |
 | orchestrator | GET `/tasks/{id}` · `/tasks/{id}/history` | Metadatos+resultados (Redis) · historial (PostgreSQL) |
 | agente-x | GET `/health` `/metrics` `/tools` `/state/{task_id}` | Identidad, colas, tools, checkpoint en Redis |

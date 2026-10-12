@@ -383,6 +383,7 @@ class TestPublicacionNodeContracts:
                 {"external_id": "li-1", "provider": "linkedin", "configured": True},
             ],
             "postiz_integration_ids": ["ig-1", "li-1"],
+            "publication_action": "deliver",
             "publish_mode": "draft",
             "postiz_settings": {},
         }
@@ -403,6 +404,7 @@ class TestPublicacionNodeContracts:
             "publication": "copy",
             "postiz_integration_ids": ["ig-1"],
             "target_channels": [{"external_id": "ig-1", "configured": False}],
+            "publication_action": "deliver",
             "publish_mode": "draft",
         })
 
@@ -426,11 +428,77 @@ class TestPublicacionNodeContracts:
             ],
             "postiz_integration_ids": ["li-1"],
             "target_channels": [{"external_id": "li-1", "configured": True}],
+            "publication_action": "deliver",
             "publish_mode": "draft",
         })
 
         assert result["postiz"]["status"] == "failed"
         assert result["postiz"]["error"] == "Postiz unavailable"
+
+    def test_schedule_post_preparation_never_calls_postiz(self, monkeypatch):
+        import agente_publicacion.graph as g
+
+        fake = FakeRegistry()
+        monkeypatch.setattr(g, "REGISTRY", fake)
+        result = g.schedule_post({
+            "publication_action": "prepare",
+            "publication": "Copy para revisar",
+            "postiz_integration_ids": ["li-1"],
+            "publish_mode": "schedule",
+            "publish_at": "2026-11-05T17:00:00Z",
+        })
+
+        assert result["postiz"] == {
+            "status": "prepared",
+            "mode": "schedule",
+            "publish_at": "2026-11-05T17:00:00Z",
+            "integrations": ["li-1"],
+        }
+        assert fake.calls == []
+
+    def test_delivery_graph_sends_approved_copy_without_regenerating(self, monkeypatch):
+        from langgraph.checkpoint.memory import MemorySaver
+        import agente_publicacion.graph as g
+
+        fake = FakeRegistry(response={"post_id": "post-1"})
+        monkeypatch.setattr(g, "REGISTRY", fake)
+        variants = [{
+            "platform": "linkedin",
+            "integration_ids": ["li-1"],
+            "content": "Copy aprobado y revisado",
+            "publication_id": 25,
+        }]
+        state = {
+            "idea": "dossier json",
+            "client_id": 2,
+            "brand_id": 2,
+            "idea_id": 25,
+            "preproduction": {"title": "Idea"},
+            "publication_action": "deliver",
+            "publication": variants[0]["content"],
+            "publication_id": 25,
+            "publication_variants": variants,
+            "postiz_integration_ids": ["li-1"],
+            "publish_mode": "schedule",
+            "publish_at": "2026-11-05T17:30:00Z",
+            "postiz_settings": {},
+            "target_channels": [{
+                "external_id": "li-1", "provider": "linkedin", "configured": True,
+            }],
+            "tool_calls": [],
+        }
+
+        graph = g.create_publicacion_graph(checkpointer=MemorySaver())
+        outcome = graph.invoke(state, {"configurable": {"thread_id": "deliver-approved-copy"}})
+
+        assert [(call["tool"], call["operation"]) for call in fake.calls] == [
+            ("postiz", "create_post"),
+        ]
+        body = fake.calls[0]["json_body"]
+        assert body["mode"] == "schedule"
+        assert body["publish_at"] == "2026-11-05T17:30:00Z"
+        assert body["contents"] == {"li-1": "Copy aprobado y revisado"}
+        assert outcome["postiz"]["status"] == "created"
 
 
 # ── U-AG-04/05: semántica idempotente del runner ───────────────

@@ -10,6 +10,8 @@ Convención de commits: [Conventional Commits](https://www.conventionalcommits.o
   progreso en Redis y biblioteca paginada de ideas scopeada por marca.
 - Publicación bajo selección manual de idea/canales/modo; el publicador recupera
   el dossier persistido y ya no se despacha automáticamente tras ideación.
+- Preparación de variantes separada de entrega: el copy queda editable y Postiz
+  solo recibe el envío después de una aprobación explícita.
 - Migraciones 004/005 para posición de lote e idempotencia dentro de `brand_id`.
 
 ### Changed

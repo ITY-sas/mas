@@ -244,15 +244,19 @@ flowchart TD
     U[Usuario selecciona idea guardada] --> IV[Validar idea por brand_id]
     IV --> C[Validar canales seleccionados de brand_channels]
     C --> P[Generar una variante por provider/plataforma]
-    P --> S[Guardar cada copy con platform y embedding]
-    S --> V{Canal activo y settings __type?}
-    V -- no --> X[Conservar copy; informar canal omitido]
-    V -- sí --> Z[Crear draft/schedule/now con copy de ese canal]
+    P --> S[Guardar copy con platform e idea_id]
+    S --> R[Usuario revisa o edita cada copy]
+    R --> A[Aprobación explícita de envío]
+    A --> V{Canal activo y settings __type?}
+    V -- no --> X[No enviar; conservar copy y reportar error]
+    V -- sí --> D[Tarea del agente con variantes aprobadas]
+    D --> Z[Postiz /posts con type, date, integration, value y settings]
+    Z --> T[Guardar resultado/error del envío en TaskStore y traza]
 ```
 
-La generación de ideas no invoca este flujo. La ruta manual de publicación
-recupera el dossier guardado y despacha solo al agente publicador después de que
-el usuario elige idea, canales y modo.
+La generación de ideas no invoca este flujo. `POST /ideas/{id}/publish` solo
+prepara y persiste las variantes; `POST /publications/{task_id}/deliver` ocurre
+después de revisión/aprobación y despacha al publicador con los copies editados.
 
 `brand_channels.external_id` identifica el canal externo de Postiz. La tool no
 debe aceptar un `integration_id` que no pertenezca a la marca de la tarea. La

@@ -429,6 +429,147 @@ class TestManualPublicationEndpoint:
         assert calls[0][2] == {"brand_id": 7, "idea_id": 44}
         assert calls[1][2] == {"brand_id": 7, "integration_ids": ["ig-1"]}
         assert runtime.client_id == 70
-        assert runtime.brief["workflow"] == "publish_idea"
+        assert runtime.brief["workflow"] == "prepare_publication"
+        assert runtime.brief["publication_action"] == "prepare"
         assert runtime.brief["preproduction"] == dossier
         assert runtime.brief["publication"]["integration_ids"] == ["ig-1"]
+
+    def test_delivery_uses_approved_variants_and_selected_schedule(self, monkeypatch):
+        import main as orchestrator_main
+
+        dossier = {"title": "Idea aprobada", "concept": "Dossier completo"}
+        prepared = {
+            "task_id": "prepare-task",
+            "client_id": 70,
+            "status": "completed",
+            "brief": {
+                "workflow": "prepare_publication",
+                "brand_id": 7,
+                "publication": {
+                    "mode": "schedule",
+                    "publish_at": "2026-11-05T17:00:00Z",
+                    "integration_ids": ["li-1"],
+                    "settings": {},
+                },
+            },
+            "result": {
+                "postiz": {"status": "prepared"},
+                "idea_id": 44,
+                "idea": '{"title":"Idea aprobada"}',
+                "preproduction": dossier,
+                "publication": "Copy original",
+                "publication_id": 10,
+                "publication_variants": [{
+                    "platform": "linkedin",
+                    "integration_ids": ["li-1"],
+                    "content": "Copy original",
+                    "publication_id": 10,
+                }],
+            },
+        }
+        calls = []
+
+        def fake_tool_call(tool, operation, *, params=None, **kwargs):
+            calls.append((tool, operation, params))
+            return {"brand_id": 7, "channels": [{
+                "external_id": "li-1", "provider": "linkedin", "configured": True,
+            }]}
+
+        class FakeStore:
+            def get(self, task_id):
+                return prepared if task_id == "prepare-task" else None
+
+        class FakeRuntime:
+            store = FakeStore()
+            brief = None
+            client_id = None
+
+            def start_task(self, brief, client_id):
+                self.brief = brief
+                self.client_id = client_id
+                return "delivery-task"
+
+        runtime = FakeRuntime()
+        monkeypatch.setattr(orchestrator_main.registry, "call", fake_tool_call)
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: runtime)
+
+        response = orchestrator_main.deliver_prepared_publication(
+            "prepare-task",
+            orchestrator_main.DeliverPreparedPublicationRequest(
+                brand_id=7,
+                publish_mode="schedule",
+                publish_at="2026-11-05T17:30:00Z",
+                integration_ids=["li-1"],
+                publication_variants=[{
+                    "platform": "linkedin",
+                    "integration_ids": ["li-1"],
+                    "content": "Copy aprobado y editado",
+                    "publication_id": 10,
+                }],
+            ),
+        )
+
+        assert response == {
+            "task_id": "delivery-task",
+            "prepare_task_id": "prepare-task",
+            "status": "running",
+        }
+        assert calls[0][2] == {"brand_id": 7, "integration_ids": ["li-1"]}
+        assert runtime.client_id == 70
+        assert runtime.brief["workflow"] == "deliver_publication"
+        assert runtime.brief["publication_action"] == "deliver"
+        assert runtime.brief["publication"]["publish_at"] == "2026-11-05T17:30:00Z"
+        assert runtime.brief["publication_variants"][0]["content"] == "Copy aprobado y editado"
+
+    def test_delivery_rejects_unconfigured_channel_before_dispatch(self, monkeypatch):
+        import main as orchestrator_main
+        from fastapi import HTTPException
+
+        prepared = {
+            "client_id": 1,
+            "status": "completed",
+            "brief": {
+                "workflow": "prepare_publication",
+                "brand_id": 1,
+                "publication": {"integration_ids": ["li-1"]},
+            },
+            "result": {
+                "postiz": {"status": "prepared"},
+                "publication_variants": [{
+                    "platform": "linkedin", "integration_ids": ["li-1"], "content": "copy",
+                }],
+            },
+        }
+
+        class FakeStore:
+            def get(self, task_id):
+                return prepared
+
+        class FakeRuntime:
+            store = FakeStore()
+            started = False
+
+            def start_task(self, brief, client_id):
+                self.started = True
+                return "should-not-start"
+
+        runtime = FakeRuntime()
+        monkeypatch.setattr(
+            orchestrator_main.registry,
+            "call",
+            lambda *args, **kwargs: {"channels": [{"external_id": "li-1", "configured": False}]},
+        )
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: runtime)
+
+        with pytest.raises(HTTPException) as error:
+            orchestrator_main.deliver_prepared_publication(
+                "prepare-task",
+                orchestrator_main.DeliverPreparedPublicationRequest(
+                    brand_id=1,
+                    publish_mode="draft",
+                    integration_ids=["li-1"],
+                ),
+            )
+
+        assert error.value.status_code == 422
+        assert runtime.started is False

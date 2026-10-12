@@ -31,9 +31,14 @@ logger = logging.getLogger("supervisor")
 def decide_next(state: SupervisorState) -> str:
     """Route generation and explicitly requested publication as separate flows."""
     workflow = (state.get("brief") or {}).get("workflow", "generate_idea")
-    if workflow == "publish_idea":
+    if workflow == "deliver_publication":
+        if not state.get("publication_dispatched"):
+            logger.info("[supervisor] → entrega aprobada a Postiz")
+            return "dispatch_publicacion"
+        return END
+    if workflow in {"publish_idea", "prepare_publication"}:
         if not state.get("publication"):
-            logger.info("[supervisor] → publicación solicitada por usuario")
+            logger.info("[supervisor] → preparar copy para idea seleccionada")
             return "dispatch_publicacion"
         return END
     if not state.get("idea"):
@@ -108,6 +113,11 @@ def dispatch_publicacion(state: SupervisorState) -> dict:
                 "idea_id": state["idea_id"],
                 "preproduction": state.get("preproduction", {}),
                 "publication": state.get("brief", {}).get("publication", {}),
+                "publication_action": state.get("brief", {}).get("publication_action", "prepare"),
+                "publication_variants": state.get("publication_variants", []),
+                "publication_id": state.get("publication_id", 0),
+                "prepared_publication": state.get("brief", {}).get("prepared_publication", ""),
+                "target_channels": state.get("brief", {}).get("target_channels", []),
             },
         }
     )
@@ -119,6 +129,7 @@ def dispatch_publicacion(state: SupervisorState) -> dict:
         "publication": publication,
         "publication_id": publication_id,
         "publication_variants": data.get("publication_variants", []),
+        "publication_dispatched": True,
         "postiz": data.get("postiz", {}),
         "log": [f"publicacion: completado (publication_id={publication_id})"],
     }

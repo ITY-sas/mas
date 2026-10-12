@@ -107,11 +107,17 @@ def test_postiz_create_post_uses_content_for_each_integration(monkeypatch):
         content="legacy fallback",
         integration_ids=["ig-1", "li-1"],
         contents={"ig-1": "Instagram caption", "li-1": "LinkedIn post"},
+        mode="schedule",
+        publish_at="2026-11-05T17:30:00Z",
     )
 
     postiz_service.op_create_post(body)
 
     posts = captured["json"]["posts"]
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/posts"
+    assert captured["json"]["type"] == "schedule"
+    assert captured["json"]["date"] == "2026-11-05T17:30:00Z"
     assert posts[0]["value"][0]["content"] == "Instagram caption"
     assert posts[1]["value"][0]["content"] == "LinkedIn post"
 

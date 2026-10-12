@@ -38,6 +38,8 @@ class SupervisorState(TypedDict):
     publication: str
     publication_id: int
     publication_variants: list[dict]
+    publication_dispatched: bool
+    postiz: dict
 
     # ── Registro de auditoría (append-only vía operator.add) ──
     log: Annotated[list[str], operator.add]
@@ -53,7 +55,9 @@ def initial_state(brief: dict, client_id: int) -> SupervisorState:
         "idea_id": brief.get("idea_id", 0),
         "preproduction": brief.get("preproduction", {}),
         "publication": "",
-        "publication_id": 0,
-        "publication_variants": [],
+        "publication_id": brief.get("publication_id", 0),
+        "publication_variants": brief.get("publication_variants", []),
+        "publication_dispatched": False,
+        "postiz": {},
         "log": [],
     }

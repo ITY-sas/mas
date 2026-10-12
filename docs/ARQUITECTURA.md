@@ -78,9 +78,11 @@ sobre infraestructura de servicios:
 
 La generación batch crea tareas hijas de ideación que finalizan tras guardar
 cada dossier; el supervisor no infiere una publicación a partir de la existencia
-de una idea. La ruta `POST /ideas/{idea_id}/publish` recupera el dossier por
-`(brand_id, idea_id)`, valida los canales vinculados y despacha únicamente al
-agente publicador tras una acción explícita del usuario.
+de una idea. `POST /ideas/{idea_id}/publish` valida idea/canales y despacha al
+publicador para preparar y persistir variantes, sin llamar a Postiz. El usuario
+revisa o edita cada copy en Resultados; solo después
+`POST /publications/{prepare_task_id}/deliver` vuelve a validar marca/canales y
+despacha la entrega aprobada a Postiz.
 
 | Servicio | Puerto | Rol |
 |----------|--------|-----|
@@ -167,10 +169,13 @@ PostgreSQL persiste cada dossier con `generation_batch_id` e
 de marca y los temas antes de recuperar tendencias, competencia, noticias e
 ideas similares.
 
-La biblioteca lista y abre ideas siempre con filtro SQL por `brand_id`. La
-publicación manual valida el mismo límite de marca y los canales activos de
-Postiz, carga el JSON completo del dossier y crea una tarea `publish_idea`; ese
-workflow despacha directamente al agente publicador y nunca regenera la idea.
+La biblioteca lista y abre ideas siempre con filtro SQL por `brand_id`.
+`POST /ideas/{idea_id}/publish` carga el dossier y crea una tarea
+`prepare_publication`: el agente genera/persiste variantes, pero no llama a
+Postiz. Después de revisar o editar los copies, `POST
+/publications/{prepare_task_id}/deliver` valida de nuevo marca/canales y crea
+una tarea `deliver_publication`; el agente entrega los copies aprobados sin
+regenerarlos.
 
 ### 2.2 Tools-as-a-Service + Tool Discovery (requisito 2)
 
@@ -390,18 +395,18 @@ Respuesta HTTP inicial:
 }
 ```
 
-El usuario consulta progreso y biblioteca, abre un dossier y solo entonces
-solicita `POST /ideas/{idea_id}/publish` con `brand_id`, `integration_ids`,
-modo y fecha opcional. Esa ruta crea una tarea independiente de publicación.
+El usuario consulta progreso y biblioteca, abre un dossier y solicita
+`POST /ideas/{idea_id}/publish` con `brand_id`, `integration_ids`, modo y fecha.
+La tarea prepara variantes por plataforma y las persiste en
+`publicaciones_generadas.platform`; esta fase no llama a Postiz. En Resultados
+se revisa/edita cada variante. `POST /publications/{prepare_task_id}/deliver`
+envía solo los copies aprobados y seleccionados; deja en su tarea el modo, la
+fecha, los canales y la respuesta/error de Postiz.
 
-Al publicar la idea, si la selección contiene canales activos de la marca, el
-agente agrupa las integraciones por `provider`, genera una
-variante por plataforma y persiste cada variante en
-`publicaciones_generadas.platform`. Postiz recibe el contenido asociado a cada
+Las variantes se agrupan por `provider`; Postiz recibe el copy asociado a cada
 integration ID, no el primer copy repetido en todas las redes. El tono de marca
-sigue siendo una instrucción prioritaria; las instrucciones de plataforma
-adaptan estructura, vocabulario, hashtags y llamada a la acción. Esta adaptación
-se basa en guías de prompt y no en una validación editorial posterior.
+sigue siendo prioritario y las instrucciones por plataforma adaptan estructura,
+vocabulario, hashtags y llamada a la acción.
 
 El flujo operativo en Studio es: configurar `POSTIZ_API_KEY`, conectar las
 integraciones sociales en la cuenta Postiz, vincular cada integración a la
@@ -461,7 +466,8 @@ curl localhost:8000/state/<task_id>              # checkpoint Redis del agente
 - ✅ `POST /ideas/generate` devuelve `generation_batch_id` y hasta cinco `task_ids`
 - ✅ Los dossiers quedan en `ideas_generadas` con embedding, marca y posición del lote
 - ✅ Una tarea de ideación completa sin crear publicación ni despachar al publicador
-- ✅ Solo `POST /ideas/{id}/publish` crea publicaciones para la idea seleccionada
+- ✅ `POST /ideas/{id}/publish` prepara/persiste variantes y no invoca Postiz
+- ✅ `POST /publications/{prepare_task_id}/deliver` crea draft/schedule/now solo después de aprobar
 - ✅ `GET /tasks/{id}` → estado/resultados en Redis
 - ✅ `GET /tasks/{id}/history` → `[user, assistant]` (historial durable)
 - ✅ `GET /state/{task_id}` en el agente → valores del checkpoint en Redis
@@ -506,11 +512,17 @@ POST /ideas/generate (count=3)
  → agent.task.completed [ideacion]
  → persist progress for each child; generation ends without publication
  → usuario revisa biblioteca y elige idea/canales/modo
-POST /ideas/{idea_id}/publish (explicit approval)
+POST /ideas/{idea_id}/publish (prepare; no external side effect)
  → rag.get_idea filtered by brand_id; load complete dossier
  → validate active Postiz channels and dispatch agent.publicacion.tasks
- → generate/persist platform variants; call Postiz with selected integrations
- → agent.task.completed [publicacion] → task.completed
+ → generate platform variants; rag.save_publicacion per variant
+ → agent.task.completed with postiz.status=prepared
+ → Studio displays editable copies and leaves approval to user
+POST /publications/{prepare_task_id}/deliver (explicit final approval)
+ → validate prepared task, brand, selected channels, mode and date
+ → dispatch agent.publicacion.tasks with approved variants (no regeneration)
+ → POST Postiz /posts with type/date/integration/value/settings
+ → agent.task.completed → task.completed with Postiz response/error
 ```
 
 Impacto acumulado: cada ejecución crece `ideas_generadas`, de modo que
@@ -552,6 +564,15 @@ curl -X POST http://localhost:8002/ideas/<idea_id>/publish \
   -d '{"brand_id": 1, "publish_mode": "draft", "integration_ids": ["ig-id"]}'
 ```
 
+La respuesta inicia preparación y termina con variantes revisables; todavía no
+crea nada en Postiz. Para entregar después de aprobar el copy:
+
+```bash
+curl -X POST http://localhost:8002/publications/<prepare_task_id>/deliver \
+  -H "Content-Type: application/json" \
+  -d '{"brand_id": 1, "publish_mode": "schedule", "publish_at": "2026-11-05T17:30:00Z", "integration_ids": ["ig-id"], "publication_variants": [{"platform": "instagram", "integration_ids": ["ig-id"], "content": "Copy revisado por la persona"}]}'
+```
+
 `POST /process` y el ingreso `ideation_queue` se mantienen por compatibilidad y
 generan una idea individual; ninguno publica automáticamente.
 
@@ -571,7 +592,8 @@ python enviar_brief.py        # publica {client_id, content} en ideation_queue
 | orchestrator | GET | `/graph` | Nodos/arestas + mecanismo de suspensión |
 | orchestrator | POST | `/ideas/generate` | Lanza lote asíncrono de 1–5 ideas |
 | orchestrator | GET | `/ideas/batches/{id}?brand_id=` | Progreso y resultados parciales |
-| orchestrator | POST | `/ideas/{id}/publish` | Publica idea seleccionada; valida marca y canales |
+| orchestrator | POST | `/ideas/{id}/publish` | Prepara variantes para revisar; no llama a Postiz |
+| orchestrator | POST | `/publications/{prepare_task_id}/deliver` | Entrega a Postiz copies revisados con modo/fecha/canales |
 | orchestrator | POST | `/process` | Compatibilidad: generación individual sin publicar |
 | orchestrator | GET | `/tasks/{id}` | Metadatos + resultados (TaskStore/Redis) |
 | orchestrator | GET | `/tasks/{id}/history` | Historial de chat (PostgreSQL) |

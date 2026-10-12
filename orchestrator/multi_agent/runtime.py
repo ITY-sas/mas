@@ -298,6 +298,7 @@ class OrchestratorRuntime:
                 "publication": outcome.get("publication", ""),
                 "publication_id": outcome.get("publication_id", 0),
                 "publication_variants": outcome.get("publication_variants", []),
+                "publication_dispatched": outcome.get("publication_dispatched", False),
                 "postiz": outcome.get("postiz", {}),
             },
         )

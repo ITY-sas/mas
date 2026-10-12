@@ -107,6 +107,8 @@ const App = {
     document.getElementById('results-content-container')?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-batch-result-idea]');
       if (button) this.openBatchIdeaResult(Number(button.dataset.batchResultIdea));
+      const deliverButton = event.target.closest('[data-deliver-prepared-task]');
+      if (deliverButton) this.deliverPreparedPublication(deliverButton.dataset.deliverPreparedTask);
     });
     document.getElementById('idea-detail')?.addEventListener('click', (event) => {
       if (event.target.closest('[data-copy-dossier]') && this.selectedIdea) {
@@ -671,8 +673,6 @@ const App = {
       this.showToast('Indica la fecha y hora para programar.', 'warning');
       return;
     }
-    if (mode === 'now' && !window.confirm('¿Confirmas publicar ahora en los canales seleccionados?')) return;
-
     const button = document.getElementById('btn-publish-selected-idea');
     if (button) button.disabled = true;
     try {
@@ -687,9 +687,53 @@ const App = {
       this.activeStudioWorkflow = 'task';
       this.switchTab('traceability');
       this.startTaskStream(result.task_id);
-      this.showToast('Publicación aprobada y enviada al agente.', 'success');
+      this.showToast('El agente está preparando los copies para que los revises. Aún no se envían a Postiz.', 'info');
     } catch (error) {
       this.showToast('No se pudo iniciar la publicación: ' + error.message, 'error');
+      if (button) button.disabled = false;
+    }
+  },
+
+  async deliverPreparedPublication(taskId) {
+    const task = this.currentTask;
+    if (!task || task.task_id !== taskId) {
+      this.showToast('No encuentro la preparación seleccionada. Vuelve a abrir sus resultados.', 'warning');
+      return;
+    }
+    const brief = task.brief || {};
+    const config = brief.publication || {};
+    if (brief.workflow !== 'prepare_publication' || (task.result?.postiz || {}).status !== 'prepared') {
+      this.showToast('Esta tarea no tiene copies preparados para enviar.', 'warning');
+      return;
+    }
+    const variants = (task.result.publication_variants || []).map((variant, index) => {
+      const editor = document.querySelector(`[data-publication-variant-index="${index}"]`);
+      return { ...variant, content: (editor?.value ?? variant.content ?? '').trim() };
+    });
+    if (!variants.length || variants.some((variant) => !variant.content)) {
+      this.showToast('Cada canal seleccionado debe tener un copy no vacío.', 'warning');
+      return;
+    }
+    if (config.mode === 'now' && !window.confirm('¿Confirmas publicar ahora los copies revisados?')) return;
+
+    const button = document.querySelector(`[data-deliver-prepared-task="${taskId}"]`);
+    if (button) button.disabled = true;
+    try {
+      const delivery = await API.deliverPreparedPublication(taskId, {
+        brand_id: brief.brand_id,
+        publish_mode: config.mode || 'draft',
+        publish_at: config.publish_at || null,
+        integration_ids: config.integration_ids || [],
+        settings: config.settings || {},
+        publication_variants: variants,
+      });
+      this.currentTaskId = delivery.task_id;
+      this.activeStudioWorkflow = 'task';
+      this.switchTab('traceability');
+      this.startTaskStream(delivery.task_id);
+      this.showToast('Copies aprobados; el agente está enviándolos a Postiz.', 'info');
+    } catch (error) {
+      this.showToast('No se pudo enviar a Postiz: ' + error.message, 'error');
       if (button) button.disabled = false;
     }
   },
@@ -768,7 +812,19 @@ const App = {
         }
 
         this.loadTasks();
-        this.showToast('¡Pipeline multi-agente completado!', 'success');
+        const postizStatus = finalData.trace?.raw_task?.result?.postiz?.status;
+        if (postizStatus === 'prepared') {
+          this.switchTab('results');
+          this.showToast('Los copies están listos para revisar; aún no se enviaron a Postiz.', 'success');
+        } else if (postizStatus === 'failed') {
+          this.switchTab('results');
+          this.showToast('Postiz no confirmó la entrega. Revisa la traza y el resultado.', 'error');
+        } else if (postizStatus === 'created') {
+          this.switchTab('results');
+          this.showToast('Postiz recibió la publicación. Revisa el estado en la traza.', 'success');
+        } else {
+          this.showToast('El agente terminó la tarea.', 'success');
+        }
       },
       (err) => {
         console.warn('Finalizó stream:', err);
@@ -855,10 +911,13 @@ const App = {
     const result = task.result || {};
     const idea = result.idea || '';
     const publication = result.publication || '';
+    const postizResult = result.postiz || {};
     const publicationVariants = (result.publication_variants || [])
       .filter((variant) => variant.platform && variant.platform !== 'platform-neutral');
     const preprod = result.preproduction || {};
     const brief = task.brief || {};
+    const publicationConfig = brief.publication || {};
+    const isPrepared = brief.workflow === 'prepare_publication' && postizResult.status === 'prepared';
 
     const hasResults = idea || publication;
     if (!hasResults) {
@@ -919,20 +978,38 @@ const App = {
             ${publicationVariants.length ? `
               <div class="mb-4 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300">Versiones por plataforma</h4>
-                ${publicationVariants.map((variant) => `
+                ${publicationVariants.map((variant) => {
+                  const variantIndex = (result.publication_variants || []).indexOf(variant);
+                  return `
                   <div class="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
                     <div class="mb-2 flex items-center justify-between gap-3">
                       <span class="text-xs font-semibold text-cyan-300">${variant.platform}</span>
                       <span class="text-[10px] text-slate-500">${(variant.integration_ids || []).length} canal(es) · ${variant.content.length} caracteres</span>
                     </div>
-                    <p class="whitespace-pre-wrap text-xs leading-relaxed text-slate-200">${variant.content}</p>
+                    ${isPrepared
+                      ? `<label class="block"><span class="mb-1 block text-[10px] text-slate-400">Copy para revisar/editable</span><textarea data-publication-variant-index="${variantIndex}" class="min-h-36 w-full resize-y border border-slate-700 bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">${this.escapeHtml(variant.content)}</textarea></label>`
+                      : `<p class="whitespace-pre-wrap text-xs leading-relaxed text-slate-200">${this.escapeHtml(variant.content)}</p>`}
                     <button class="mt-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-700" onclick="App.copyText('${encodeURIComponent(variant.content)}')">
                       <i class="fa-regular fa-copy mr-1"></i> Copiar ${variant.platform}
                     </button>
                   </div>
-                `).join('')}
+                `;
+                }).join('')}
               </div>
             ` : ''}
+
+            <div class="mb-4 border border-slate-800 bg-slate-950/50 p-3 text-xs">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-semibold ${postizResult.status === 'failed' ? 'text-rose-300' : isPrepared ? 'text-amber-300' : postizResult.status === 'created' ? 'text-emerald-300' : 'text-slate-300'}">
+                  ${isPrepared ? 'Preparado; pendiente de aprobación' : postizResult.status === 'created' ? 'Solicitud aceptada por Postiz' : postizResult.status === 'failed' ? 'Postiz reportó un error' : postizResult.status || 'Estado de Postiz pendiente'}
+                </span>
+                <span class="text-slate-400">Modo: ${this.escapeHtml(publicationConfig.mode || postizResult.mode || 'draft')}</span>
+              </div>
+              <p class="mt-1 text-[11px] text-slate-400">Canales: ${this.escapeHtml((publicationConfig.integration_ids || postizResult.integrations || []).join(', ') || 'ninguno')}</p>
+              ${publicationConfig.publish_at ? `<p class="mt-1 text-[11px] text-slate-400">Programado para: ${this.escapeHtml(new Date(publicationConfig.publish_at).toLocaleString())}</p>` : ''}
+              ${postizResult.error ? `<p class="mt-2 whitespace-pre-wrap text-[11px] text-rose-300">${this.escapeHtml(postizResult.error)}</p>` : ''}
+              ${isPrepared ? `<button type="button" data-deliver-prepared-task="${this.escapeHtml(task.task_id)}" class="mt-3 px-3 py-2 bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-600">Aprobar copy y ${publicationConfig.mode === 'schedule' ? 'programar' : publicationConfig.mode === 'now' ? 'publicar ahora' : 'crear borrador en Postiz'}</button>` : ''}
+            </div>
 
             ${publicationVariants.length === 0 ? `
             <!-- Mockup neutral cuando no hay destinos por plataforma -->
