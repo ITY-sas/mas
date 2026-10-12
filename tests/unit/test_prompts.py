@@ -79,3 +79,14 @@ class TestBuildPublicacionPrompt:
         """U10: El prompt pide máximo 280 caracteres."""
         prompt = build_publicacion_prompt("idea", sample_context)
         assert "280" in prompt
+
+    def test_prompt_adapts_linkedin_while_preserving_brand_voice(self, sample_context):
+        prompt = build_publicacion_prompt("idea", sample_context, platform="linkedin")
+        assert "Target Platform: linkedin" in prompt
+        assert "professional, insight-led voice" in prompt
+        assert "Preserve the client's brand voice" in prompt
+
+    def test_prompt_adapts_instagram_format(self, sample_context):
+        prompt = build_publicacion_prompt("idea", sample_context, platform="instagram")
+        assert "visual-first caption" in prompt
+        assert "do not stuff hashtags" in prompt

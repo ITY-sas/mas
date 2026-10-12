@@ -56,6 +56,8 @@ class IdeaBody(BaseModel):
     brand_id: int
     client_id: int
     content: str
+    generation_batch_id: str | None = None
+    generation_index: int | None = None
 
 
 class PublicacionBody(BaseModel):
@@ -63,6 +65,7 @@ class PublicacionBody(BaseModel):
     client_id: int
     content: str
     idea_id: int | None = None
+    platform: str | None = None
 
 
 class DocumentBody(BaseModel):
@@ -91,13 +94,39 @@ def op_similar(brand_id: int, query: str, limit: int = 3, min_similarity: float 
     }
 
 
-def op_save_idea(brand_id: int, client_id: int, content: str) -> dict:
+def op_save_idea(
+    brand_id: int,
+    client_id: int,
+    content: str,
+    generation_batch_id: str | None = None,
+    generation_index: int | None = None,
+) -> dict:
     """Persiste una idea generada (+ embedding vía LLM Gateway)."""
     from shared_tools.db import execute_db
     from shared_tools.embeddings import embedding_to_vector, generate_embedding
 
+    if (generation_batch_id is None) != (generation_index is None):
+        raise ValueError("generation_batch_id y generation_index deben enviarse juntos")
     embedding = generate_embedding(content)
     vec = embedding_to_vector(embedding)
+    if generation_batch_id is not None:
+        columns = "client_id, brand_id, generation_batch_id, generation_index, content"
+        values = "%s, %s, %s, %s, %s"
+        params = (client_id, brand_id, generation_batch_id, generation_index, content)
+        if vec:
+            columns += ", embedding"
+            values += ", %s::vector"
+            params += (vec,)
+        new_id = execute_db(
+            f"INSERT INTO ideas_generadas ({columns}) VALUES ({values}) "
+            "ON CONFLICT (brand_id, generation_batch_id, generation_index) "
+            "WHERE generation_batch_id IS NOT NULL DO UPDATE SET "
+            "content = EXCLUDED.content, embedding = EXCLUDED.embedding "
+            "RETURNING id",
+            params,
+        )
+        return {"id": new_id}
+
     if vec:
         new_id = execute_db(
             "INSERT INTO ideas_generadas (client_id, brand_id, content, embedding) "
@@ -112,7 +141,102 @@ def op_save_idea(brand_id: int, client_id: int, content: str) -> dict:
     return {"id": new_id}
 
 
-def op_save_publicacion(brand_id: int, client_id: int, content: str, idea_id: int | None = None) -> dict:
+def _serialize_idea(row: dict) -> dict:
+    raw_content = row.get("content") or ""
+    try:
+        dossier = json.loads(raw_content)
+    except (TypeError, ValueError):
+        dossier = {}
+    if not isinstance(dossier, dict):
+        dossier = {}
+    return {
+        "id": row.get("id"),
+        "brand_id": row.get("brand_id"),
+        "client_id": row.get("client_id"),
+        "generation_batch_id": row.get("generation_batch_id"),
+        "generation_index": row.get("generation_index"),
+        "title": dossier.get("title") or raw_content[:120],
+        "content": raw_content,
+        "dossier": dossier,
+        "created_at": row.get("created_at"),
+    }
+
+
+def op_list_ideas(
+    brand_id: int,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    query: str | None = None,
+    generation_batch_id: str | None = None,
+) -> dict:
+    """List persisted ideas for one brand, optionally scoped to a batch/search."""
+    from shared_tools.db import query_db
+
+    conditions = ["brand_id = %s"]
+    params: list = [brand_id]
+    if generation_batch_id:
+        conditions.append("generation_batch_id = %s")
+        params.append(generation_batch_id)
+    if query and query.strip():
+        conditions.append("content ILIKE %s")
+        params.append(f"%{query.strip()}%")
+    where = " AND ".join(conditions)
+    rows = query_db(
+        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, content, created_at "
+        f"FROM ideas_generadas WHERE {where} "
+        "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
+        tuple([*params, limit, offset]),
+    )
+    count_rows = query_db(
+        f"SELECT count(*) AS total FROM ideas_generadas WHERE {where}",
+        tuple(params),
+    )
+    return {
+        "brand_id": brand_id,
+        "items": [_serialize_idea(row) for row in rows],
+        "total": int(count_rows[0]["total"]) if count_rows else 0,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def op_ideas_batch_status(brand_id: int, batch_id: str) -> dict:
+    """Return persisted idea rows and counts for one generation batch."""
+    from shared_tools.db import query_db
+
+    rows = query_db(
+        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, content, created_at "
+        "FROM ideas_generadas WHERE brand_id = %s AND generation_batch_id = %s "
+        "ORDER BY generation_index, id",
+        (brand_id, batch_id),
+    )
+    return {
+        "brand_id": brand_id,
+        "generation_batch_id": batch_id,
+        "ideas": [_serialize_idea(row) for row in rows],
+    }
+
+
+def op_get_idea(brand_id: int, idea_id: int) -> dict | None:
+    """Fetch one idea while enforcing the brand boundary in the SQL query."""
+    from shared_tools.db import query_db
+
+    rows = query_db(
+        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, content, created_at "
+        "FROM ideas_generadas WHERE brand_id = %s AND id = %s LIMIT 1",
+        (brand_id, idea_id),
+    )
+    return _serialize_idea(rows[0]) if rows else None
+
+
+def op_save_publicacion(
+    brand_id: int,
+    client_id: int,
+    content: str,
+    idea_id: int | None = None,
+    platform: str | None = None,
+) -> dict:
     """Persiste una publicación generada (+ embedding vía LLM Gateway)."""
     from shared_tools.db import execute_db
     from shared_tools.embeddings import embedding_to_vector, generate_embedding
@@ -121,15 +245,15 @@ def op_save_publicacion(brand_id: int, client_id: int, content: str, idea_id: in
     vec = embedding_to_vector(embedding)
     if vec:
         new_id = execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, content, embedding) "
-            "VALUES (%s, %s, %s, %s, %s::vector) RETURNING id",
-            (client_id, brand_id, idea_id, content, vec),
+            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, platform, content, embedding) "
+            "VALUES (%s, %s, %s, %s, %s, %s::vector) RETURNING id",
+            (client_id, brand_id, idea_id, platform, content, vec),
         )
     else:
         new_id = execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, content) "
-            "VALUES (%s, %s, %s, %s)",
-            (client_id, brand_id, idea_id, content),
+            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, platform, content) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (client_id, brand_id, idea_id, platform, content),
         )
     return {"id": new_id}
 
@@ -254,9 +378,62 @@ OPERATIONS: dict = {
                 "required": True,
                 "description": "Contenido de la idea",
             },
+            {
+                "name": "generation_batch_id",
+                "in": "body",
+                "type": "string",
+                "required": False,
+                "description": "UUID del lote para deduplicar reentregas",
+            },
+            {
+                "name": "generation_index",
+                "in": "body",
+                "type": "integer",
+                "required": False,
+                "description": "Posición de la idea dentro del lote",
+            },
         ],
         "returns": "objeto {id}",
         "handler": op_save_idea,
+    },
+    "list_ideas": {
+        "id": "list_ideas",
+        "method": "GET",
+        "path": "/ideas",
+        "description": "Lista ideas persistidas de una marca, con filtro de texto/lote y paginación.",
+        "params": [
+            {"name": "brand_id", "in": "query", "type": "integer", "required": True},
+            {"name": "limit", "in": "query", "type": "integer", "required": False},
+            {"name": "offset", "in": "query", "type": "integer", "required": False},
+            {"name": "query", "in": "query", "type": "string", "required": False},
+            {"name": "generation_batch_id", "in": "query", "type": "string", "required": False},
+        ],
+        "returns": "objeto {brand_id, items, total, limit, offset}",
+        "handler": op_list_ideas,
+    },
+    "get_idea": {
+        "id": "get_idea",
+        "method": "GET",
+        "path": "/ideas/detail",
+        "description": "Obtiene el dossier de una idea dentro de la marca solicitada.",
+        "params": [
+            {"name": "brand_id", "in": "query", "type": "integer", "required": True},
+            {"name": "idea_id", "in": "query", "type": "integer", "required": True},
+        ],
+        "returns": "objeto dossier; 404 si idea no pertenece a brand_id",
+        "handler": op_get_idea,
+    },
+    "batch_status": {
+        "id": "batch_status",
+        "method": "GET",
+        "path": "/ideas/batch-status",
+        "description": "Lista las ideas persistidas para un lote de generación.",
+        "params": [
+            {"name": "brand_id", "in": "query", "type": "integer", "required": True},
+            {"name": "generation_batch_id", "in": "query", "type": "string", "required": True},
+        ],
+        "returns": "objeto {brand_id, generation_batch_id, ideas}",
+        "handler": op_ideas_batch_status,
     },
     "save_publicacion": {
         "id": "save_publicacion",
@@ -287,6 +464,13 @@ OPERATIONS: dict = {
                 "type": "integer",
                 "required": False,
                 "description": "Id de la idea de la que deriva (opcional)",
+            },
+            {
+                "name": "platform",
+                "in": "body",
+                "type": "string",
+                "required": False,
+                "description": "Plataforma destino de la variante (instagram, linkedin, x, etc.)",
             },
         ],
         "returns": "objeto {id}",
@@ -361,7 +545,13 @@ def similar(body: SimilarBody):
 def save_idea(body: IdeaBody):
     started = time.perf_counter()
     try:
-        data = op_save_idea(body.brand_id, body.client_id, body.content)
+        data = op_save_idea(
+            body.brand_id,
+            body.client_id,
+            body.content,
+            body.generation_batch_id,
+            body.generation_index,
+        )
         return make_envelope(
             f"{TOOL}.save_idea", data, (time.perf_counter() - started) * 1000
         )
@@ -379,11 +569,74 @@ def save_idea(body: IdeaBody):
         )
 
 
+@app.get("/ideas")
+def list_ideas(
+    brand_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    query: str | None = None,
+    generation_batch_id: str | None = None,
+):
+    started = time.perf_counter()
+    if not 1 <= limit <= 100 or offset < 0:
+        return JSONResponse(status_code=422, content=make_envelope(
+            "rag.list_ideas", None, (time.perf_counter() - started) * 1000,
+            status="error", error="limit debe estar entre 1 y 100 y offset no puede ser negativo"))
+    try:
+        data = op_list_ideas(
+            brand_id, limit=limit, offset=offset, query=query,
+            generation_batch_id=generation_batch_id,
+        )
+        return make_envelope("rag.list_ideas", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("list_ideas falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.list_ideas", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/ideas/batch-status")
+def ideas_batch_status(brand_id: int, generation_batch_id: str):
+    started = time.perf_counter()
+    try:
+        data = op_ideas_batch_status(brand_id, generation_batch_id)
+        return make_envelope("rag.batch_status", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("batch_status falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.batch_status", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/ideas/detail")
+def get_idea_detail(idea_id: int, brand_id: int):
+    started = time.perf_counter()
+    try:
+        data = op_get_idea(brand_id, idea_id)
+        if data is None:
+            return JSONResponse(status_code=404, content=make_envelope(
+                "rag.get_idea", None, (time.perf_counter() - started) * 1000,
+                status="error", error="idea no encontrada para la marca solicitada"))
+        return make_envelope("rag.get_idea", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("get_idea falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.get_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/ideas/{idea_id}")
+def get_idea(idea_id: int, brand_id: int):
+    return get_idea_detail(idea_id, brand_id)
+
+
 @app.post("/publicaciones")
 def save_publicacion(body: PublicacionBody):
     started = time.perf_counter()
     try:
-        data = op_save_publicacion(body.brand_id, body.client_id, body.content, body.idea_id)
+        data = op_save_publicacion(
+            body.brand_id, body.client_id, body.content, body.idea_id, body.platform
+        )
         return make_envelope(
             f"{TOOL}.save_publicacion", data, (time.perf_counter() - started) * 1000
         )

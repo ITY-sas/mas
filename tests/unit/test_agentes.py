@@ -146,6 +146,24 @@ class TestIdeacionNodeContracts:
         assert result["client_profile"].startswith("texto de client")
         assert "rag.similar" in result["tool_calls"]
 
+    def test_empty_brief_is_derived_from_brand_profile_and_topics(self, monkeypatch):
+        import agente_ideacion.graph as g
+
+        fake = FakeRegistry(response={"profile": {
+            "nombre": "EcoBrand",
+            "perfil_marca": "cosmética sostenible",
+            "pilares_contenido": "educación ambiental",
+        }})
+        monkeypatch.setattr(g, "REGISTRY", fake)
+        state = _ideacion_state(brief={"content": "", "topics": ["verano", "reciclaje"]})
+
+        result = g.load_context(state)
+
+        assert "cosmética sostenible" in result["brief"]["content"]
+        assert "educación ambiental" in result["brief"]["content"]
+        assert "verano, reciclaje" in result["brief"]["content"]
+        assert fake.calls[1]["params"]["query"] == result["brief"]["content"]
+
     def test_fetch_news_calls_news_service(self, monkeypatch):
         import agente_ideacion.graph as g
 
@@ -221,12 +239,21 @@ class TestIdeacionNodeContracts:
         fake = FakeRegistry(response={"id": 77})
         monkeypatch.setattr(g, "REGISTRY", fake)
 
-        result = g.save_idea(_ideacion_state(idea="mi idea"))
+        state = _ideacion_state(idea="mi idea")
+        state["brief"].update({
+            "generation_batch_id": "batch-123",
+            "generation_index": 0,
+        })
+        result = g.save_idea(state)
 
         assert fake.calls[0]["tool"] == "rag"
         assert fake.calls[0]["operation"] == "save_idea"
         assert fake.calls[0]["json_body"] == {
-            "brand_id": 1, "client_id": 1, "content": "mi idea"
+            "brand_id": 1,
+            "client_id": 1,
+            "content": "mi idea",
+            "generation_batch_id": "batch-123",
+            "generation_index": 0,
         }
         assert result["idea_id"] == 77
 
@@ -246,6 +273,26 @@ class TestPublicacionNodeContracts:
         assert fake.calls[1]["params"] == {"query": "idea para publicar",
                                            "limit": 3}
         assert "trends.search" in result["tool_calls"]
+
+    def test_load_context_discovers_selected_brand_channels(self, monkeypatch):
+        import agente_publicacion.graph as g
+
+        fake = FakeRegistry(response={"channels": [
+            {"external_id": "ig-1", "provider": "instagram", "display_name": "Marca IG"},
+        ]})
+        monkeypatch.setattr(g, "REGISTRY", fake)
+
+        result = g.load_context({
+            "idea": "idea para publicar", "client_id": 2, "brand_id": 9,
+            "postiz_integration_ids": ["ig-1"],
+        })
+
+        assert fake.calls[2]["tool"] == "postiz"
+        assert fake.calls[2]["operation"] == "channels"
+        assert fake.calls[2]["params"] == {
+            "brand_id": 9, "integration_ids": ["ig-1"],
+        }
+        assert result["target_channels"][0]["provider"] == "instagram"
 
     def test_generate_post_goes_through_gateway(self, monkeypatch):
         import agente_publicacion.graph as g
@@ -272,6 +319,37 @@ class TestPublicacionNodeContracts:
             assert fragment in captured["prompt"]
         assert captured["kwargs"]["temperature"] == 0.7
 
+    def test_generate_post_creates_one_variant_per_platform(self, monkeypatch):
+        import agente_publicacion.graph as g
+
+        prompts = []
+
+        def fake_generate(prompt, **kwargs):
+            prompts.append(prompt)
+            return {"content": f"COPY-{len(prompts)}"}
+
+        monkeypatch.setattr(g.gateway_client, "generate", fake_generate)
+        state = {
+            "idea": "idea de campaña", "client_id": 2, "brand_id": 2,
+            "client_profile": "voz de marca", "trends": "tendencias", "trending": "hashtags",
+            "target_channels": [
+                {"external_id": "ig-1", "provider": "instagram"},
+                {"external_id": "ig-2", "provider": "instagram"},
+                {"external_id": "li-1", "provider": "linkedin"},
+            ],
+        }
+
+        result = g.generate_post(state)
+
+        assert len(prompts) == 2
+        assert "Target Platform: instagram" in prompts[0]
+        assert "Target Platform: linkedin" in prompts[1]
+        assert result["publication"] == "COPY-1"
+        assert result["publication_variants"] == [
+            {"platform": "instagram", "integration_ids": ["ig-1", "ig-2"], "content": "COPY-1"},
+            {"platform": "linkedin", "integration_ids": ["li-1"], "content": "COPY-2"},
+        ]
+
     def test_save_post_persists_with_idea_id(self, monkeypatch):
         import agente_publicacion.graph as g
 
@@ -284,8 +362,75 @@ class TestPublicacionNodeContracts:
 
         assert fake.calls[0]["json_body"] == {
             "brand_id": 2, "client_id": 2, "content": "mi post", "idea_id": 5,
+            "platform": "platform-neutral",
         }
         assert result["publication_id"] == 33
+
+    def test_schedule_post_sends_variant_for_each_integration(self, monkeypatch):
+        import agente_publicacion.graph as g
+
+        fake = FakeRegistry(response={"created": True})
+        monkeypatch.setattr(g, "REGISTRY", fake)
+        state = {
+            "brand_id": 2,
+            "publication": "Instagram copy",
+            "publication_variants": [
+                {"platform": "instagram", "integration_ids": ["ig-1"], "content": "IG variant"},
+                {"platform": "linkedin", "integration_ids": ["li-1"], "content": "LinkedIn variant"},
+            ],
+            "target_channels": [
+                {"external_id": "ig-1", "provider": "instagram", "configured": True},
+                {"external_id": "li-1", "provider": "linkedin", "configured": True},
+            ],
+            "postiz_integration_ids": ["ig-1", "li-1"],
+            "publish_mode": "draft",
+            "postiz_settings": {},
+        }
+
+        g.schedule_post(state)
+
+        assert fake.calls[0]["json_body"]["contents"] == {
+            "ig-1": "IG variant", "li-1": "LinkedIn variant",
+        }
+
+    def test_schedule_post_skips_channels_without_postiz_settings(self, monkeypatch):
+        import agente_publicacion.graph as g
+
+        fake = FakeRegistry()
+        monkeypatch.setattr(g, "REGISTRY", fake)
+        result = g.schedule_post({
+            "brand_id": 2,
+            "publication": "copy",
+            "postiz_integration_ids": ["ig-1"],
+            "target_channels": [{"external_id": "ig-1", "configured": False}],
+            "publish_mode": "draft",
+        })
+
+        assert result["postiz"]["status"] == "skipped"
+        assert result["postiz"]["integrations"] == ["ig-1"]
+        assert fake.calls == []
+
+    def test_schedule_post_reports_external_failure_without_raising(self, monkeypatch):
+        import agente_publicacion.graph as g
+
+        class FailingRegistry(FakeRegistry):
+            def call(self, *args, **kwargs):
+                raise RuntimeError("Postiz unavailable")
+
+        monkeypatch.setattr(g, "REGISTRY", FailingRegistry())
+        result = g.schedule_post({
+            "brand_id": 2,
+            "publication": "LinkedIn copy",
+            "publication_variants": [
+                {"platform": "linkedin", "integration_ids": ["li-1"], "content": "LinkedIn copy"},
+            ],
+            "postiz_integration_ids": ["li-1"],
+            "target_channels": [{"external_id": "li-1", "configured": True}],
+            "publish_mode": "draft",
+        })
+
+        assert result["postiz"]["status"] == "failed"
+        assert result["postiz"]["error"] == "Postiz unavailable"
 
 
 # ── U-AG-04/05: semántica idempotente del runner ───────────────

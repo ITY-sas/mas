@@ -42,15 +42,22 @@ CREATE TABLE referencias_competencia (
 CREATE TABLE ideas_generadas (
     id SERIAL PRIMARY KEY,
     client_id INT,
+    generation_batch_id UUID,
+    generation_index SMALLINT,
     content TEXT,
     embedding VECTOR(768),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE UNIQUE INDEX idx_ideas_generation_batch_position
+    ON ideas_generadas (generation_batch_id, generation_index)
+    WHERE generation_batch_id IS NOT NULL;
+
 CREATE TABLE publicaciones_generadas (
     id SERIAL PRIMARY KEY,
     client_id INT,
     idea_id INT,
+    platform VARCHAR(64),
     content TEXT,
     embedding VECTOR(768),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

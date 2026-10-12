@@ -3,6 +3,19 @@
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
 Convención de commits: [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Generación asíncrona de lotes de 1–5 dossiers, briefs opcionales/individuales,
+  progreso en Redis y biblioteca paginada de ideas scopeada por marca.
+- Publicación bajo selección manual de idea/canales/modo; el publicador recupera
+  el dossier persistido y ya no se despacha automáticamente tras ideación.
+- Migraciones 004/005 para posición de lote e idempotencia dentro de `brand_id`.
+
+### Changed
+- Studio separa generación, biblioteca y publicación; briefs vacíos se derivan
+  del perfil, pilares y señales de marca.
+
 ## [2.1.0] — 2026-10-07
 
 ### Added

@@ -138,11 +138,13 @@ def handle_triggered(event: Event) -> None:
                     "publish_at": publication_config.get("publish_at"),
                     "postiz_integration_ids": publication_config.get("integration_ids", []),
                     "postiz_settings": publication_config.get("settings", {}),
+                    "target_channels": [],
                     "tool_calls": [],
                 },
                 extract=lambda s: {
                     "publication": s.get("publication", ""),
                     "publication_id": s.get("publication_id", 0),
+                    "publication_variants": s.get("publication_variants", []),
                     "postiz": s.get("postiz", {}),
                 },
                 is_done=lambda s: bool(s.get("publication")),

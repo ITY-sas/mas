@@ -120,6 +120,31 @@ class TaskStore:
                 break
         return tasks
 
+    def list_by_generation_batch(self, batch_id: str) -> list[dict]:
+        """Return child generation tasks ordered by their requested position."""
+        tasks = []
+        for key in self.r.scan_iter(match=f"{TASK_PREFIX}*", count=200):
+            raw = self.r.get(key)
+            if not raw:
+                continue
+            try:
+                task = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            brief = task.get("brief") or {}
+            if (
+                brief.get("generation_batch_id") == batch_id
+                and not brief.get("generation_batch_root")
+            ):
+                tasks.append(task)
+        tasks.sort(
+            key=lambda task: (
+                task.get("brief", {}).get("generation_index", 0),
+                task.get("task_id", ""),
+            )
+        )
+        return tasks
+
     # ── Espera de finalización (pub/sub + polling de seguridad) ─
     def publish_update(self, task_id: str, status: str) -> None:
         try:

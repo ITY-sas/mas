@@ -93,7 +93,17 @@ class TestSupervisorRouting:
     def test_route_to_publicacion_when_idea_exists(self):
         from multi_agent.supervisor import decide_next
 
-        assert decide_next({"idea": "some idea", "publication": ""}) == "dispatch_publicacion"
+        assert decide_next({"idea": "some idea", "publication": ""}) == "__end__"
+
+    def test_route_to_publicacion_only_when_explicitly_requested(self):
+        from multi_agent.supervisor import decide_next
+
+        state = {
+            "brief": {"workflow": "publish_idea"},
+            "idea": "saved dossier",
+            "publication": "",
+        }
+        assert decide_next(state) == "dispatch_publicacion"
 
     def test_route_to_end_when_both_exist(self):
         from multi_agent.supervisor import decide_next
@@ -105,7 +115,7 @@ class TestSupervisorRouting:
         from multi_agent.supervisor import decide_next
 
         assert decide_next({"idea": None, "publication": None}) == "dispatch_ideacion"
-        assert decide_next({"idea": "x", "publication": None}) == "dispatch_publicacion"
+        assert decide_next({"idea": "x", "publication": None}) == "__end__"
 
 
 class TestDispatchInterrupts:
@@ -127,7 +137,7 @@ class TestDispatchInterrupts:
     @staticmethod
     def _initial():
         return {
-            "brief": {"client_id": 1, "content": "campana verano"},
+            "brief": {"client_id": 1, "brand_id": 1, "content": "campana verano", "workflow": "generate_idea"},
             "client_id": 1,
             "brand_id": 1,
             "idea": "", "idea_id": 0,
@@ -144,24 +154,54 @@ class TestDispatchInterrupts:
         assert iv["payload"]["brief"]["content"] == "campana verano"
         assert iv["payload"]["client_id"] == 1
 
-    def test_resume_then_dispatch_publicacion(self, graph, config):
+    def test_idea_generation_ends_without_dispatching_publicacion(self, graph, config):
         out = graph.invoke(self._initial(), config)
         out2 = graph.invoke(Command(resume={"idea": "IDEA X", "idea_id": 7}), config)
-        assert "__interrupt__" in out2
-        iv = out2["__interrupt__"][0].value
+        assert "__interrupt__" not in out2
+        assert out2["idea"] == "IDEA X"
+
+    def test_explicit_publication_dispatches_selected_dossier(self, graph):
+        config = {"configurable": {"thread_id": "manual-publish-task"}}
+        state = {
+            **self._initial(),
+            "brief": {
+                "workflow": "publish_idea",
+                "publication": {"mode": "draft", "integration_ids": ["channel-1"]},
+            },
+            "idea": '{"title":"Selected idea"}',
+            "idea_id": 7,
+            "preproduction": {"title": "Selected idea"},
+        }
+        outcome = graph.invoke(state, config)
+        assert "__interrupt__" in outcome
+        iv = outcome["__interrupt__"][0].value
         assert iv["agent"] == "publicacion"
         assert iv["queue"] == "agent.publicacion.tasks"
-        assert iv["payload"]["idea"] == "IDEA X"
+        assert iv["payload"]["idea"] == '{"title":"Selected idea"}'
         assert iv["payload"]["idea_id"] == 7
 
-    def test_full_cycle_reaches_end(self, graph, config):
+    def test_manual_publication_reaches_end(self, graph):
+        config = {"configurable": {"thread_id": "manual-publish-cycle"}}
+        state = {
+            **self._initial(),
+            "brief": {"workflow": "publish_idea"},
+            "idea": "saved idea",
+            "idea_id": 7,
+            "preproduction": {"title": "saved idea"},
+        }
+        graph.invoke(state, config)
+        out = graph.invoke(Command(resume={"publication": "POST", "publication_id": 9}), config)
+        assert "__interrupt__" not in out
+        assert out["idea_id"] == 7
+        assert out["publication_id"] == 9
+
+    def test_generation_reaches_end_after_ideation(self, graph, config):
         graph.invoke(self._initial(), config)
-        graph.invoke(Command(resume={"idea": "IDEA", "idea_id": 7}), config)
-        out3 = graph.invoke(Command(resume={"publication": "POST", "publication_id": 9}), config)
-        assert "__interrupt__" not in out3
-        assert out3["idea_id"] == 7
-        assert out3["publication_id"] == 9
-        assert "supervisor: pipeline iniciado" in out3["log"]
+        out = graph.invoke(Command(resume={"idea": "IDEA", "idea_id": 7}), config)
+        assert "__interrupt__" not in out
+        assert out["idea_id"] == 7
+        assert out["publication_id"] == 0
+        assert "supervisor: pipeline iniciado" in out["log"]
 
     def test_failed_agent_result_raises(self, graph, config):
         """Un agente que falla aborta la tarea (el runtime la marcará failed)."""
@@ -234,7 +274,7 @@ class TestRuntimeEventDriven:
             error=error,
         )
 
-    def test_full_cycle_with_fake_events(self, runtime_parts):
+    def test_idea_generation_completes_without_publication(self, runtime_parts):
         rt, store, published, history = runtime_parts
 
         task_id = rt.start_task({"client_id": 1, "content": "brief x"}, 1)
@@ -249,33 +289,61 @@ class TestRuntimeEventDriven:
         assert task["status"] == "running"
         assert task["pending"]["agent"] == "ideacion"
 
-        # 2) resultado de ideacion → segundo despacho (publicacion)
+        # 2) resultado de ideacion → fin, sin publicar automáticamente
         rt.on_agent_completed(
             self._agent_event(task_id, "ideacion", {"idea": "IDEA", "idea_id": 3})
         )
         assert len(published) == 2
         queue2, ev2 = published[1]
-        assert queue2 == "agent.publicacion.tasks"
-        assert store.get(task_id)["result"]["idea_id"] == 3
-
-        # 3) resultado de publicacion → fin + task.completed
-        rt.on_agent_completed(
-            self._agent_event(task_id, "publicacion",
-                              {"publication": "POST", "publication_id": 8})
-        )
-        assert len(published) == 3
-        queue3, ev3 = published[2]
-        assert queue3 == "task.results"
-        assert ev3.event_type == "task.completed"
+        assert queue2 == "task.results"
+        assert ev2.event_type == "task.completed"
 
         final = store.get(task_id)
         assert final["status"] == "completed"
         assert final["result"]["idea_id"] == 3
-        assert final["result"]["publication_id"] == 8
+        assert final["result"]["publication_id"] == 0
 
         # historial: turno user + turno assistant
         roles = [r[2] for r in history]
         assert roles == ["user", "assistant"]
+
+    def test_start_idea_batch_dispatches_ordered_idea_tasks(self, runtime_parts):
+        rt, store, published, _ = runtime_parts
+
+        batch = rt.start_idea_batch(
+            client_id=1,
+            brand_id=7,
+            count=3,
+            content="",
+            briefs=["brief uno"],
+            topics=["educación"],
+        )
+
+        assert batch["count"] == 3
+        assert len(batch["task_ids"]) == 3
+        assert [queue for queue, _ in published] == [
+            "agent.ideacion.tasks", "agent.ideacion.tasks", "agent.ideacion.tasks",
+        ]
+        children = store.list_by_generation_batch(batch["generation_batch_id"])
+        assert [task["brief"]["generation_index"] for task in children] == [0, 1, 2]
+        assert children[0]["brief"]["content"] == "brief uno"
+        assert children[1]["brief"]["content"] == ""
+        assert children[2]["brief"]["brand_id"] == 7
+        assert children[0]["brief"]["generation_angle"] != children[1]["brief"]["generation_angle"]
+
+    def test_batch_parent_tracks_partial_completion(self, runtime_parts):
+        rt, store, _, _ = runtime_parts
+        batch = rt.start_idea_batch(client_id=1, brand_id=1, count=2)
+        children = store.list_by_generation_batch(batch["generation_batch_id"])
+        store.set_status(children[0]["task_id"], "completed")
+        store.set_status(children[1]["task_id"], "failed", error="model unavailable")
+
+        rt._refresh_generation_batch(batch["generation_batch_id"])
+
+        parent = store.get(batch["generation_batch_id"])
+        assert parent["result"]["status"] == "partial"
+        assert parent["result"]["completed"] == 1
+        assert parent["result"]["failed"] == 1
 
     def test_agent_failure_marks_task_failed(self, runtime_parts):
         rt, store, published, history = runtime_parts
@@ -301,15 +369,66 @@ class TestRuntimeEventDriven:
             self._agent_event(task_id, "ideacion", {"idea": "I", "idea_id": 1})
         )
         assert len(published) == 2
-        # duplicado: ya no estamos esperando a ideacion → se ignora
+        # duplicado: la tarea de ideación ya finalizó → se ignora
         rt.on_agent_completed(
             self._agent_event(task_id, "ideacion", {"idea": "I", "idea_id": 1})
         )
         assert len(published) == 2
-        assert store.get(task_id)["status"] == "running"
+        assert store.get(task_id)["status"] == "completed"
 
     def test_result_for_unknown_task_is_ignored(self, runtime_parts):
         rt, _, published, _ = runtime_parts
         rt.start_task({"client_id": 1, "content": "brief"}, 1)
         rt.on_agent_completed(self._agent_event("no-existe", "ideacion", {"idea": "x"}))
         assert len(published) == 1
+
+
+class TestManualPublicationEndpoint:
+    def test_dispatches_loaded_full_dossier_and_selected_channels(self, monkeypatch):
+        import main as orchestrator_main
+
+        dossier = {"title": "Idea aprobada", "concept": "Dossier completo", "script": [{"scene": 1}]}
+        calls = []
+
+        def fake_tool_call(tool, operation, *, params=None, **kwargs):
+            calls.append((tool, operation, params))
+            if operation == "get_idea":
+                return {
+                    "id": 44,
+                    "brand_id": 7,
+                    "client_id": 70,
+                    "content": __import__("json").dumps(dossier),
+                    "dossier": dossier,
+                }
+            return {"brand_id": 7, "channels": [{"external_id": "ig-1"}]}
+
+        class FakeRuntime:
+            brief = None
+            client_id = None
+
+            def start_task(self, brief, client_id):
+                self.brief = brief
+                self.client_id = client_id
+                return "publish-task"
+
+        runtime = FakeRuntime()
+        monkeypatch.setattr(orchestrator_main.registry, "call", fake_tool_call)
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: runtime)
+
+        response = orchestrator_main.publish_saved_idea(
+            44,
+            orchestrator_main.PublishIdeaRequest(
+                brand_id=7,
+                publish_mode="schedule",
+                publish_at="2026-10-15T15:00:00Z",
+                integration_ids=["ig-1"],
+            ),
+        )
+
+        assert response == {"task_id": "publish-task", "idea_id": 44, "status": "running"}
+        assert calls[0][2] == {"brand_id": 7, "idea_id": 44}
+        assert calls[1][2] == {"brand_id": 7, "integration_ids": ["ig-1"]}
+        assert runtime.client_id == 70
+        assert runtime.brief["workflow"] == "publish_idea"
+        assert runtime.brief["preproduction"] == dossier
+        assert runtime.brief["publication"]["integration_ids"] == ["ig-1"]

@@ -12,6 +12,13 @@ SYSTEM_PROMPT = (
 def build_ideacion_prompt(brief_content: str, context: dict) -> str:
     """Construye el prompt final enriquecido para el agente de ideación."""
     requested_format = context.get("requested_format", "auto")
+    variation = context.get("generation_angle")
+    variation_section = (
+        f"\n## Batch variation\nUse this distinct creative angle: {variation}. "
+        "Do not repeat the concept of other ideas in the same batch.\n"
+        if variation
+        else ""
+    )
     return f"""You are a creative marketing strategist creating content ideas.
 
 ## Client Profile
@@ -31,6 +38,7 @@ def build_ideacion_prompt(brief_content: str, context: dict) -> str:
 
 ## Requested Content Format
 {requested_format}
+{variation_section}
 
 ## Instructions
 Generate ONE original content idea and a production-ready content dossier that:

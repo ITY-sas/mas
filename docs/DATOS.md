@@ -83,6 +83,8 @@ erDiagram
         int id PK
         bigint brand_id FK
         int client_id
+        uuid generation_batch_id
+        smallint generation_index
         vector embedding
         text content
     }
@@ -91,6 +93,7 @@ erDiagram
         bigint brand_id FK
         int client_id
         int idea_id
+        string platform
         vector embedding
         text content
     }
@@ -196,6 +199,14 @@ sequenceDiagram
 ```
 
 La idea queda vinculada al `brand_id` y no debe poder guardarse sin él.
+Las ideas de un lote llevan `generation_batch_id` y posición estable. El índice
+único parcial `(brand_id, generation_batch_id, generation_index)` hace idempotente
+la reentrega de cada tarea sin mezclar marcas; las ideas legacy pueden mantener
+ambos campos batch en `NULL`.
+
+La biblioteca consulta y abre dossiers con `brand_id` en la propia condición SQL.
+El estado operativo del lote (tareas pendientes, terminadas y fallidas) vive en
+Redis; el dossier completo sigue siendo durable en `ideas_generadas.content`.
 
 ## 6. Flujo de recuperación RAG
 
@@ -230,16 +241,25 @@ todos los resultados privados deben pertenecer al brand_id solicitado
 
 ```mermaid
 flowchart TD
-    I[Idea brand_id=1] --> P[Generar publicación]
-    P --> S[Guardar publicaciones_generadas]
-    S --> C[Consultar brand_channels]
-    C --> V{Canal activo de la misma marca?}
-    V -- no --> X[Rechazar]
-    V -- sí --> Z[Crear draft/schedule/now en Postiz]
+    U[Usuario selecciona idea guardada] --> IV[Validar idea por brand_id]
+    IV --> C[Validar canales seleccionados de brand_channels]
+    C --> P[Generar una variante por provider/plataforma]
+    P --> S[Guardar cada copy con platform y embedding]
+    S --> V{Canal activo y settings __type?}
+    V -- no --> X[Conservar copy; informar canal omitido]
+    V -- sí --> Z[Crear draft/schedule/now con copy de ese canal]
 ```
 
+La generación de ideas no invoca este flujo. La ruta manual de publicación
+recupera el dossier guardado y despacha solo al agente publicador después de que
+el usuario elige idea, canales y modo.
+
 `brand_channels.external_id` identifica el canal externo de Postiz. La tool no
-debe aceptar un `integration_id` que no pertenezca a la marca de la tarea.
+debe aceptar un `integration_id` que no pertenezca a la marca de la tarea. La
+columna nullable `publicaciones_generadas.platform` identifica la plataforma de
+cada variante; los registros históricos pueden mantenerla en `NULL`. La
+migración `003_publication_platform.sql` añade la columna y su índice por marca,
+plataforma y fecha.
 
 ## 8. Procedencia documental
 

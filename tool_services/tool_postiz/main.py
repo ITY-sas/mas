@@ -9,6 +9,7 @@ GET /public/v1/integrations y POST /public/v1/posts.
 from __future__ import annotations
 
 import logging
+import json
 import os
 import sys
 import time
@@ -43,10 +44,16 @@ class CreatePostBody(BaseModel):
     brand_id: int
     content: str
     integration_ids: list[str] = Field(default_factory=list)
+    contents: dict[str, str] = Field(default_factory=dict)
     mode: str = "draft"
     publish_at: str | None = None
     settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
     tags: list[dict[str, str]] = Field(default_factory=list)
+
+
+class LinkChannelBody(BaseModel):
+    brand_id: int
+    external_id: str
 
 
 def _headers() -> dict[str, str]:
@@ -71,6 +78,103 @@ def _request(method: str, path: str, **kwargs: Any) -> Any:
 def op_integrations(group: str | None = None) -> Any:
     params = {"group": group} if group else None
     return _request("GET", "/integrations", params=params)
+
+
+def _integration_items(payload: Any) -> list[dict]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("integrations", "data", "items"):
+            nested = payload.get(key)
+            if isinstance(nested, (dict, list)):
+                items = _integration_items(nested)
+                if items:
+                    return items
+    return []
+
+
+def op_available_integrations() -> list[dict]:
+    """Return a sanitized Postiz integration catalog suitable for channel linking."""
+    items = _integration_items(op_integrations())
+    available = []
+    for item in items:
+        external_id = item.get("id") or item.get("integrationId")
+        provider = item.get("identifier") or item.get("provider") or item.get("platform")
+        if not external_id or not provider:
+            continue
+        available.append({
+            "external_id": str(external_id),
+            "provider": str(provider).strip().lower(),
+            "display_name": str(item.get("name") or provider),
+        })
+    return available
+
+
+def op_link_channel(body: LinkChannelBody) -> dict:
+    """Associate an existing Postiz integration with one brand."""
+    from shared_tools.db import execute_db, query_db
+
+    integration = next(
+        (item for item in op_available_integrations() if item["external_id"] == body.external_id),
+        None,
+    )
+    if integration is None:
+        raise ValueError("integration_id no existe en la cuenta Postiz configurada")
+
+    existing = query_db(
+        "SELECT brand_id FROM brand_channels WHERE provider = %s AND external_id = %s",
+        (integration["provider"], body.external_id),
+    )
+    if existing and existing[0]["brand_id"] != body.brand_id:
+        raise ValueError("el canal ya está vinculado a otra marca")
+
+    settings = {"__type": integration["provider"]}
+    channel_id = execute_db(
+        "INSERT INTO brand_channels (brand_id, provider, external_id, display_name, status, settings) "
+        "VALUES (%s, %s, %s, %s, 'active', %s::jsonb) "
+        "ON CONFLICT (provider, external_id) DO UPDATE SET "
+        "display_name = EXCLUDED.display_name, status = 'active', settings = EXCLUDED.settings "
+        "WHERE brand_channels.brand_id = EXCLUDED.brand_id RETURNING id",
+        (body.brand_id, integration["provider"], body.external_id,
+         integration["display_name"], json.dumps(settings)),
+    )
+    if channel_id is None:
+        raise ValueError("no se pudo vincular el canal a la marca seleccionada")
+    return {
+        "id": channel_id,
+        **integration,
+        "brand_id": body.brand_id,
+        "configured": True,
+    }
+
+
+def op_channels(brand_id: int, integration_ids: list[str] | None = None) -> dict:
+    """Return active Postiz channels owned by a brand, without exposing secrets."""
+    from shared_tools.db import query_db
+
+    channels = query_db(
+        "SELECT external_id, provider, display_name, settings FROM brand_channels "
+        "WHERE brand_id = %s AND status = 'active' ORDER BY provider, display_name",
+        (brand_id,),
+    )
+    if integration_ids:
+        channel_map = {channel["external_id"]: channel for channel in channels}
+        unknown = [channel_id for channel_id in integration_ids if channel_id not in channel_map]
+        if unknown:
+            raise ValueError(f"canales no activos o no vinculados a la marca: {unknown}")
+        channels = [channel_map[channel_id] for channel_id in integration_ids]
+    return {
+        "brand_id": brand_id,
+        "channels": [
+            {
+                "external_id": channel["external_id"],
+                "provider": channel["provider"],
+                "display_name": channel.get("display_name", ""),
+                "configured": bool((channel.get("settings") or {}).get("__type")),
+            }
+            for channel in channels
+        ],
+    }
 
 
 def op_create_post(body: CreatePostBody) -> Any:
@@ -108,7 +212,10 @@ def op_create_post(body: CreatePostBody) -> Any:
         posts.append(
             {
                 "integration": {"id": integration_id},
-                "value": [{"content": body.content, "image": []}],
+                "value": [{
+                    "content": body.contents.get(integration_id, body.content),
+                    "image": [],
+                }],
                 "settings": platform_settings,
             }
         )
@@ -132,6 +239,36 @@ OPERATIONS = {
         "params": [{"name": "group", "in": "query", "type": "string", "required": False}],
         "returns": "lista de integraciones Postiz",
         "handler": op_integrations,
+    },
+    "channels": {
+        "id": "channels",
+        "method": "GET",
+        "path": "/channels",
+        "description": "Lista los canales Postiz activos y asociados a una marca.",
+        "params": [
+            {"name": "brand_id", "in": "query", "type": "integer", "required": True},
+            {"name": "integration_ids", "in": "query", "type": "string", "required": False},
+        ],
+        "returns": "objeto {brand_id, channels:[external_id, provider, display_name]}",
+        "handler": op_channels,
+    },
+    "available_integrations": {
+        "id": "available_integrations",
+        "method": "GET",
+        "path": "/available-integrations",
+        "description": "Lista campos no sensibles de integraciones disponibles en Postiz.",
+        "params": [],
+        "returns": "lista de {external_id, provider, display_name}",
+        "handler": op_available_integrations,
+    },
+    "link_channel": {
+        "id": "link_channel",
+        "method": "POST",
+        "path": "/channels",
+        "description": "Vincula a una marca una integración Postiz existente.",
+        "params": [],
+        "returns": "objeto de canal de marca",
+        "handler": op_link_channel,
     },
     "create_post": {
         "id": "create_post",
@@ -182,6 +319,42 @@ def integrations(group: str | None = None):
             status="error", error=str(exc)))
 
 
+@app.get("/channels")
+def channels(brand_id: int, integration_ids: list[str] | None = None):
+    started = time.perf_counter()
+    try:
+        data = op_channels(brand_id, integration_ids)
+        return make_envelope(TOOL + ".channels", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:
+        return JSONResponse(status_code=400, content=make_envelope(
+            TOOL + ".channels", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/available-integrations")
+def available_integrations():
+    started = time.perf_counter()
+    try:
+        data = op_available_integrations()
+        return make_envelope(TOOL + ".available_integrations", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:
+        return JSONResponse(status_code=502, content=make_envelope(
+            TOOL + ".available_integrations", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.post("/channels")
+def link_channel(body: LinkChannelBody):
+    started = time.perf_counter()
+    try:
+        data = op_link_channel(body)
+        return make_envelope(TOOL + ".link_channel", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:
+        return JSONResponse(status_code=400, content=make_envelope(
+            TOOL + ".link_channel", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
 @app.post("/posts")
 def create_post(body: CreatePostBody):
     started = time.perf_counter()
@@ -197,6 +370,13 @@ def create_post(body: CreatePostBody):
 def _rpc_handler(event) -> dict:
     if event.operation == "integrations":
         return op_integrations((event.payload or {}).get("group"))
+    if event.operation == "channels":
+        payload = event.payload or {}
+        return op_channels(payload["brand_id"], payload.get("integration_ids"))
+    if event.operation == "available_integrations":
+        return op_available_integrations()
+    if event.operation == "link_channel":
+        return op_link_channel(LinkChannelBody(**(event.payload or {})))
     if event.operation == "create_post":
         return op_create_post(CreatePostBody(**(event.payload or {})))
     raise ValueError(f"operación desconocida: {event.operation}")
