@@ -122,6 +122,32 @@ def test_postiz_create_post_uses_content_for_each_integration(monkeypatch):
     assert posts[1]["value"][0]["content"] == "LinkedIn post"
 
 
+def test_postiz_draft_includes_required_iso_date(monkeypatch):
+    from datetime import datetime
+    from shared_tools import db
+
+    monkeypatch.setattr(db, "query_db", lambda sql, params: [
+        {"external_id": "li-1", "provider": "linkedin", "settings": {"__type": "linkedin"}},
+    ])
+    captured = {}
+
+    def fake_request(method, path, **kwargs):
+        captured.update(method=method, path=path, **kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(postiz_service, "_request", fake_request)
+    postiz_service.op_create_post(postiz_service.CreatePostBody(
+        brand_id=8,
+        content="LinkedIn draft",
+        integration_ids=["li-1"],
+        mode="draft",
+    ))
+
+    date = captured["json"]["date"]
+    assert isinstance(date, str) and date.endswith("Z")
+    assert datetime.fromisoformat(date.replace("Z", "+00:00")).tzinfo is not None
+
+
 def test_rag_persists_platform_with_publication(monkeypatch):
     from shared_tools import db, embeddings
     from tool_services.tool_rag.main import op_save_publicacion

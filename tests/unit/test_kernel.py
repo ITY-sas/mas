@@ -285,6 +285,30 @@ class TestToolDiscovery:
         with pytest.raises(EnvelopeError):
             registry.call("client", "profile", params={"client_id": 1})
 
+    def test_call_preserves_error_envelope_on_http_502(self, monkeypatch, registry):
+        import common.tool_client as tc
+        from common.contracts import EnvelopeError, make_envelope
+
+        monkeypatch.setattr(
+            tc.requests, "post",
+            lambda *a, **k: FakeResp(make_envelope(
+                "postiz.create_post", None, 1.0, status="error",
+                error="Postiz HTTP 400: date must be an ISO string",
+            ), status_code=502),
+        )
+        registry._manifests = {"postiz": {
+            **SAMPLE_MANIFEST,
+            "name": "postiz",
+            "service": "tool-postiz",
+            "operations": [{
+                "id": "create_post", "method": "POST", "path": "/posts",
+                "description": "Creates a post", "params": [], "returns": "result",
+            }],
+        }}
+
+        with pytest.raises(EnvelopeError, match="date must be an ISO string"):
+            registry.call("postiz", "create_post", json_body={"type": "draft"})
+
     def test_as_langchain_tools_from_manifest(self, registry):
         """Definición de manifiesto → objeto BaseTool invocable (puente formal)."""
         tools = registry.as_langchain_tools()

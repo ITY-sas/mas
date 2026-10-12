@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -222,7 +223,7 @@ def op_create_post(body: CreatePostBody) -> Any:
 
     payload = {
         "type": body.mode,
-        "date": body.publish_at,
+        "date": body.publish_at or datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "shortLink": False,
         "tags": body.tags,
         "posts": posts,
