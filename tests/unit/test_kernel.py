@@ -189,7 +189,7 @@ class TestToolDiscovery:
         urls = load_tool_urls()
         assert urls == DEFAULT_TOOL_URLS
         assert set(DEFAULT_TOOL_URLS) == {
-            "client", "trends", "competitors", "rag", "news", "trending"}
+            "client", "trends", "competitors", "rag", "news", "trending", "postiz"}
 
     def test_env_tool_urls_override(self, monkeypatch):
         from common.tool_client import load_tool_urls
@@ -339,6 +339,27 @@ class TestTaskStore:
 
         running = [t["task_id"] for t in store.list_by_status("running")]
         assert running == ["t-run"]
+
+    def test_list_by_generation_batch_excludes_parent_and_sorts(self, store):
+        store.create("batch-1", brief={
+            "generation_batch_id": "batch-1",
+            "generation_batch_root": True,
+        }, client_id=1)
+        store.create("idea-2", brief={
+            "generation_batch_id": "batch-1",
+            "generation_index": 2,
+        }, client_id=1)
+        store.create("idea-0", brief={
+            "generation_batch_id": "batch-1",
+            "generation_index": 0,
+        }, client_id=1)
+        store.create("other", brief={
+            "generation_batch_id": "another-batch",
+            "generation_index": 1,
+        }, client_id=1)
+
+        tasks = store.list_by_generation_batch("batch-1")
+        assert [task["task_id"] for task in tasks] == ["idea-0", "idea-2"]
 
 
 # ── U-K-13…15: cliente del LLM Gateway ────────────────────────

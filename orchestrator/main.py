@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 import time
+import json
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -50,7 +51,7 @@ registry = ToolRegistry()
 class Brief(BaseModel):
     client_id: int
     brand_id: int | None = None
-    content: str
+    content: str = ""
     wait: bool = Field(True, description="Esperar a que el pipeline termine")
     timeout: float = Field(300.0, description="Segundos máximos de espera (si wait=true)")
     publish_mode: Literal["draft", "schedule", "now"] = Field(
@@ -73,6 +74,24 @@ class DemoRequest(BaseModel):
     content_format: Literal["auto", "reel", "post"] = "reel"
     wait: bool = True
     timeout: float = 300.0
+
+
+class IdeaBatchRequest(BaseModel):
+    client_id: int
+    brand_id: int | None = None
+    count: int = Field(5, ge=1, le=5)
+    content: str = ""
+    briefs: list[str] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list)
+    content_format: Literal["auto", "reel", "post"] = "auto"
+
+
+class PublishIdeaRequest(BaseModel):
+    brand_id: int
+    publish_mode: Literal["draft", "schedule", "now"] = "draft"
+    publish_at: str | None = None
+    integration_ids: list[str] = Field(min_length=1)
+    settings: dict[str, dict] = Field(default_factory=dict)
 
 
 def _get_runtime() -> OrchestratorRuntime:
@@ -122,7 +141,7 @@ def metrics():
         "state_layer": ["redis (checkpoints + task store)", "postgresql (chat history)"],
         "agents": ["ideacion", "publicacion"],
         "event_bus": ["agent.task.triggered", "agent.task.completed", "task.completed"],
-        "ingress": ["POST /process", "ideation_queue"],
+        "ingress": ["POST /ideas/generate", "POST /ideas/{id}/publish", "POST /process"],
     }
 
 
@@ -149,9 +168,9 @@ def graph_info():
         "nodes": ["start", "dispatch_ideacion", "dispatch_publicacion"],
         "edges": [
             "START → start",
-            "start → [dispatch_ideacion | dispatch_publicacion | END]",
-            "dispatch_ideacion → [dispatch_ideacion | dispatch_publicacion | END]",
-            "dispatch_publicacion → [dispatch_ideacion | dispatch_publicacion | END]",
+            "start → dispatch_ideacion (generate_idea) | dispatch_publicacion (publish_idea)",
+            "dispatch_ideacion → END (no automatic publication)",
+            "dispatch_publicacion → END",
         ],
         "suspension": "interrupt() en cada dispatch → agent.task.triggered / resume con agent.task.completed",
         "checkpointer": "RedisSaver (thread_id = task_id)",
@@ -164,7 +183,7 @@ def graph_info():
 
 @app.post("/process")
 def process_brief(brief: Brief):
-    """Lanza el pipeline multi-agente.
+    """Genera y persiste una idea; publicar requiere /ideas/{id}/publish.
 
     - ``wait=true`` (por defecto): bloquea hasta completar/timeout.
     - ``wait=false``: devuelve ``task_id`` al instante (modo asíncrono).
@@ -174,16 +193,11 @@ def process_brief(brief: Brief):
     try:
         task_id = rt.start_task(
             brief={
+                "workflow": "generate_idea",
                 "client_id": brief.client_id,
                 "brand_id": brief.brand_id or brief.client_id,
                 "content": brief.content,
                 "content_format": brief.content_format,
-                "publication": {
-                    "mode": brief.publish_mode,
-                    "publish_at": brief.publish_at,
-                    "integration_ids": brief.postiz_integration_ids,
-                    "settings": brief.postiz_settings,
-                },
             },
             client_id=brief.client_id,
         )
@@ -213,9 +227,129 @@ def process_brief(brief: Brief):
         "preproduction": result.get("preproduction", {}),
         "publication": result.get("publication", ""),
         "publication_id": result.get("publication_id", 0),
+        "publication_variants": result.get("publication_variants", []),
         "postiz": result.get("postiz", {}),
         "agents": task.get("agents", {}),
     }
+
+
+@app.post("/ideas/generate")
+def generate_ideas(request: IdeaBatchRequest):
+    """Dispatch a bounded, asynchronous batch without invoking publication."""
+    if len(request.briefs) > request.count:
+        raise HTTPException(status_code=422, detail="briefs no puede superar count")
+    rt = _get_runtime()
+    try:
+        return rt.start_idea_batch(
+            client_id=request.client_id,
+            brand_id=request.brand_id or request.client_id,
+            count=request.count,
+            content=request.content,
+            briefs=request.briefs,
+            topics=request.topics,
+            content_format=request.content_format,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("no se pudo iniciar el lote de ideas")
+        raise HTTPException(status_code=503, detail=f"no se pudo iniciar el lote: {exc}") from exc
+
+
+@app.get("/ideas/batches/{batch_id}")
+def get_idea_batch(batch_id: str, brand_id: int):
+    """Return progress and completed child results for a brand-owned batch."""
+    rt = _get_runtime()
+    batch = rt.store.get(batch_id)
+    if not batch or not (batch.get("brief") or {}).get("generation_batch_root"):
+        raise HTTPException(status_code=404, detail="lote no encontrado")
+    if (batch.get("brief") or {}).get("brand_id") != brand_id:
+        raise HTTPException(status_code=404, detail="lote no encontrado")
+
+    children = rt.store.list_by_generation_batch(batch_id)
+    results = []
+    for task in children:
+        result = task.get("result") or {}
+        dossier = result.get("preproduction") or {}
+        results.append({
+            "task_id": task.get("task_id"),
+            "status": task.get("status"),
+            "error": task.get("error"),
+            "generation_index": (task.get("brief") or {}).get("generation_index"),
+            "idea_id": result.get("idea_id"),
+            "title": dossier.get("title"),
+            "dossier": dossier,
+        })
+    summary = batch.get("result") or {}
+    return {
+        "generation_batch_id": batch_id,
+        "brand_id": brand_id,
+        "status": summary.get("status", batch.get("status", "running")),
+        "total": summary.get("total", (batch.get("brief") or {}).get("generation_count", 0)),
+        "completed": summary.get("completed", 0),
+        "failed": summary.get("failed", 0),
+        "ideas": results,
+    }
+
+
+@app.post("/ideas/{idea_id}/publish")
+def publish_saved_idea(idea_id: int, request: PublishIdeaRequest):
+    """Dispatch only the publisher, after loading a brand-scoped saved dossier."""
+    if request.publish_mode == "schedule" and not request.publish_at:
+        raise HTTPException(status_code=422, detail="publish_at es obligatorio para schedule")
+    try:
+        idea_record = registry.call(
+            "rag", "get_idea", params={"brand_id": request.brand_id, "idea_id": idea_id}
+        )
+        if not idea_record:
+            raise HTTPException(status_code=404, detail="idea no encontrada para la marca")
+        channels = registry.call(
+            "postiz",
+            "channels",
+            params={"brand_id": request.brand_id, "integration_ids": request.integration_ids},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        if "rag.get_idea" in str(exc) and "404" in str(exc):
+            raise HTTPException(status_code=404, detail="idea no encontrada para la marca") from exc
+        logger.exception("no se pudo validar idea/canales para publicar")
+        raise HTTPException(status_code=502, detail=f"no se pudo validar la publicación: {exc}") from exc
+    if len(channels.get("channels", [])) != len(set(request.integration_ids)):
+        raise HTTPException(status_code=422, detail="los canales deben estar vinculados a la marca")
+
+    raw_content = idea_record.get("content") or ""
+    dossier = idea_record.get("dossier") or {}
+    if not dossier and raw_content:
+        try:
+            dossier = json.loads(raw_content)
+        except (TypeError, ValueError):
+            dossier = {}
+    if not dossier:
+        raise HTTPException(status_code=422, detail="la idea guardada no contiene un dossier válido")
+
+    client_id = int(idea_record.get("client_id") or request.brand_id)
+    publication = {
+        "mode": request.publish_mode,
+        "publish_at": request.publish_at,
+        "integration_ids": request.integration_ids,
+        "settings": request.settings,
+    }
+    rt = _get_runtime()
+    try:
+        task_id = rt.start_task(
+            {
+                "workflow": "publish_idea",
+                "brand_id": request.brand_id,
+                "idea_id": idea_id,
+                "idea": raw_content,
+                "preproduction": dossier,
+                "publication": publication,
+            },
+            client_id=client_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("no se pudo despachar el publicador")
+        raise HTTPException(status_code=503, detail=f"no se pudo iniciar la publicación: {exc}") from exc
+    return {"task_id": task_id, "idea_id": idea_id, "status": STATUS_RUNNING}
 
 
 @app.post("/demo")

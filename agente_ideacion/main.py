@@ -118,7 +118,7 @@ def handle_triggered(event: Event) -> None:
 
     if GRAPH is None:
         status, error = "failed", "grafo no inicializado"
-    elif not brief.get("content") or client_id is None:
+    elif client_id is None:
         status, error = "failed", f"payload inválido: {payload}"
     else:
         try:

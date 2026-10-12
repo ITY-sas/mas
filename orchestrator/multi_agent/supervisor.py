@@ -29,19 +29,17 @@ logger = logging.getLogger("supervisor")
 
 # ── Función de enrutamiento ────────────────────────────────────
 def decide_next(state: SupervisorState) -> str:
-    """Decide qué agente ejecutar a continuación basándose en el estado.
-
-    - Sin idea todavía → microservicio de ideación.
-    - Con idea pero sin publicación → microservicio de publicación.
-    - Ambos → END (pipeline completo).
-    """
+    """Route generation and explicitly requested publication as separate flows."""
+    workflow = (state.get("brief") or {}).get("workflow", "generate_idea")
+    if workflow == "publish_idea":
+        if not state.get("publication"):
+            logger.info("[supervisor] → publicación solicitada por usuario")
+            return "dispatch_publicacion"
+        return END
     if not state.get("idea"):
         logger.info("[supervisor] → despachar AGENTE DE IDEACIÓN")
         return "dispatch_ideacion"
-    if not state.get("publication"):
-        logger.info("[supervisor] → despachar AGENTE DE PUBLICACIÓN")
-        return "dispatch_publicacion"
-    logger.info("[supervisor] → pipeline completo. END")
+    logger.info("[supervisor] → dossier persistido; publicación manual pendiente")
     return END
 
 
@@ -120,6 +118,7 @@ def dispatch_publicacion(state: SupervisorState) -> dict:
     return {
         "publication": publication,
         "publication_id": publication_id,
+        "publication_variants": data.get("publication_variants", []),
         "postiz": data.get("postiz", {}),
         "log": [f"publicacion: completado (publication_id={publication_id})"],
     }

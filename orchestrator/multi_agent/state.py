@@ -37,6 +37,7 @@ class SupervisorState(TypedDict):
     # ── Resultado del agente de publicación ──
     publication: str
     publication_id: int
+    publication_variants: list[dict]
 
     # ── Registro de auditoría (append-only vía operator.add) ──
     log: Annotated[list[str], operator.add]
@@ -47,11 +48,12 @@ def initial_state(brief: dict, client_id: int) -> SupervisorState:
     return {
         "brief": brief,
         "client_id": client_id,
-        "brand_id": client_id,
-        "idea": "",
-        "idea_id": 0,
-        "preproduction": {},
+        "brand_id": brief.get("brand_id", client_id),
+        "idea": brief.get("idea", ""),
+        "idea_id": brief.get("idea_id", 0),
+        "preproduction": brief.get("preproduction", {}),
         "publication": "",
         "publication_id": 0,
+        "publication_variants": [],
         "log": [],
     }

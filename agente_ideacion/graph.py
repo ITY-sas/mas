@@ -225,10 +225,33 @@ class IdeacionState(TypedDict):
 def load_context(state: IdeacionState) -> dict:
     """Perfil + tendencias + competencia + ideas similares vía REST."""
     client_id = state["client_id"]
-    content = state["brief"]["content"]
+    brief = dict(state.get("brief") or {})
     logger.info("[load_context] descubriendo/invocando tool services …")
 
     profile = REGISTRY.call("client", "profile", params={"client_id": client_id})
+    profile_data = profile.get("profile") or {}
+    content = str(brief.get("content") or "").strip()
+    topics = brief.get("topics") or []
+    if not content:
+        profile_fields = [
+            ("Marca", profile_data.get("nombre")),
+            ("Perfil de marca", profile_data.get("perfil_marca")),
+            ("Producto o servicio", profile_data.get("producto_servicio")),
+            ("Audiencia", profile_data.get("audiencia_objetivo")),
+            ("Objetivo", profile_data.get("objetivo_marketing")),
+            ("Propuesta de valor", profile_data.get("propuesta_valor")),
+            ("Pilares de contenido", profile_data.get("pilares_contenido")),
+            ("Tono y restricciones", profile_data.get("restricciones_tono")),
+            ("Histórico", profile_data.get("historico")),
+        ]
+        profile_context = [f"{label}: {value}" for label, value in profile_fields if value]
+        if not profile_context and not topics:
+            raise ValueError("brief vacío y perfil de marca sin contexto suficiente")
+        content = "Generar una idea original de campaña para la marca. " + ". ".join(profile_context)
+    if topics:
+        content += ". Temas y pilares solicitados: " + ", ".join(map(str, topics))
+    brief["content"] = content
+
     trends = REGISTRY.call("trends", "search", params={"query": content, "limit": 5})
     competitors = REGISTRY.call(
         "competitors", "search", params={"query": content, "limit": 5}
@@ -245,6 +268,7 @@ def load_context(state: IdeacionState) -> dict:
     }
     logger.info("[load_context] contexto: %s", stats)
     return {
+        "brief": brief,
         "client_profile": profile.get("text", ""),
         "trends": trends.get("text", ""),
         "competitors": competitors.get("text", ""),
@@ -272,6 +296,7 @@ def generate_idea(state: IdeacionState) -> dict:
         "competitors": state["competitors"],
         "similar_ideas": state["similar_ideas"],
         "requested_format": state["brief"].get("content_format", "auto"),
+        "generation_angle": state["brief"].get("generation_angle"),
     }
     requested_format = state["brief"].get("content_format", "auto")
     dossier_schema = dossier_schema_for(requested_format)
@@ -323,7 +348,13 @@ def save_idea(state: IdeacionState) -> dict:
     logger.info("[save_idea] POST tool-rag /ideas …")
     data = REGISTRY.call(
         "rag", "save_idea",
-        json_body={"brand_id": state["brand_id"], "client_id": state["client_id"], "content": state["idea"]},
+        json_body={
+            "brand_id": state["brand_id"],
+            "client_id": state["client_id"],
+            "content": state["idea"],
+            "generation_batch_id": state["brief"].get("generation_batch_id"),
+            "generation_index": state["brief"].get("generation_index"),
+        },
     )
     idea_id = data.get("id", 0)
     logger.info("[save_idea] idea_id=%s", idea_id)

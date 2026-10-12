@@ -98,6 +98,104 @@ class OrchestratorRuntime:
         self._advance(task_id, outcome)
         return task_id
 
+    def start_idea_batch(
+        self,
+        *,
+        client_id: int,
+        brand_id: int,
+        count: int,
+        content: str = "",
+        briefs: Optional[list[str]] = None,
+        topics: Optional[list[str]] = None,
+        content_format: str = "auto",
+    ) -> dict:
+        """Create a durable batch record and dispatch up to five idea tasks."""
+        if not 1 <= count <= 5:
+            raise ValueError("count debe estar entre 1 y 5")
+        if briefs and len(briefs) > count:
+            raise ValueError("no puede haber más briefs que ideas solicitadas")
+
+        batch_id = str(uuid.uuid4())
+        parent_brief = {
+            "workflow": "idea_batch",
+            "generation_batch_root": True,
+            "generation_batch_id": batch_id,
+            "generation_count": count,
+            "brand_id": brand_id,
+        }
+        self.store.create(batch_id, brief=parent_brief, client_id=client_id)
+        child_ids: list[str] = []
+        angles = [
+            "storytelling from the audience's point of view",
+            "practical education and a useful takeaway",
+            "a product demonstration grounded in a real use case",
+            "community participation or a recognizable challenge",
+            "a surprising contrast or myth-versus-fact narrative",
+        ]
+
+        for index in range(count):
+            item_content = (briefs[index] if briefs and index < len(briefs) else content).strip()
+            child_brief = {
+                "workflow": "generate_idea",
+                "client_id": client_id,
+                "brand_id": brand_id,
+                "content": item_content,
+                "content_format": content_format,
+                "topics": topics or [],
+                "generation_batch_id": batch_id,
+                "generation_index": index,
+                "generation_count": count,
+                "generation_angle": angles[index],
+            }
+            child_id = str(uuid.uuid4())
+            child_ids.append(child_id)
+            try:
+                self.start_task(child_brief, client_id, task_id=child_id)
+            except Exception as exc:  # noqa: BLE001
+                if self.store.get(child_id) is None:
+                    self.store.create(child_id, brief=child_brief, client_id=client_id)
+                self.store.set_status(child_id, STATUS_FAILED, error=str(exc))
+
+        self.store.update(batch_id, child_task_ids=child_ids)
+        self._refresh_generation_batch(batch_id)
+        return {
+            "generation_batch_id": batch_id,
+            "task_ids": child_ids,
+            "count": count,
+            "status": (self.store.get(batch_id) or {}).get("result", {}).get("status", STATUS_RUNNING),
+        }
+
+    def _refresh_generation_batch(self, batch_id: str) -> None:
+        parent = self.store.get(batch_id)
+        if not parent or not (parent.get("brief") or {}).get("generation_batch_root"):
+            return
+        children = self.store.list_by_generation_batch(batch_id)
+        completed = sum(task.get("status") == STATUS_COMPLETED for task in children)
+        failed = sum(task.get("status") == STATUS_FAILED for task in children)
+        total = int((parent.get("brief") or {}).get("generation_count", len(children)))
+        all_terminal = len(children) == total and completed + failed == total
+        batch_status = (
+            "failed" if all_terminal and completed == 0
+            else "partial" if all_terminal and failed
+            else "completed" if all_terminal
+            else "running"
+        )
+        self.store.update(
+            batch_id,
+            status=STATUS_FAILED if batch_status == "failed" else (
+                STATUS_COMPLETED if all_terminal else STATUS_RUNNING
+            ),
+            error="todas las ideas del lote fallaron" if batch_status == "failed" else None,
+            result={
+                "status": batch_status,
+                "total": total,
+                "completed": completed,
+                "failed": failed,
+                "task_ids": [task.get("task_id") for task in children],
+            },
+        )
+        self.store.publish_update(batch_id, batch_status)
+
     # ── avance del ciclo (interrupción → evento → reanudación) ─
     def _advance(self, task_id: str, outcome: dict) -> None:
         interrupts = outcome.get("__interrupt__") or ()
@@ -154,6 +252,9 @@ class OrchestratorRuntime:
                 self.store.set_status(task_id, STATUS_FAILED, error=event.error)
                 self._save_chat(task_id, task.get("client_id"), "assistant",
                                 f"[ERROR en agente {agent}] {event.error}")
+                batch_id = (task.get("brief") or {}).get("generation_batch_id")
+                if batch_id:
+                    self._refresh_generation_batch(batch_id)
                 return
 
             # Guarda anti-duplicados: sólo avanza el agente que se está
@@ -177,6 +278,9 @@ class OrchestratorRuntime:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("tarea %s: fallo reanudando el grafo", task_id)
                 self.store.set_status(task_id, STATUS_FAILED, error=str(exc))
+                batch_id = (task.get("brief") or {}).get("generation_batch_id")
+                if batch_id:
+                    self._refresh_generation_batch(batch_id)
                 return
             self._advance(task_id, outcome)
 
@@ -193,6 +297,7 @@ class OrchestratorRuntime:
                 "preproduction": outcome.get("preproduction", {}),
                 "publication": outcome.get("publication", ""),
                 "publication_id": outcome.get("publication_id", 0),
+                "publication_variants": outcome.get("publication_variants", []),
                 "postiz": outcome.get("postiz", {}),
             },
         )
@@ -224,6 +329,9 @@ class OrchestratorRuntime:
         except Exception as exc:  # noqa: BLE001
             logger.warning("no se pudo publicar task.completed: %s", exc)
         self.store.publish_update(task_id, STATUS_COMPLETED)
+        batch_id = (task.get("brief") or {}).get("generation_batch_id")
+        if batch_id and not (task.get("brief") or {}).get("generation_batch_root"):
+            self._refresh_generation_batch(batch_id)
 
     # ── historial de chat (PostgreSQL) ─────────────────────────
     def _resolve_history_fn(self):
