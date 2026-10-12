@@ -211,10 +211,17 @@ services:
     ports:
       - "8016:8016"
     environment:
-      POSTIZ_API_URL: ${POSTIZ_API_URL:-https://api.postiz.com/public/v1}
+      POSTIZ_API_URL: ${POSTIZ_API_URL:-http://host.docker.internal:4007/api/public/v1}
       POSTIZ_API_KEY: ${POSTIZ_API_KEY:-}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ideation_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
       RABBITMQ_HOST: rabbitmq
     depends_on:
+      postgres:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     restart: on-failure
