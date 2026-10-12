@@ -20,14 +20,11 @@ patrones de agentes sobre infraestructura de servicios:
 
 ## 1. ¿Qué hace el sistema?
 
-Dado un **brief** de marketing (texto libre + `brand_id`; `client_id` queda como compatibilidad legacy), el sistema devuelve:
-
-1. Una **idea de campaña** original (título, descripción, rationale)
-2. Una **publicación lista para redes** (hook, hashtags, CTA, ≤280 caracteres)
-
-Ambas quedan guardadas en PostgreSQL **con embedding vectorial y scope de marca**, de modo que
-las siguientes consultas RAG sólo usen la memoria de esa marca («¿qué ideas ya hice?»), y
-el **historial de la conversación** queda durable en `chat_history`.
+Studio genera de una a cinco ideas por lote, con brief opcional o briefs
+individuales. Cada dossier se guarda en PostgreSQL dentro de su marca y puede
+revisarse en una biblioteca. La generación no publica: el usuario selecciona
+una idea, canales Postiz y modo; solo entonces se despacha el agente publicador.
+El progreso operativo vive en Redis y el historial durable en `chat_history`.
 
 ---
 
@@ -49,7 +46,8 @@ el **historial de la conversación** queda durable en `chat_history`.
 
 ```
                         ┌────────────────────────────────────┐
- POST /process          │ ORCHESTRATOR :8002 (stateless)     │
+ POST /ideas/generate   │ ORCHESTRATOR :8002 (stateless)     │
+ POST /ideas/{id}/publish│ generación / publicación manual   │
  ideation_queue ───────►│  supervisor LangGraph              │
                         │  interrupt() ⇄ Command(resume=…)   │◄── estado en
                         └───────┬────────────────────────────┘    Redis + PG
@@ -80,6 +78,7 @@ el **historial de la conversación** queda durable en `chat_history`.
 Detalle completo (secuencia, happy path, caso de uso, decisiones):
 **[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md)** ·
 Stack: **[`docs/TECNOLOGIAS.md`](docs/TECNOLOGIAS.md)** ·
+Interfaz & Trazabilidad: **[`frontend/README.md`](frontend/README.md)** ·
 Plan de pruebas: **[`tests/PLAN_DE_PRUEBAS.md`](tests/PLAN_DE_PRUEBAS.md)** ·
 Demo multi-tenant: **[`docs/DEMO_MULTI_TENANT.md`](docs/DEMO_MULTI_TENANT.md)** ·
 Modelo de datos: **[`docs/DATOS.md`](docs/DATOS.md)**
@@ -88,20 +87,17 @@ Modelo de datos: **[`docs/DATOS.md`](docs/DATOS.md)**
 
 ## 4. Cómo funciona (explicación corta)
 
-1. **`POST /process`** crea la tarea en Redis (`TaskStore`), guarda el turno
-   `user` en `chat_history` y ejecuta el supervisor hasta el primer
-   `interrupt()`: el grafo queda **checkpointeado en Redis** y publica
-   `agent.task.triggered` en `agent.ideacion.tasks`.
-2. El **agente de ideación** consume su cola (`auto_ack=False`), descubre los
-   manifiestos de los tools, invoca por REST el perfil, las tendencias, la
-   competencia y las ideas similares, añade noticias RSS, genera la idea vía
-   **LLM Gateway**, la persiste con `tool-rag` y publica
-   `agent.task.completed` en `agent.results`.
-3. El orquestador recibe el resultado (filtrando duplicados o agentes
-   inesperados), **reanuda** el grafo con `Command(resume=…)` desde el
-   checkpoint, decide `dispatch_publicacion` y repite el ciclo.
-4. Al llegar a `END`: guarda el turno `assistant` en el historial, marca la
-   tarea `completed` en Redis y publica `task.completed`.
+1. **`POST /ideas/generate`** crea un lote en Redis y hasta cinco tareas hijas;
+  cada una dispara ideación por RabbitMQ. Un brief vacío se deriva del perfil,
+  los pilares y los temas de la marca.
+2. El agente genera y valida un dossier completo, lo guarda en
+  `ideas_generadas` con `brand_id`, lote e índice, y termina. El supervisor no
+  infiere que una idea deba publicarse.
+3. Studio consulta `GET /ideas/batches/{id}` para el avance y usa
+  `GET /ideas` / `GET /ideas/{id}` para buscar y revisar dossiers.
+4. Tras una selección explícita, **`POST /ideas/{id}/publish`** valida la marca
+  y canales Postiz, carga el dossier persistido y despacha solo al publicador.
+  `draft`, `schedule` y `now` son elecciones de esa acción manual.
 
 Cada paso es **recuperable**: si un contenedor muere, el estado está en Redis
 y los mensajes en RabbitMQ (semántica *at-least-once* + idempotencia por
@@ -141,30 +137,46 @@ curl http://localhost:8010/.well-known/tool-manifest   # contrato de un tool
 
 ---
 
-## 6. Las 3 formas de usarlo
+## 6. Formas de usarlo
 
-### A) HTTP síncrono (espera el resultado)
+### A) Interfaz Web Interactiva & Trazabilidad (Frontend Studio)
+
+Inicia el servidor web y abre la interfaz en tu navegador:
 
 ```bash
-curl -X POST http://localhost:8002/process \
+# Windows
+.\frontend\run.ps1
+
+# Linux / macOS
+./frontend/run.sh
+```
+
+Abre en tu navegador: **`http://localhost:3000`**
+
+Incluye:
+- Lotes de 1–5 ideas, briefs opcionales o individuales, temas y formato.
+- Biblioteca persistente paginada con búsqueda, progreso y dossier completo.
+- Selección de canales/modo y acción manual de publicación; `now` requiere confirmación.
+- Trazabilidad SSE e historial de tareas, herramientas y checkpoints.
+
+### B) Generar un lote por HTTP
+
+```bash
+curl -X POST http://localhost:8002/ideas/generate \
   -H "Content-Type: application/json" \
-  -d '{"client_id": 1, "content": "Campaña de verano para cosmética natural"}'
+  -d '{"client_id": 1, "brand_id": 1, "count": 3, "content": "", "topics": ["verano", "sostenibilidad"]}'
 ```
 
 ```json
 {
-  "task_id": "…", "status": "completed",
-  "idea": "**Title:** …", "idea_id": 13,
-  "publication": "☀️ … #EcoBrand", "publication_id": 9,
-  "agents": {"ideacion": {"status": "completed"},
-             "publicacion": {"status": "completed"}}
+  "generation_batch_id": "…", "status": "running", "count": 3,
+  "task_ids": ["…", "…", "…"]
 }
 ```
 
-La respuesta incluye `preproduction` con el dossier audiovisual de ideación:
-concepto, objetivo, audiencia, mensaje, formato, escenas del guion, planos y
-ángulos de cámara, dirección de actuación, arte, audio, edición y entregables.
-El campo `idea` se conserva como texto compatible con el contrato anterior.
+Consulta `GET /ideas/batches/{generation_batch_id}?brand_id=1` para el avance y
+`GET /ideas?brand_id=1&limit=50&offset=0` para la biblioteca. También se puede
+enviar `briefs` como lista de briefs individuales; no puede superar `count`.
 
 El brief acepta `content_format` con los valores `auto`, `reel` o `post`:
 
@@ -182,25 +194,24 @@ composición, dirección de imagen, texto sobre la pieza, slides de carrusel,
 caption direction, alt text y adaptaciones por plataforma. `auto` permite al
 modelo elegir el formato más adecuado.
 
-### B) HTTP asíncrono (devuelve `task_id` al instante)
+### C) Publicar manualmente una idea guardada
 
 ```bash
-curl -X POST http://localhost:8002/process \
+curl -X POST http://localhost:8002/ideas/13/publish \
   -H "Content-Type: application/json" \
-  -d '{"client_id": 1, "content": "…", "wait": false}'
-# → {"task_id": "…", "status": "running", "mode": "async"}
-
-curl http://localhost:8002/tasks/<task_id>            # estado en Redis
-curl http://localhost:8002/tasks/<task_id>/history    # historial en PostgreSQL
+  -d '{"brand_id": 1, "publish_mode": "draft", "integration_ids": ["integration-id"]}'
 ```
 
-### C) Por eventos RabbitMQ (el emisor no espera nada)
+La operación valida que idea y canales pertenezcan a `brand_id`, carga el
+dossier guardado y devuelve un `task_id` de publicación.
+
+### D) Por eventos RabbitMQ (compatibilidad)
 
 ```bash
 python enviar_brief.py      # publica {client_id, content} en ideation_queue
 ```
 
-### D) Preparar o programar en Postiz
+### E) Configurar Postiz
 
 Postiz es opcional y se configura mediante variables de entorno antes de
 levantar Compose:
@@ -217,26 +228,9 @@ Primero se consultan los canales conectados:
 curl.exe http://localhost:8016/integrations
 ```
 
-Después se puede pedir un borrador (modo seguro por defecto), publicación
-inmediata o programación. `postiz_integration_ids` contiene los IDs devueltos
-por `/integrations` y `postiz_settings` debe incluir el `__type` de cada canal:
-
-```json
-{
-  "client_id": 1,
-  "content": "Campaña de verano para cosmética natural",
-  "publish_mode": "schedule",
-  "publish_at": "2026-10-15T15:00:00Z",
-  "postiz_integration_ids": ["integration-instagram", "integration-linkedin"],
-  "postiz_settings": {
-    "integration-instagram": {"__type": "instagram", "post_type": "post"},
-    "integration-linkedin": {"__type": "linkedin"}
-  }
-}
-```
-
-Los modos válidos son `draft`, `schedule` y `now`. Si no se proporcionan
-integraciones, el contenido se guarda localmente pero no se envía a Postiz.
+Vincula los canales a una marca desde Studio. Los modos `draft`, `schedule` y
+`now` se eligen al publicar una idea desde la biblioteca; `now` requiere
+confirmación explícita del usuario.
 
 ### E) Onboarding e ingesta de marca
 
@@ -254,10 +248,8 @@ $document = @{ brand_id = 4; title = "Manual de marca"; content = "..."; scope =
 Invoke-RestMethod -Method Post -Uri http://localhost:8013/documents -ContentType "application/json" -Body $document | ConvertTo-Json -Depth 8
 ```
 
-Las migraciones multi-tenant están en `migrations/001_multi_tenant_foundation.sql`
-y `migrations/002_brand_knowledge_and_channels.sql`. En bases existentes se
-ejecutan con PostgreSQL disponible; las instalaciones nuevas las montan Compose
-después de `init.sql`.
+Las migraciones están en `migrations/`. En volúmenes existentes, aplica 004 y
+005 manualmente con `psql`; no hace falta borrar ni recrear datos.
 
 ---
 
@@ -266,7 +258,9 @@ después de `init.sql`.
 | Servicio | Método · Ruta | Descripción |
 |----------|---------------|-------------|
 | orchestrator | GET `/health` `/metrics` `/graph` `/tools` | Salud, métricas, grafo, catálogo descubierto |
-| orchestrator | POST `/process` | Lanza el pipeline (`wait`, `timeout`) |
+| orchestrator | POST `/ideas/generate` · GET `/ideas/batches/{id}` | Genera lote y consulta progreso |
+| orchestrator | POST `/ideas/{id}/publish` | Publicación manual del dossier guardado |
+| orchestrator | POST `/process` | Compatibilidad: generación individual, sin publicación |
 | orchestrator | GET `/tasks/{id}` · `/tasks/{id}/history` | Metadatos+resultados (Redis) · historial (PostgreSQL) |
 | agente-x | GET `/health` `/metrics` `/tools` `/state/{task_id}` | Identidad, colas, tools, checkpoint en Redis |
 | tool-x | GET `/health` `/.well-known/tool-manifest` + ops | Contrato y operaciones de dominio |

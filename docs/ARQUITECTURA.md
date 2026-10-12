@@ -24,16 +24,16 @@ sobre infraestructura de servicios:
 
 ```
                               ┌───────────────────────────────────────────┐
-   POST /process              │  ORCHESTRATOR  :8002  (stateless)        │
-   ideation_queue ───────────►│                                           │
+  POST /ideas/generate       │  ORCHESTRATOR  :8002  (stateless)        │
+  POST /ideas/{id}/publish ─►│                                           │
                               │  LangGraph supervisor                     │
-                              │  START → decide → dispatch_ideacion       │
+                              │  workflow → dispatch_ideacion/publicacion │
                               │            │  interrupt()  ───────────────┼──┐
                               │            ▼                              │  │
                               │  Command(resume=…) ← agent.task.completed│  │
                               │            │                    ▲         │  │
                               │            ▼                    │         │  │
-                              │  dispatch_publicacion → END ────┼─────────┼──┤
+                              │  generación y publicación separadas ──────┼──┤
                               └──────────────────────────────────┼─────────┼──┘
                                                                  │         │
               estado externo:  Redis (checkpoints + TaskStore)   │         │
@@ -75,6 +75,12 @@ sobre infraestructura de servicios:
    Ollama (host, 11434)
    gemma3:4b · mistral-nemo · nomic-embed-text · …
 ```
+
+La generación batch crea tareas hijas de ideación que finalizan tras guardar
+cada dossier; el supervisor no infiere una publicación a partir de la existencia
+de una idea. La ruta `POST /ideas/{idea_id}/publish` recupera el dossier por
+`(brand_id, idea_id)`, valida los canales vinculados y despacha únicamente al
+agente publicador tras una acción explícita del usuario.
 
 | Servicio | Puerto | Rol |
 |----------|--------|-----|
@@ -137,7 +143,7 @@ start_task()
   → publica agent.task.triggered                      (RabbitMQ)
         ⇠ consumidor recibe agent.task.completed
   → graph.invoke(Command(resume=result), thread_id)   (desde el checkpoint)
-  → siguiente interrupt() … o END
+  → siguiente interrupt() … o END (ideación termina sin publicar)
   → guarda historial de chat                           (PostgreSQL)
   → publica task.completed                            (RabbitMQ)
 ```
@@ -148,8 +154,23 @@ Si el contenedor del orquestador muere en cualquier punto, al arrancar
 proceso** (escalado horizontal + recuperación ante caídas).
 
 El historial de chat es durable en PostgreSQL (`chat_history`): una fila por
-turno (`user` = brief recibido, `assistant` = idea + publicación generadas),
+turno (`user` = brief recibido, `assistant` = resultado generado o publicado),
 consultable con `GET /tasks/{id}/history`.
+
+### 2.1.1 Generación batch y publicación explícita
+
+`POST /ideas/generate` acepta entre una y cinco ideas, un brief compartido
+opcional, briefs individuales y temas. El runtime crea un registro padre y una
+tarea hija por posición; Redis conserva progreso y errores parciales, mientras
+PostgreSQL persiste cada dossier con `generation_batch_id` e
+`generation_index`. Sin brief, el agente sintetiza contexto a partir del perfil
+de marca y los temas antes de recuperar tendencias, competencia, noticias e
+ideas similares.
+
+La biblioteca lista y abre ideas siempre con filtro SQL por `brand_id`. La
+publicación manual valida el mismo límite de marca y los canales activos de
+Postiz, carga el JSON completo del dossier y crea una tarea `publish_idea`; ese
+workflow despacha directamente al agente publicador y nunca regenera la idea.
 
 ### 2.2 Tools-as-a-Service + Tool Discovery (requisito 2)
 
@@ -295,15 +316,15 @@ Comportamiento interno:
 
 ```
  cliente                      orchestrator            rabbitmq          agente-x           tools / gateway
-   │  POST /process               │                     │                 │                    │
-   │  {client_id, content}        │                     │                 │                    │
+  │  POST /ideas/generate        │                     │                 │                    │
+  │  {brand_id, count, briefs?}  │                     │                 │                    │
    ├─────────────────────────────►│ TaskStore.create()  │                 │                    │
    │                              │ historial user ──── PostgreSQL         │                    │
    │                              │ graph.invoke()      │                 │                    │
-   │                              │  …decide → ideacion │                 │                    │
+  │                              │  …dispatch ideacion│                 │                    │
    │                              │  interrupt() ⏸      │                 │                    │
    │                              │ checkpoint ──────── Redis             │                    │
-   │                              │ publish agent.task.triggered          │                    │
+  │                              │ publish agent.task.triggered (idea)   │                    │
    │                              ├────────────────────►│                 │                    │
    │                              │                     ├────────────────►│                    │
    │                              │                     │                 │ discover manifests │
@@ -319,8 +340,8 @@ Comportamiento interno:
    │                              │                     │◄────────────────┤                    │
    │                              │◄────────────────────┤ agent.task.completed                 │
    │                              │ Command(resume) ⏵   │                 │                    │
-   │                              │  …decide → publicacion → interrupt() ⏸ │                    │
-   │                              │ publish agent.task.triggered          │                    │
+  │                              │  generation → END; no publication      │                    │
+  │                              │ explicit publish after user selection │                    │
    │                              ├────────────────────►├────────────────►│ …misma cadena …    │
    │                              │◄────────────────────┤◄────────────────┤                    │
    │                              │ Command(resume) ⏵ → END               │                    │
@@ -331,14 +352,14 @@ Comportamiento interno:
 
 ---
 
-## 4. Happy Path (camino feliz)
+## 4. Happy Path: generación y publicación manual
 
 Escenario: el cliente **EcoBrand** (`client_id=1`) pide una campaña de verano.
 
 ```bash
-curl -X POST http://localhost:8002/process \
+curl -X POST http://localhost:8002/ideas/generate \
   -H "Content-Type: application/json" \
-  -d '{"client_id": 1, "content": "Campana de verano para nuestra linea de cuidado personal organico"}'
+  -d '{"client_id": 1, "brand_id": 1, "count": 3, "content": "Campana de verano para nuestra linea de cuidado personal organico"}'
 ```
 
 Lo que ocurre por dentro (secuencia de eventos y logs):
@@ -356,26 +377,76 @@ agente_ideacion  agent.task.triggered task=<uuid>
 agente_ideacion  fin tarea <uuid> (completed)
 
 orchestrator  tarea <uuid> ← agent.task.completed [ideacion]
-orchestrator  tarea <uuid> → agent.task.triggered [publicacion]
-
-agente_publicacion  load_context  ✓ profile + trends.search(3)
-                    fetch_trending ✓ tool-trending.trending
-                    generate_post ✓ llm-gateway /v1/generate
-                    save_post     ✓ tool-rag.save_publicacion → publication_id=9
-
-orchestrator  tarea <uuid> COMPLETADA idea_id=13 publication_id=9
-orchestrator  task.completed publicado en task.results
+orchestrator  generation batch actualizado (completed/failed por posición)
+orchestrator  tarea de ideación COMPLETADA; sin dispatch_publicacion
 ```
 
-Respuesta HTTP (esperada, `wait=true`):
+Respuesta HTTP inicial:
 
 ```json
 {
-  "task_id": "…", "status": "completed",
-  "idea": "**Title:** …", "idea_id": 13,
-  "publication": "☀️ … #EcoBrand", "publication_id": 9,
-  "agents": {"ideacion": {"status": "completed"}, "publicacion": {"status": "completed"}}
+  "generation_batch_id": "…", "status": "running", "count": 3,
+  "task_ids": ["…", "…", "…"]
 }
+```
+
+El usuario consulta progreso y biblioteca, abre un dossier y solo entonces
+solicita `POST /ideas/{idea_id}/publish` con `brand_id`, `integration_ids`,
+modo y fecha opcional. Esa ruta crea una tarea independiente de publicación.
+
+Al publicar la idea, si la selección contiene canales activos de la marca, el
+agente agrupa las integraciones por `provider`, genera una
+variante por plataforma y persiste cada variante en
+`publicaciones_generadas.platform`. Postiz recibe el contenido asociado a cada
+integration ID, no el primer copy repetido en todas las redes. El tono de marca
+sigue siendo una instrucción prioritaria; las instrucciones de plataforma
+adaptan estructura, vocabulario, hashtags y llamada a la acción. Esta adaptación
+se basa en guías de prompt y no en una validación editorial posterior.
+
+El flujo operativo en Studio es: configurar `POSTIZ_API_KEY`, conectar las
+integraciones sociales en la cuenta Postiz, vincular cada integración a la
+marca y seleccionarla desde el dossier que se quiere publicar. La vinculación
+crea `brand_channels` con `provider`, `external_id` y
+`settings.__type`; el mismo ID de canal no puede reasignarse silenciosamente a
+otra marca. La herramienta devuelve al navegador solo ID, plataforma, nombre y
+estado de configuración, no settings/credenciales.
+
+El flujo de descubrimiento y vínculo a `brand_channels` es:
+
+```mermaid
+sequenceDiagram
+  actor Usuario
+  participant Studio as Studio BFF
+  participant Tool as tool-postiz
+  participant API as Postiz API
+  participant DB as PostgreSQL
+  Usuario->>Studio: Abrir catálogo de integraciones
+  Studio->>Tool: GET /available-integrations
+  Tool->>API: GET /integrations
+  API-->>Tool: IDs y plataformas
+  Tool-->>Studio: Catálogo saneado
+  Usuario->>Studio: Vincular integration_id a brand_id
+  Studio->>Tool: POST /channels
+  Tool->>API: Verificar ID de integración
+  Tool->>DB: INSERT/UPDATE brand_channels
+  DB-->>Tool: channel_id
+  Tool-->>Studio: Canal activo con __type
+```
+
+La operación de publicación requiere canales activos en `brand_channels` y
+`settings.__type`. Programar requiere además `publish_at`; `POSTIZ_API_KEY` debe
+estar configurada.
+Si una fila de canal no tiene settings Postiz, el agente puede guardar su
+variante y marca esa integración como omitida; no afirma que se haya publicado.
+El BFF y el endpoint del orquestador exigen al menos un ID de integración en la
+solicitud manual; `schedule` también exige fecha. La interfaz confirma `now`
+antes de enviar la publicación.
+La columna `platform` se crea desde cero con `init.sql`. Para un volumen
+`postgres_data` ya inicializado, Docker no reejecuta los scripts de
+`docker-entrypoint-initdb.d`; aplicar la migración sin borrar datos con:
+
+```powershell
+docker compose exec -T postgres psql -U postgres -d ideation_db -f /docker-entrypoint-initdb.d/zzzz_publication_platform.sql
 ```
 
 Verificación del estado externo (otro proceso, sin compartir memoria):
@@ -387,9 +458,11 @@ curl localhost:8000/state/<task_id>              # checkpoint Redis del agente
 ```
 
 **Criterios de éxito:**
-- ✅ `POST /process` responde 200 y `status=completed`
-- ✅ `idea_id > 0` y `publication_id > 0` en PostgreSQL (con embedding)
-- ✅ `GET /tasks/{id}` → `status=completed` con `result` (estado externo)
+- ✅ `POST /ideas/generate` devuelve `generation_batch_id` y hasta cinco `task_ids`
+- ✅ Los dossiers quedan en `ideas_generadas` con embedding, marca y posición del lote
+- ✅ Una tarea de ideación completa sin crear publicación ni despachar al publicador
+- ✅ Solo `POST /ideas/{id}/publish` crea publicaciones para la idea seleccionada
+- ✅ `GET /tasks/{id}` → estado/resultados en Redis
 - ✅ `GET /tasks/{id}/history` → `[user, assistant]` (historial durable)
 - ✅ `GET /state/{task_id}` en el agente → valores del checkpoint en Redis
 - ✅ `GET /tools` del orquestador → 6 tools descubiertas por manifiesto
@@ -403,9 +476,9 @@ pagos para pequeñas empresas. Quiere lanzar una app que automatice cobros para
 **panaderías y cafeterías independientes de México**.
 
 ```bash
-curl -X POST http://localhost:8002/process \
+curl -X POST http://localhost:8002/ideas/generate \
   -H "Content-Type: application/json" \
-  -d '{"client_id": 2, "content": "Lanzamiento de una app movil que automatiza cobros para pequenas panaderias y cafeterias independientes en Mexico"}'
+  -d '{"client_id": 2, "brand_id": 2, "count": 3, "content": "Lanzamiento de una app movil que automatiza cobros para pequenas panaderias y cafeterias independientes en Mexico"}'
 ```
 
 **Atribución del resultado a los microservicios** (cada pieza del texto viene
@@ -418,26 +491,26 @@ de un servicio concreto, verificable por `tool_calls` en el checkpoint):
 | Enfoque de la competencia (gamification) | `tool-competitors` |
 | Memoria: no repetir campañas previas | `tool-rag` (`similar` sobre `ideas_generadas`) |
 | Noticias del sector | `tool-news` (Google News RSS) |
-| Hashtags en tendencia | `tool-trending` |
-| Texto generado (idea y post) | `llm-gateway` → Ollama (con caché/backoff/fallback) |
-| Persistencia con embedding | `tool-rag` (`save_idea`, `save_publicacion`) |
+| Texto generado para cada dossier | `llm-gateway` → Ollama (con caché/backoff/fallback) |
+| Persistencia del lote | `tool-rag.save_idea` con `brand_id`, batch ID e índice |
 | Secuenciación y consolidación | `orchestrator` (eventos + checkpoints Redis) |
 
 Cadena de eventos del caso:
 
 ```
-POST /process
+POST /ideas/generate (count=3)
  → agent.task.triggered [ideacion]
      → REST: client.profile, trends.search, competitors.search, rag.similar
      → REST: news.news
      → gateway: /v1/generate  →  REST: rag.save_idea      (idea_id=…)
  → agent.task.completed [ideacion]
- → agent.task.triggered [publicacion]
-     → REST: client.profile, trends.search
-     → REST: trending.trending
-     → gateway: /v1/generate  →  REST: rag.save_publicacion (publication_id=…)
- → agent.task.completed [publicacion]
- → task.completed (task.results)
+ → persist progress for each child; generation ends without publication
+ → usuario revisa biblioteca y elige idea/canales/modo
+POST /ideas/{idea_id}/publish (explicit approval)
+ → rag.get_idea filtered by brand_id; load complete dossier
+ → validate active Postiz channels and dispatch agent.publicacion.tasks
+ → generate/persist platform variants; call Postiz with selected integrations
+ → agent.task.completed [publicacion] → task.completed
 ```
 
 Impacto acumulado: cada ejecución crece `ideas_generadas`, de modo que
@@ -459,24 +532,28 @@ ollama pull mistral-nemo          # modelo de fallback del gateway
 docker compose up -d --build
 ```
 
-### 6.2 Tres formas de entrada
+### 6.2 Uso del flujo
 
-**A) HTTP síncrono** (espera el resultado):
+**A) Generar un lote (1–5 ideas):**
 
 ```bash
-curl -X POST http://localhost:8002/process \
+curl -X POST http://localhost:8002/ideas/generate \
   -H "Content-Type: application/json" \
-  -d '{"client_id": 1, "content": "…", "wait": true, "timeout": 300}'
+  -d '{"client_id": 1, "brand_id": 1, "count": 3, "content": ""}'
+curl "http://localhost:8002/ideas/batches/<batch_id>?brand_id=1"
+curl "http://localhost:8013/ideas?brand_id=1&limit=50&offset=0"
 ```
 
-**B) HTTP asíncrono** (devuelve `task_id` al instante):
+**B) Publicar manualmente un dossier guardado:**
 
 ```bash
-curl -X POST http://localhost:8002/process \
-  -d '{"client_id": 1, "content": "…", "wait": false}'
-# → {"task_id": "…", "status": "running", "mode": "async"}
-curl localhost:8002/tasks/<task_id>
+curl -X POST http://localhost:8002/ideas/<idea_id>/publish \
+  -H "Content-Type: application/json" \
+  -d '{"brand_id": 1, "publish_mode": "draft", "integration_ids": ["ig-id"]}'
 ```
+
+`POST /process` y el ingreso `ideation_queue` se mantienen por compatibilidad y
+generan una idea individual; ninguno publica automáticamente.
 
 **C) Por eventos** (RabbitMQ, el emisor no espera nada):
 
@@ -492,7 +569,10 @@ python enviar_brief.py        # publica {client_id, content} en ideation_queue
 | orchestrator | GET | `/metrics` | Patrón, capa de estado, agentes, eventos |
 | orchestrator | GET | `/tools` | Catálogo agregado vía Tool Discovery |
 | orchestrator | GET | `/graph` | Nodos/arestas + mecanismo de suspensión |
-| orchestrator | POST | `/process` | Lanza el pipeline (`wait`, `timeout`) |
+| orchestrator | POST | `/ideas/generate` | Lanza lote asíncrono de 1–5 ideas |
+| orchestrator | GET | `/ideas/batches/{id}?brand_id=` | Progreso y resultados parciales |
+| orchestrator | POST | `/ideas/{id}/publish` | Publica idea seleccionada; valida marca y canales |
+| orchestrator | POST | `/process` | Compatibilidad: generación individual sin publicar |
 | orchestrator | GET | `/tasks/{id}` | Metadatos + resultados (TaskStore/Redis) |
 | orchestrator | GET | `/tasks/{id}/history` | Historial de chat (PostgreSQL) |
 | agente-x | GET | `/health` `/metrics` `/tools` | Identidad, colas y tools descubiertas |
@@ -573,3 +653,4 @@ proyecto multiagente/
 | Idempotencia por checkpoint (`{agente}:{task_id}`) | deduplicación por message-id | La clave de idempotencia es el negocio (tarea), no el sobre (mensaje); cubre también reentrega tras crash |
 | LLM vía gateway único | ChatOllama directo en cada agente | Requisito: balanceo, backoff, fallback y caché centralizados; los agentes no dependen del runtime de Ollama |
 | Historial de chat en PostgreSQL | Redis | Durabilidad: el historial sobrevive a reinicios de caché; los checkpoints de ciclo (volátiles/recientes) van a Redis |
+| Una variante persistida por plataforma seleccionada | Reutilizar un mismo copy genérico para todas las integraciones | El proveedor de canal se incorpora al prompt; cada copy queda identificable en `publicaciones_generadas.platform` y Postiz recibe el contenido correspondiente al integration ID |
