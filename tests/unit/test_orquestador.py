@@ -384,6 +384,148 @@ class TestRuntimeEventDriven:
 
 
 class TestManualPublicationEndpoint:
+    def test_publication_library_shapes_accepted_delivery_without_claiming_live_status(self, monkeypatch):
+        import main as orchestrator_main
+
+        task = {
+            "task_id": "delivery-task",
+            "status": "completed",
+            "created_at": 10,
+            "brief": {
+                "brand_id": 7,
+                "idea_id": 44,
+                "publication": {
+                    "mode": "now",
+                    "integration_ids": ["ig-1"],
+                },
+                "publication_variants": [{
+                    "platform": "instagram",
+                    "integration_ids": ["ig-1"],
+                    "content": "Copy aprobado",
+                }],
+                "target_channels": [{
+                    "external_id": "ig-1",
+                    "provider": "instagram",
+                    "display_name": "EcoBrand Instagram",
+                }],
+            },
+            "result": {"postiz": {"status": "created"}},
+        }
+
+        class FakeStore:
+            def list_publication_tasks(self, brand_id, *, limit):
+                assert brand_id == 7
+                assert limit == 100
+                return [task]
+
+        class FakeRuntime:
+            store = FakeStore()
+
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: FakeRuntime())
+
+        response = orchestrator_main.list_publication_deliveries(7)
+
+        assert response["total"] == 1
+        assert response["items"][0]["status"] == "sent"
+        assert response["items"][0]["channels"] == [{
+            "external_id": "ig-1",
+            "display_name": "EcoBrand Instagram",
+            "provider": "instagram",
+            "content": "Copy aprobado",
+        }]
+
+    def test_publication_library_includes_preparations_waiting_for_approval(self, monkeypatch):
+        import main as orchestrator_main
+
+        task = {
+            "task_id": "prepare-task",
+            "status": "completed",
+            "created_at": 12,
+            "brief": {
+                "workflow": "prepare_publication",
+                "brand_id": 7,
+                "idea_id": 44,
+                "publication": {"mode": "draft", "integration_ids": ["ig-1"]},
+                "target_channels": [{"external_id": "ig-1", "display_name": "EcoBrand Instagram"}],
+            },
+            "result": {
+                "postiz": {"status": "prepared"},
+                "publication_variants": [{
+                    "platform": "instagram",
+                    "integration_ids": ["ig-1"],
+                    "content": "Copy listo para revisar",
+                }],
+            },
+        }
+
+        class FakeStore:
+            def list_publication_tasks(self, brand_id, *, limit):
+                return [task]
+
+        class FakeRuntime:
+            store = FakeStore()
+
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: FakeRuntime())
+
+        response = orchestrator_main.list_publication_deliveries(7)
+
+        assert response["items"][0]["status"] == "awaiting_approval"
+        assert response["items"][0]["prepare_task_id"] == "prepare-task"
+        assert response["items"][0]["channels"][0]["content"] == "Copy listo para revisar"
+
+    def test_approval_persists_edited_copy_without_dispatching_delivery(self, monkeypatch):
+        import main as orchestrator_main
+
+        prepared = {
+            "task_id": "prepare-task",
+            "status": "completed",
+            "brief": {
+                "workflow": "prepare_publication",
+                "brand_id": 7,
+                "publication": {"mode": "draft", "integration_ids": ["ig-1"]},
+            },
+            "result": {
+                "postiz": {"status": "prepared"},
+                "publication_variants": [{
+                    "platform": "instagram",
+                    "integration_ids": ["ig-1"],
+                    "content": "Copy generado",
+                }],
+            },
+        }
+
+        class FakeStore:
+            updated = None
+
+            def get(self, task_id):
+                return prepared if task_id == "prepare-task" else None
+
+            def update(self, task_id, **fields):
+                self.updated = fields
+                return {**prepared, **fields}
+
+        class FakeRuntime:
+            store = FakeStore()
+
+        runtime = FakeRuntime()
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: runtime)
+
+        response = orchestrator_main.approve_prepared_publication(
+            "prepare-task",
+            orchestrator_main.ApprovePreparedPublicationRequest(
+                brand_id=7,
+                publication_variants=[{
+                    "platform": "instagram",
+                    "integration_ids": ["ig-1"],
+                    "content": "Copy aprobado y editado",
+                }],
+            ),
+        )
+
+        assert response["status"] == "approved_pending"
+        assert response["publication_variants"][0]["content"] == "Copy aprobado y editado"
+        assert runtime.store.updated["result"]["postiz"]["status"] == "approved_pending"
+
     def test_dispatches_loaded_full_dossier_and_selected_channels(self, monkeypatch):
         import main as orchestrator_main
 
@@ -433,6 +575,7 @@ class TestManualPublicationEndpoint:
         assert runtime.brief["publication_action"] == "prepare"
         assert runtime.brief["preproduction"] == dossier
         assert runtime.brief["publication"]["integration_ids"] == ["ig-1"]
+        assert runtime.brief["target_channels"] == [{"external_id": "ig-1"}]
 
     def test_delivery_uses_approved_variants_and_selected_schedule(self, monkeypatch):
         import main as orchestrator_main
@@ -453,7 +596,7 @@ class TestManualPublicationEndpoint:
                 },
             },
             "result": {
-                "postiz": {"status": "prepared"},
+                "postiz": {"status": "approved_pending"},
                 "idea_id": 44,
                 "idea": '{"title":"Idea aprobada"}',
                 "preproduction": dossier,
@@ -519,6 +662,7 @@ class TestManualPublicationEndpoint:
         assert runtime.brief["workflow"] == "deliver_publication"
         assert runtime.brief["publication_action"] == "deliver"
         assert runtime.brief["publication"]["publish_at"] == "2026-11-05T17:30:00Z"
+        assert runtime.brief["prepare_task_id"] == "prepare-task"
         assert runtime.brief["publication_variants"][0]["content"] == "Copy aprobado y editado"
 
     def test_delivery_rejects_unconfigured_channel_before_dispatch(self, monkeypatch):

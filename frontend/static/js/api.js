@@ -94,6 +94,18 @@ const API = {
     return this.request(`/api/ideas?${params}`);
   },
 
+  async getPublications(brandId, limit = 100) {
+    const params = new URLSearchParams({ brand_id: brandId, limit });
+    return this.request(`/api/publications?${params}`);
+  },
+
+  async approvePreparedPublication(taskId, publication) {
+    return this.request(`/api/publications/${encodeURIComponent(taskId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(publication),
+    });
+  },
+
   async getIdea(ideaId, brandId) {
     const params = new URLSearchParams({ brand_id: brandId });
     return this.request(`/api/ideas/${ideaId}?${params}`);
@@ -101,20 +113,6 @@ const API = {
 
   async publishIdea(ideaId, publication) {
     return this.request(`/api/ideas/${ideaId}/publish`, {
-      method: 'POST',
-      body: JSON.stringify(publication),
-    });
-  },
-
-  async deliverPreparedPublication(taskId, publication) {
-    return this.request(`/api/publications/${encodeURIComponent(taskId)}/deliver`, {
-      method: 'POST',
-      body: JSON.stringify(publication),
-    });
-  },
-
-  async deliverPreparedPublication(taskId, publication) {
-    return this.request(`/api/publications/${encodeURIComponent(taskId)}/deliver`, {
       method: 'POST',
       body: JSON.stringify(publication),
     });

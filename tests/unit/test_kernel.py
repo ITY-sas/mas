@@ -385,6 +385,21 @@ class TestTaskStore:
         tasks = store.list_by_generation_batch("batch-1")
         assert [task["task_id"] for task in tasks] == ["idea-0", "idea-2"]
 
+    def test_list_publication_tasks_filters_by_brand_and_workflow(self, store):
+        store.create("delivery-1", brief={
+            "workflow": "deliver_publication", "brand_id": 1,
+        }, client_id=1)
+        store.create("delivery-other-brand", brief={
+            "workflow": "deliver_publication", "brand_id": 2,
+        }, client_id=2)
+        store.create("prepare-only", brief={
+            "workflow": "prepare_publication", "brand_id": 1,
+        }, client_id=1)
+
+        tasks = store.list_publication_tasks(1)
+
+        assert {task["task_id"] for task in tasks} == {"delivery-1", "prepare-only"}
+
 
 # ── U-K-13…15: cliente del LLM Gateway ────────────────────────
 class TestGatewayClient:

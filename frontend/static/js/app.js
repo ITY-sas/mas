@@ -8,6 +8,7 @@ const App = {
   selectedClient: null,
   tasks: [],
   ideas: [],
+  publications: [],
   selectedIdea: null,
   ideaBatch: null,
   latestIdeaBatch: null,
@@ -109,6 +110,8 @@ const App = {
       if (button) this.openBatchIdeaResult(Number(button.dataset.batchResultIdea));
       const deliverButton = event.target.closest('[data-deliver-prepared-task]');
       if (deliverButton) this.deliverPreparedPublication(deliverButton.dataset.deliverPreparedTask);
+      const approveButton = event.target.closest('[data-approve-prepared-task]');
+      if (approveButton) this.approvePreparedPublication(approveButton.dataset.approvePreparedTask);
     });
     document.getElementById('idea-detail')?.addEventListener('click', (event) => {
       if (event.target.closest('[data-copy-dossier]') && this.selectedIdea) {
@@ -117,6 +120,25 @@ const App = {
     });
     document.getElementById('btn-publish-selected-idea')?.addEventListener('click', () => {
       this.publishSelectedIdea();
+    });
+
+    document.getElementById('btn-refresh-publications')?.addEventListener('click', () => this.loadPublications());
+    document.getElementById('publication-status-filter')?.addEventListener('change', () => this.renderPublications());
+    document.getElementById('publication-search')?.addEventListener('input', () => this.renderPublications());
+    document.getElementById('publication-library-list')?.addEventListener('click', (event) => {
+      const copyButton = event.target.closest('[data-copy-publication]');
+      if (copyButton) this.copyText(copyButton.dataset.copyPublication);
+      const traceButton = event.target.closest('[data-publication-task]');
+      if (traceButton) this.openPublicationTrace(traceButton.dataset.publicationTask);
+      const reviewButton = event.target.closest('[data-review-publication]');
+      if (reviewButton) this.openPublicationResults(reviewButton.dataset.reviewPublication);
+      const sendButton = event.target.closest('[data-send-approved-publication]');
+      if (sendButton) {
+        const publication = this.publications.find(
+          (item) => item.prepare_task_id === sendButton.dataset.sendApprovedPublication
+        );
+        if (publication) this.sendApprovedPublication(publication);
+      }
     });
 
     const linkChannelButton = document.getElementById('btn-link-postiz-channel');
@@ -163,6 +185,7 @@ const App = {
         this.onClientChange(clientId);
         this.loadBrandChannels(this.selectedClient.brand_id || clientId);
         this.loadIdeas();
+        if (this.activeTab === 'publications') this.loadPublications();
       });
     } catch (err) {
       this.showToast('Error cargando clientes: ' + err.message, 'error');
@@ -609,6 +632,160 @@ const App = {
     }
   },
 
+  async loadPublications() {
+    const list = document.getElementById('publication-library-list');
+    if (!list || !this.selectedClient) return;
+    const brandId = this.selectedClient.brand_id || this.selectedClient.id;
+    list.innerHTML = '<p class="py-8 text-center text-xs text-slate-500">Cargando publicaciones...</p>';
+    try {
+      const result = await API.getPublications(brandId);
+      this.publications = result.items || [];
+      this.renderPublications();
+    } catch (error) {
+      list.innerHTML = `<p class="py-8 text-center text-xs text-rose-300">${this.escapeHtml(error.message)}</p>`;
+    }
+  },
+
+  renderPublications() {
+    const list = document.getElementById('publication-library-list');
+    const summary = document.getElementById('publication-library-summary');
+    if (!list) return;
+    const statusFilter = document.getElementById('publication-status-filter')?.value || '';
+    const query = document.getElementById('publication-search')?.value.trim().toLowerCase() || '';
+    const labels = {
+      preparing: 'Preparando copy', awaiting_approval: 'Pendiente de aprobación',
+      approved_pending: 'Aprobado · pendiente de envío', sending: 'Enviando',
+      sent: 'Enviado a Postiz', scheduled: 'Programado', draft: 'Borrador',
+      failed: 'Error', skipped: 'Omitido', pending: 'Pendiente',
+    };
+    const styles = {
+      preparing: 'bg-cyan-950 text-cyan-300 border-cyan-800',
+      awaiting_approval: 'bg-amber-950 text-amber-300 border-amber-800',
+      approved_pending: 'bg-amber-950 text-amber-200 border-amber-700',
+      sending: 'bg-cyan-950 text-cyan-300 border-cyan-800',
+      sent: 'bg-emerald-950 text-emerald-300 border-emerald-800',
+      scheduled: 'bg-sky-950 text-sky-300 border-sky-800',
+      draft: 'bg-slate-800 text-slate-300 border-slate-700',
+      failed: 'bg-rose-950 text-rose-300 border-rose-800',
+      skipped: 'bg-amber-950 text-amber-300 border-amber-800',
+      pending: 'bg-slate-800 text-slate-300 border-slate-700',
+    };
+    const modeLabels = { now: 'Envío inmediato', schedule: 'Programación', draft: 'Borrador' };
+    const filtered = this.publications.filter((publication) => {
+      const searchable = [publication.task_id, publication.error,
+        ...(publication.channels || []).flatMap((channel) => [channel.display_name, channel.provider, channel.content])]
+        .join(' ').toLowerCase();
+      return (!statusFilter || publication.status === statusFilter)
+        && (!query || searchable.includes(query));
+    });
+    if (summary) summary.textContent = `${filtered.length} de ${this.publications.length} entregas`;
+    if (!filtered.length) {
+      list.innerHTML = `<p class="py-10 text-center text-xs text-slate-500">${this.publications.length ? 'No hay entregas que coincidan con los filtros.' : 'Aún no hay entregas para esta marca.'}</p>`;
+      return;
+    }
+
+    list.innerHTML = filtered.map((publication) => {
+      const status = publication.status || 'pending';
+      const createdAt = publication.created_at
+        ? new Date(publication.created_at * 1000).toLocaleString()
+        : 'Fecha no disponible';
+      const publishAt = publication.publish_at
+        ? new Date(publication.publish_at).toLocaleString()
+        : '';
+      const channels = (publication.channels || []).map((channel) => `
+        <div class="border-t border-slate-800 py-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-xs font-semibold text-slate-200">${this.escapeHtml(channel.display_name || channel.external_id)}
+              <span class="ml-1 text-[10px] font-normal text-slate-500">${this.escapeHtml(channel.provider || '')}</span>
+            </div>
+            <button type="button" data-copy-publication="${encodeURIComponent(channel.content || '')}" class="text-[11px] text-slate-400 hover:text-white" title="Copiar copy de este canal">
+              <i class="fa-regular fa-copy"></i> Copiar copy
+            </button>
+          </div>
+          <p class="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-300">${this.escapeHtml(channel.content || 'No hay copy guardado para este canal.')}</p>
+        </div>
+      `).join('');
+      const deliveryAction = publication.status === 'approved_pending'
+        || (publication.status === 'failed' && publication.workflow === 'deliver_publication' && publication.prepare_task_id)
+        ? `<button type="button" data-send-approved-publication="${this.escapeHtml(publication.prepare_task_id)}" class="px-2 py-1 text-[11px] text-emerald-300 hover:text-emerald-200"><i class="fa-solid fa-paper-plane"></i> ${publication.status === 'failed' ? 'Reintentar envío' : 'Enviar a Postiz'}</button>`
+        : '';
+      const reviewAction = publication.status === 'awaiting_approval'
+        ? `<button type="button" data-review-publication="${this.escapeHtml(publication.task_id || '')}" class="px-2 py-1 text-[11px] text-amber-300 hover:text-amber-200"><i class="fa-solid fa-pen-to-square"></i> Revisar copy</button>`
+        : '';
+      return `
+        <article class="py-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-100">${publication.idea_id ? `Idea #${Number(publication.idea_id)}` : 'Publicación'}
+                <span class="ml-2 font-mono text-[10px] font-normal text-slate-500">${this.escapeHtml(String(publication.task_id || '').slice(0, 8))}</span>
+              </h3>
+              <p class="mt-1 text-[11px] text-slate-500">${this.escapeHtml(modeLabels[publication.mode] || publication.mode || 'Entrega')} · ${this.escapeHtml(createdAt)}${publishAt ? ` · Fecha objetivo: ${this.escapeHtml(publishAt)}` : ''}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="border px-2 py-1 text-[10px] font-semibold ${styles[status] || styles.pending}">${labels[status] || status}</span>
+              ${reviewAction}${deliveryAction}
+              <button type="button" data-publication-task="${this.escapeHtml(publication.task_id || '')}" class="px-2 py-1 text-[11px] text-slate-300 hover:text-white" title="Abrir trazabilidad de la entrega">
+                <i class="fa-solid fa-route"></i> Traza
+              </button>
+              <a href="http://localhost:4007" target="_blank" rel="noopener noreferrer" class="px-2 py-1 text-[11px] text-slate-300 hover:text-white" title="Abrir Postiz">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Postiz
+              </a>
+            </div>
+          </div>
+          ${publication.error ? `<p class="mt-2 text-xs text-rose-300">${this.escapeHtml(publication.error)}</p>` : ''}
+          <div class="mt-3">${channels || '<p class="border-t border-slate-800 py-3 text-xs text-slate-500">No hay canales registrados para esta entrega.</p>'}</div>
+        </article>
+      `;
+    }).join('');
+  },
+
+  async openPublicationTrace(taskId) {
+    this.currentTaskId = taskId;
+    this.activeStudioWorkflow = 'task';
+    this.switchTab('traceability');
+    await this.loadTaskDetails(taskId);
+  },
+
+  async openPublicationResults(taskId) {
+    this.currentTaskId = taskId;
+    this.activeStudioWorkflow = 'task';
+    this.switchTab('results');
+    await this.loadTaskDetails(taskId);
+  },
+
+  async sendApprovedPublication(publication) {
+    const brandId = this.selectedClient?.brand_id || this.selectedClient?.id;
+    const integrationIds = (publication.channels || []).map((channel) => channel.external_id).filter(Boolean);
+    const variants = (publication.channels || []).filter((channel) => channel.content?.trim()).map((channel) => ({
+      platform: channel.provider || 'platform-neutral',
+      integration_ids: [channel.external_id],
+      content: channel.content.trim(),
+    }));
+    if (!brandId || !publication.prepare_task_id || !variants.length) {
+      this.showToast('La entrega pendiente no tiene marca o copies válidos.', 'warning');
+      return;
+    }
+    if (publication.mode === 'now' && !window.confirm('¿Confirmas enviar ahora los copies aprobados a Postiz?')) return;
+    try {
+      const delivery = await API.deliverPreparedPublication(publication.prepare_task_id, {
+        brand_id: brandId,
+        publish_mode: publication.mode || 'draft',
+        publish_at: publication.publish_at || null,
+        integration_ids: integrationIds,
+        settings: publication.settings || {},
+        publication_variants: variants,
+      });
+      this.currentTaskId = delivery.task_id;
+      this.activeStudioWorkflow = 'task';
+      this.switchTab('traceability');
+      this.startTaskStream(delivery.task_id);
+      this.showToast('Copy aprobado; enviando a Postiz.', 'info');
+    } catch (error) {
+      this.showToast('No se pudo enviar a Postiz: ' + error.message, 'error');
+      await this.loadPublications();
+    }
+  },
+
   async selectIdea(ideaId) {
     try {
       const brandId = this.selectedClient.brand_id || this.selectedClient.id;
@@ -694,6 +871,49 @@ const App = {
     }
   },
 
+  getEditedPreparedVariants(taskId) {
+    const task = this.currentTask;
+    const postizStatus = task?.result?.postiz?.status;
+    if (
+      !task || task.task_id !== taskId || task.brief?.workflow !== 'prepare_publication'
+      || !['prepared', 'approved_pending'].includes(postizStatus)
+    ) return null;
+    return (task.result.publication_variants || []).map((variant, index) => {
+      const editor = document.querySelector(`[data-publication-variant-index="${index}"]`);
+      return { ...variant, content: (editor?.value ?? variant.content ?? '').trim() };
+    });
+  },
+
+  async approvePreparedPublication(taskId) {
+    const task = this.currentTask;
+    const variants = this.getEditedPreparedVariants(taskId);
+    if (!task || !variants) {
+      this.showToast('No encuentro el copy preparado. Vuelve a abrir sus resultados.', 'warning');
+      return;
+    }
+    if (!variants.length || variants.some((variant) => !variant.content)) {
+      this.showToast('Cada canal seleccionado debe tener un copy no vacío.', 'warning');
+      return;
+    }
+    const button = document.querySelector(`[data-approve-prepared-task="${taskId}"]`);
+    if (button) button.disabled = true;
+    try {
+      const approval = await API.approvePreparedPublication(taskId, {
+        brand_id: task.brief.brand_id,
+        publication_variants: variants,
+      });
+      task.result.publication_variants = approval.publication_variants;
+      task.result.publication = approval.publication_variants[0]?.content || '';
+      task.result.postiz = approval.postiz;
+      this.renderResults(task);
+      await this.loadPublications();
+      this.showToast('Copy aprobado y guardado como pendiente. Aún no se ha enviado a Postiz.', 'success');
+    } catch (error) {
+      this.showToast('No se pudo guardar la aprobación: ' + error.message, 'error');
+      if (button) button.disabled = false;
+    }
+  },
+
   async deliverPreparedPublication(taskId) {
     const task = this.currentTask;
     if (!task || task.task_id !== taskId) {
@@ -702,14 +922,11 @@ const App = {
     }
     const brief = task.brief || {};
     const config = brief.publication || {};
-    if (brief.workflow !== 'prepare_publication' || (task.result?.postiz || {}).status !== 'prepared') {
+    const variants = this.getEditedPreparedVariants(taskId);
+    if (!variants) {
       this.showToast('Esta tarea no tiene copies preparados para enviar.', 'warning');
       return;
     }
-    const variants = (task.result.publication_variants || []).map((variant, index) => {
-      const editor = document.querySelector(`[data-publication-variant-index="${index}"]`);
-      return { ...variant, content: (editor?.value ?? variant.content ?? '').trim() };
-    });
     if (!variants.length || variants.some((variant) => !variant.content)) {
       this.showToast('Cada canal seleccionado debe tener un copy no vacío.', 'warning');
       return;
@@ -917,7 +1134,9 @@ const App = {
     const preprod = result.preproduction || {};
     const brief = task.brief || {};
     const publicationConfig = brief.publication || {};
-    const isPrepared = brief.workflow === 'prepare_publication' && postizResult.status === 'prepared';
+    const isPrepared = brief.workflow === 'prepare_publication'
+      && ['prepared', 'approved_pending'].includes(postizResult.status);
+    const isApprovedPending = postizResult.status === 'approved_pending';
 
     const hasResults = idea || publication;
     if (!hasResults) {
@@ -1001,14 +1220,14 @@ const App = {
             <div class="mb-4 border border-slate-800 bg-slate-950/50 p-3 text-xs">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <span class="font-semibold ${postizResult.status === 'failed' ? 'text-rose-300' : isPrepared ? 'text-amber-300' : postizResult.status === 'created' ? 'text-emerald-300' : 'text-slate-300'}">
-                  ${isPrepared ? 'Preparado; pendiente de aprobación' : postizResult.status === 'created' ? 'Solicitud aceptada por Postiz' : postizResult.status === 'failed' ? 'Postiz reportó un error' : postizResult.status || 'Estado de Postiz pendiente'}
+                  ${isApprovedPending ? 'Copy aprobado; pendiente de envío' : isPrepared ? 'Preparado; pendiente de aprobación' : postizResult.status === 'created' ? 'Solicitud aceptada por Postiz' : postizResult.status === 'failed' ? 'Postiz reportó un error' : postizResult.status || 'Estado de Postiz pendiente'}
                 </span>
                 <span class="text-slate-400">Modo: ${this.escapeHtml(publicationConfig.mode || postizResult.mode || 'draft')}</span>
               </div>
               <p class="mt-1 text-[11px] text-slate-400">Canales: ${this.escapeHtml((publicationConfig.integration_ids || postizResult.integrations || []).join(', ') || 'ninguno')}</p>
               ${publicationConfig.publish_at ? `<p class="mt-1 text-[11px] text-slate-400">Programado para: ${this.escapeHtml(new Date(publicationConfig.publish_at).toLocaleString())}</p>` : ''}
               ${postizResult.error ? `<p class="mt-2 whitespace-pre-wrap text-[11px] text-rose-300">${this.escapeHtml(postizResult.error)}</p>` : ''}
-              ${isPrepared ? `<button type="button" data-deliver-prepared-task="${this.escapeHtml(task.task_id)}" class="mt-3 px-3 py-2 bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-600">Aprobar copy y ${publicationConfig.mode === 'schedule' ? 'programar' : publicationConfig.mode === 'now' ? 'publicar ahora' : 'crear borrador en Postiz'}</button>` : ''}
+              ${isPrepared ? `<div class="mt-3 flex flex-wrap gap-2"><button type="button" data-approve-prepared-task="${this.escapeHtml(task.task_id)}" class="px-3 py-2 border border-amber-700 text-amber-200 text-xs font-semibold hover:bg-amber-950">${isApprovedPending ? 'Guardar cambios pendientes' : 'Aprobar y dejar pendiente'}</button><button type="button" data-deliver-prepared-task="${this.escapeHtml(task.task_id)}" class="px-3 py-2 bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-600">${isApprovedPending ? 'Enviar a Postiz' : `Aprobar y ${publicationConfig.mode === 'schedule' ? 'programar' : publicationConfig.mode === 'now' ? 'enviar ahora' : 'crear borrador'}`}</button></div>` : ''}
             </div>
 
             ${publicationVariants.length === 0 ? `
@@ -1336,6 +1555,7 @@ const App = {
       this.loadIdeas();
       this.updatePublicationControls();
     }
+    if (tabId === 'publications') this.loadPublications();
     if (tabId === 'traceability' && this.activeStudioWorkflow === 'batch' && this.latestIdeaBatch) {
       this.renderBatchTrace(this.latestIdeaBatch);
       if (this.activeBatchTraceTaskId) {

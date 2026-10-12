@@ -123,8 +123,9 @@ class DeliverPreparedPublicationRequest(PublishIdeaRequest):
     publication_variants: list[dict] = Field(default_factory=list)
 
 
-class DeliverPreparedPublicationRequest(PublishIdeaRequest):
-    publication_variants: list[dict] = Field(default_factory=list)
+class ApprovePreparedPublicationRequest(BaseModel):
+    brand_id: int
+    publication_variants: list[dict] = Field(..., min_length=1)
 
 
 # ── Clientes auxiliares (Redis y Postgres) ─────────────────────
@@ -497,6 +498,24 @@ def get_saved_idea(idea_id: int, brand_id: int):
         raise HTTPException(status_code=502, detail="No se pudo consultar la idea") from exc
 
 
+@app.get("/api/publications")
+def list_publication_deliveries(
+    brand_id: int,
+    limit: int = Query(100, ge=1, le=200),
+):
+    try:
+        response = requests.get(
+            f"{ORCHESTRATOR_URL}/publications",
+            params={"brand_id": brand_id, "limit": limit},
+            timeout=10,
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        return response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo consultar la biblioteca de publicaciones") from exc
+
+
 @app.post("/api/ideas/{idea_id}/publish")
 def publish_saved_idea(idea_id: int, req: PublishIdeaRequest):
     payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
@@ -530,15 +549,15 @@ def deliver_prepared_publication(
         raise HTTPException(status_code=502, detail="No se pudo contactar al orquestador") from exc
 
 
-@app.post("/api/publications/{prepare_task_id}/deliver")
-def deliver_prepared_publication(
+@app.post("/api/publications/{prepare_task_id}/approve")
+def approve_prepared_publication(
     prepare_task_id: str,
-    req: DeliverPreparedPublicationRequest,
+    req: ApprovePreparedPublicationRequest,
 ):
     payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
     try:
         response = requests.post(
-            f"{ORCHESTRATOR_URL}/publications/{prepare_task_id}/deliver",
+            f"{ORCHESTRATOR_URL}/publications/{prepare_task_id}/approve",
             json=payload,
             timeout=15,
         )
