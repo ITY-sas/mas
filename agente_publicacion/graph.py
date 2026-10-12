@@ -33,6 +33,7 @@ class PublicacionState(TypedDict):
     idea_id: int
     preproduction: dict
     postiz_config: dict
+    publication_action: str
     publish_mode: str
     publish_at: str | None
     postiz_integration_ids: list[str]
@@ -47,6 +48,7 @@ class PublicacionState(TypedDict):
     # ── Salida (hacia agent.task.completed) ──
     publication: str
     publication_id: int
+    publication_variants: list[dict]
     postiz: dict
 
     # ── Trazabilidad de herramientas usadas ──
@@ -170,6 +172,15 @@ def save_post(state: PublicacionState) -> dict:
 def schedule_post(state: PublicacionState) -> dict:
     """Crea un borrador/programación en Postiz cuando el brief lo solicita."""
     integration_ids = state.get("postiz_integration_ids", [])
+    if state.get("publication_action", "prepare") != "deliver":
+        return {
+            "postiz": {
+                "status": "prepared",
+                "mode": state.get("publish_mode", "draft"),
+                "publish_at": state.get("publish_at"),
+                "integrations": integration_ids,
+            }
+        }
     if not integration_ids:
         return {"postiz": {"status": "skipped", "reason": "sin canales Postiz"}}
 
@@ -188,6 +199,8 @@ def schedule_post(state: PublicacionState) -> dict:
             "postiz": {
                 "status": "skipped",
                 "reason": "canales sin settings Postiz __type",
+                "mode": state.get("publish_mode", "draft"),
+                "publish_at": state.get("publish_at"),
                 "integrations": skipped_ids,
             }
         }
@@ -217,6 +230,7 @@ def schedule_post(state: PublicacionState) -> dict:
             "postiz": {
                 "status": "failed",
                 "mode": state.get("publish_mode", "draft"),
+                "publish_at": state.get("publish_at"),
                 "integrations": ready_ids,
                 "skipped_integrations": skipped_ids,
                 "error": str(exc),
@@ -224,9 +238,13 @@ def schedule_post(state: PublicacionState) -> dict:
             "tool_calls": ["postiz.create_post"],
         }
     return {
+        "publication": state["publication"],
+        "publication_id": state.get("publication_id", 0),
+        "publication_variants": state.get("publication_variants", []),
         "postiz": {
             "status": "created",
             "mode": state.get("publish_mode", "draft"),
+            "publish_at": state.get("publish_at"),
             "integrations": ready_ids,
             "skipped_integrations": skipped_ids,
             "result": result,
@@ -246,7 +264,11 @@ def create_publicacion_graph(checkpointer=None):
     builder.add_node("save_post", save_post)
     builder.add_node("schedule_post", schedule_post)
 
-    builder.add_edge(START, "load_context")
+    builder.add_conditional_edges(
+        START,
+        lambda state: "schedule_post" if state.get("publication_action") == "deliver" else "load_context",
+        ["load_context", "schedule_post"],
+    )
     builder.add_edge("load_context", "fetch_trending")
     builder.add_edge("fetch_trending", "generate_post")
     builder.add_edge("generate_post", "save_post")

@@ -94,6 +94,10 @@ class PublishIdeaRequest(BaseModel):
     settings: dict[str, dict] = Field(default_factory=dict)
 
 
+class DeliverPreparedPublicationRequest(PublishIdeaRequest):
+    publication_variants: list[dict] = Field(default_factory=list)
+
+
 def _get_runtime() -> OrchestratorRuntime:
     if runtime is None:
         raise HTTPException(status_code=503, detail="orquestador aún inicializando")
@@ -337,7 +341,8 @@ def publish_saved_idea(idea_id: int, request: PublishIdeaRequest):
     try:
         task_id = rt.start_task(
             {
-                "workflow": "publish_idea",
+                "workflow": "prepare_publication",
+                "publication_action": "prepare",
                 "brand_id": request.brand_id,
                 "idea_id": idea_id,
                 "idea": raw_content,
@@ -350,6 +355,109 @@ def publish_saved_idea(idea_id: int, request: PublishIdeaRequest):
         logger.exception("no se pudo despachar el publicador")
         raise HTTPException(status_code=503, detail=f"no se pudo iniciar la publicación: {exc}") from exc
     return {"task_id": task_id, "idea_id": idea_id, "status": STATUS_RUNNING}
+
+
+@app.post("/publications/{prepare_task_id}/deliver")
+def deliver_prepared_publication(
+    prepare_task_id: str,
+    request: DeliverPreparedPublicationRequest,
+):
+    """Deliver reviewed platform copies through the publication agent and Postiz."""
+    if request.publish_mode == "schedule" and not request.publish_at:
+        raise HTTPException(status_code=422, detail="publish_at es obligatorio para schedule")
+
+    rt = _get_runtime()
+    prepared_task = rt.store.get(prepare_task_id)
+    if not prepared_task:
+        raise HTTPException(status_code=404, detail="preparación no encontrada")
+    prepared_brief = prepared_task.get("brief") or {}
+    if (
+        prepared_brief.get("workflow") != "prepare_publication"
+        or prepared_brief.get("brand_id") != request.brand_id
+    ):
+        raise HTTPException(status_code=404, detail="preparación no encontrada para esta marca")
+    if prepared_task.get("status") != STATUS_COMPLETED:
+        raise HTTPException(status_code=409, detail="la preparación todavía no termina correctamente")
+
+    prepared_result = prepared_task.get("result") or {}
+    if (prepared_result.get("postiz") or {}).get("status") != "prepared":
+        raise HTTPException(status_code=409, detail="la tarea no contiene copies listos para entregar")
+
+    previous_config = prepared_brief.get("publication") or {}
+    previous_ids = set(previous_config.get("integration_ids") or [])
+    selected_ids = request.integration_ids
+    if len(selected_ids) != len(set(selected_ids)) or not set(selected_ids) <= previous_ids:
+        raise HTTPException(status_code=422, detail="la entrega solo puede usar canales elegidos al preparar")
+
+    variants = request.publication_variants or prepared_result.get("publication_variants") or []
+    selected_set = set(selected_ids)
+    approved_variants = []
+    covered_ids = set()
+    for variant in variants:
+        content = str(variant.get("content") or "").strip()
+        variant_ids = set(variant.get("integration_ids") or []) & selected_set
+        if not content or not variant_ids:
+            continue
+        approved_variants.append({**variant, "content": content, "integration_ids": sorted(variant_ids)})
+        covered_ids.update(variant_ids)
+    if not approved_variants or covered_ids != selected_set:
+        raise HTTPException(status_code=422, detail="cada canal debe tener un copy aprobado y no vacío")
+
+    try:
+        channels = registry.call(
+            "postiz",
+            "channels",
+            params={"brand_id": request.brand_id, "integration_ids": selected_ids},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("no se pudieron validar canales para entregar")
+        raise HTTPException(status_code=502, detail=f"no se pudieron validar canales: {exc}") from exc
+    target_channels = channels.get("channels", [])
+    if len(target_channels) != len(set(selected_ids)):
+        raise HTTPException(status_code=422, detail="hay canales que no pertenecen a la marca")
+    unconfigured_channels = [
+        channel.get("external_id")
+        for channel in target_channels
+        if not channel.get("configured")
+    ]
+    if unconfigured_channels:
+        raise HTTPException(
+            status_code=422,
+            detail=f"canales sin configuración Postiz: {unconfigured_channels}",
+        )
+
+    publication = {
+        "mode": request.publish_mode,
+        "publish_at": request.publish_at,
+        "integration_ids": selected_ids,
+        "settings": request.settings or previous_config.get("settings", {}),
+    }
+    first_copy = approved_variants[0]["content"]
+    try:
+        delivery_task_id = rt.start_task(
+            {
+                "workflow": "deliver_publication",
+                "publication_action": "deliver",
+                "brand_id": request.brand_id,
+                "idea_id": prepared_result.get("idea_id"),
+                "idea": prepared_result.get("idea", ""),
+                "preproduction": prepared_result.get("preproduction", {}),
+                "publication": publication,
+                "publication_id": prepared_result.get("publication_id", 0),
+                "publication_variants": approved_variants,
+                "prepared_publication": first_copy,
+                "target_channels": target_channels,
+            },
+            client_id=int(prepared_task.get("client_id") or request.brand_id),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("no se pudo despachar la entrega aprobada")
+        raise HTTPException(status_code=503, detail=f"no se pudo iniciar la entrega: {exc}") from exc
+    return {
+        "task_id": delivery_task_id,
+        "prepare_task_id": prepare_task_id,
+        "status": STATUS_RUNNING,
+    }
 
 
 @app.post("/demo")
