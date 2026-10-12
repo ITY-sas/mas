@@ -85,6 +85,9 @@
       <button class="tab-btn py-3 text-slate-400 hover:text-slate-200 transition flex items-center gap-2" data-tab="library">
         <i class="fa-solid fa-box-archive"></i> Biblioteca
       </button>
+      <button class="tab-btn py-3 text-slate-400 hover:text-slate-200 transition flex items-center gap-2" data-tab="publications">
+        <i class="fa-solid fa-paper-plane"></i> Publicaciones
+      </button>
       <button class="tab-btn py-3 text-slate-400 hover:text-slate-200 transition flex items-center gap-2" data-tab="traceability">
         <i class="fa-solid fa-route"></i> 2. Trazabilidad & Pipeline
       </button>
@@ -318,6 +321,38 @@
             </button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section id="tab-publications" class="tab-content hidden space-y-6">
+      <div class="flex flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-100">Publicaciones</h2>
+          <p class="mt-1 text-xs text-slate-400">Entregas enviadas a Postiz por marca, con copies y canales. Los cambios posteriores de estado se consultan en Postiz.</p>
+        </div>
+        <button id="btn-refresh-publications" type="button" class="px-3 py-2 bg-slate-800 border border-slate-700 text-slate-200 text-xs" title="Actualizar publicaciones">
+          <i class="fa-solid fa-arrows-rotate"></i> Actualizar
+        </button>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input id="publication-search" type="search" class="min-w-0 flex-1 bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-200" placeholder="Buscar copy, canal o tarea">
+        <select id="publication-status-filter" class="bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-200">
+          <option value="">Todos los estados</option>
+          <option value="awaiting_approval">Pendiente de aprobación</option>
+          <option value="approved_pending">Aprobado, pendiente de envío</option>
+          <option value="sending">Enviando</option>
+          <option value="sent">Enviado a Postiz</option>
+          <option value="scheduled">Programado</option>
+          <option value="draft">Borrador</option>
+          <option value="failed">Error</option>
+          <option value="skipped">Omitido</option>
+        </select>
+      </div>
+
+      <p id="publication-library-summary" class="text-[11px] text-slate-500" aria-live="polite"></p>
+      <div id="publication-library-list" class="divide-y divide-slate-800 border-y border-slate-800">
+        <p class="py-8 text-center text-xs text-slate-500">Selecciona una marca para cargar publicaciones.</p>
       </div>
     </section>
 

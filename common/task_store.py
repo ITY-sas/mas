@@ -145,6 +145,28 @@ class TaskStore:
         )
         return tasks
 
+    def list_publication_tasks(self, brand_id: int, *, limit: int = 100) -> list[dict]:
+        """Return preparation and delivery tasks for one brand, newest first."""
+        tasks = []
+        for key in self.r.scan_iter(match=f"{TASK_PREFIX}*", count=200):
+            raw = self.r.get(key)
+            if not raw:
+                continue
+            try:
+                task = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            brief = task.get("brief") or {}
+            if (
+                brief.get("workflow") in {
+                    "prepare_publication", "deliver_publication", "publish_idea",
+                }
+                and brief.get("brand_id") == brand_id
+            ):
+                tasks.append(task)
+        tasks.sort(key=lambda task: task.get("created_at") or 0, reverse=True)
+        return tasks[:limit]
+
     # ── Espera de finalización (pub/sub + polling de seguridad) ─
     def publish_update(self, task_id: str, status: str) -> None:
         try:

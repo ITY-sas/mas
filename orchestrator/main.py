@@ -98,6 +98,11 @@ class DeliverPreparedPublicationRequest(PublishIdeaRequest):
     publication_variants: list[dict] = Field(default_factory=list)
 
 
+class ApprovePreparedPublicationRequest(BaseModel):
+    brand_id: int
+    publication_variants: list[dict] = Field(..., min_length=1)
+
+
 def _get_runtime() -> OrchestratorRuntime:
     if runtime is None:
         raise HTTPException(status_code=503, detail="orquestador aún inicializando")
@@ -348,6 +353,7 @@ def publish_saved_idea(idea_id: int, request: PublishIdeaRequest):
                 "idea": raw_content,
                 "preproduction": dossier,
                 "publication": publication,
+                "target_channels": channels.get("channels", []),
             },
             client_id=client_id,
         )
@@ -355,6 +361,67 @@ def publish_saved_idea(idea_id: int, request: PublishIdeaRequest):
         logger.exception("no se pudo despachar el publicador")
         raise HTTPException(status_code=503, detail=f"no se pudo iniciar la publicación: {exc}") from exc
     return {"task_id": task_id, "idea_id": idea_id, "status": STATUS_RUNNING}
+
+
+@app.post("/publications/{prepare_task_id}/approve")
+def approve_prepared_publication(
+    prepare_task_id: str,
+    request: ApprovePreparedPublicationRequest,
+):
+    """Persist reviewed copies as approved without sending them to Postiz."""
+    rt = _get_runtime()
+    prepared_task = rt.store.get(prepare_task_id)
+    if not prepared_task:
+        raise HTTPException(status_code=404, detail="preparación no encontrada")
+    prepared_brief = prepared_task.get("brief") or {}
+    if (
+        prepared_brief.get("workflow") != "prepare_publication"
+        or prepared_brief.get("brand_id") != request.brand_id
+    ):
+        raise HTTPException(status_code=404, detail="preparación no encontrada para esta marca")
+    if prepared_task.get("status") != STATUS_COMPLETED:
+        raise HTTPException(status_code=409, detail="la preparación todavía no termina correctamente")
+
+    prepared_result = prepared_task.get("result") or {}
+    postiz = prepared_result.get("postiz") or {}
+    if postiz.get("status") not in {"prepared", "approved_pending"}:
+        raise HTTPException(status_code=409, detail="la preparación no está pendiente de aprobación")
+
+    publication = prepared_brief.get("publication") or {}
+    selected_ids = set(publication.get("integration_ids") or [])
+    approved_variants = []
+    covered_ids = set()
+    for variant in request.publication_variants:
+        content = str(variant.get("content") or "").strip()
+        variant_ids = set(variant.get("integration_ids") or []) & selected_ids
+        if not content or not variant_ids:
+            continue
+        approved_variants.append({**variant, "content": content, "integration_ids": sorted(variant_ids)})
+        covered_ids.update(variant_ids)
+    if not approved_variants or covered_ids != selected_ids:
+        raise HTTPException(status_code=422, detail="cada canal debe tener un copy aprobado y no vacío")
+
+    approved_postiz = {
+        "status": "approved_pending",
+        "mode": publication.get("mode", "draft"),
+        "publish_at": publication.get("publish_at"),
+        "integrations": sorted(selected_ids),
+    }
+    rt.store.update(
+        prepare_task_id,
+        result={
+            **prepared_result,
+            "publication": approved_variants[0]["content"],
+            "publication_variants": approved_variants,
+            "postiz": approved_postiz,
+        },
+    )
+    return {
+        "prepare_task_id": prepare_task_id,
+        "status": "approved_pending",
+        "postiz": approved_postiz,
+        "publication_variants": approved_variants,
+    }
 
 
 @app.post("/publications/{prepare_task_id}/deliver")
@@ -380,7 +447,7 @@ def deliver_prepared_publication(
         raise HTTPException(status_code=409, detail="la preparación todavía no termina correctamente")
 
     prepared_result = prepared_task.get("result") or {}
-    if (prepared_result.get("postiz") or {}).get("status") != "prepared":
+    if (prepared_result.get("postiz") or {}).get("status") not in {"prepared", "approved_pending"}:
         raise HTTPException(status_code=409, detail="la tarea no contiene copies listos para entregar")
 
     previous_config = prepared_brief.get("publication") or {}
@@ -443,6 +510,7 @@ def deliver_prepared_publication(
                 "idea": prepared_result.get("idea", ""),
                 "preproduction": prepared_result.get("preproduction", {}),
                 "publication": publication,
+                "prepare_task_id": prepare_task_id,
                 "publication_id": prepared_result.get("publication_id", 0),
                 "publication_variants": approved_variants,
                 "prepared_publication": first_copy,
@@ -481,6 +549,91 @@ def get_task(task_id: str):
     if task is None:
         raise HTTPException(status_code=404, detail="tarea no encontrada")
     return task
+
+
+@app.get("/publications")
+def list_publication_deliveries(brand_id: int, limit: int = 100):
+    """List publication preparations and Postiz deliveries for one brand."""
+    if not 1 <= limit <= 200:
+        raise HTTPException(status_code=422, detail="limit debe estar entre 1 y 200")
+
+    tasks = _get_runtime().store.list_publication_tasks(brand_id, limit=limit)
+    delivery_sources = {
+        (task.get("brief") or {}).get("prepare_task_id")
+        for task in tasks
+        if (task.get("brief") or {}).get("workflow") == "deliver_publication"
+    }
+    items = []
+    for task in tasks:
+        brief = task.get("brief") or {}
+        workflow = brief.get("workflow")
+        if workflow == "prepare_publication" and task.get("task_id") in delivery_sources:
+            continue
+        result = task.get("result") or {}
+        publication = brief.get("publication") or {}
+        postiz = result.get("postiz") or {}
+        if workflow == "publish_idea" and not postiz:
+            continue
+        variants = result.get("publication_variants") or brief.get("publication_variants") or []
+        variant_by_channel = {
+            integration_id: variant
+            for variant in variants
+            for integration_id in variant.get("integration_ids", [])
+        }
+        target_channels = {
+            channel.get("external_id"): channel
+            for channel in brief.get("target_channels", [])
+        }
+        channels = []
+        for integration_id in publication.get("integration_ids", []):
+            variant = variant_by_channel.get(integration_id, {})
+            channel = target_channels.get(integration_id, {})
+            channels.append({
+                "external_id": integration_id,
+                "display_name": channel.get("display_name") or integration_id,
+                "provider": channel.get("provider") or variant.get("platform") or "",
+                "content": variant.get("content") or "",
+            })
+
+        if task.get("status") == STATUS_RUNNING:
+            delivery_status = "preparing" if workflow == "prepare_publication" else "sending"
+        elif task.get("status") == STATUS_FAILED or postiz.get("status") == "failed":
+            delivery_status = "failed"
+        elif postiz.get("status") == "skipped":
+            delivery_status = "skipped"
+        elif postiz.get("status") == "approved_pending":
+            delivery_status = "approved_pending"
+        elif postiz.get("status") == "prepared":
+            delivery_status = "awaiting_approval"
+        elif postiz.get("status") == "created":
+            delivery_status = {
+                "now": "sent",
+                "schedule": "scheduled",
+                "draft": "draft",
+            }.get(publication.get("mode"), "created")
+        else:
+            delivery_status = "pending"
+
+        items.append({
+            "task_id": task.get("task_id"),
+            "prepare_task_id": (
+                brief.get("prepare_task_id")
+                or (task.get("task_id") if workflow == "prepare_publication" else None)
+            ),
+            "idea_id": brief.get("idea_id"),
+            "workflow": workflow,
+            "status": delivery_status,
+            "task_status": task.get("status"),
+            "mode": publication.get("mode", "draft"),
+            "publish_at": publication.get("publish_at"),
+            "integration_ids": publication.get("integration_ids") or postiz.get("integrations") or [],
+            "settings": publication.get("settings") or {},
+            "created_at": task.get("created_at"),
+            "updated_at": task.get("updated_at"),
+            "error": postiz.get("error") or task.get("error"),
+            "channels": channels,
+        })
+    return {"items": items, "total": len(items)}
 
 
 @app.get("/tasks/{task_id}/history")
