@@ -150,10 +150,11 @@ export const API = {
     });
   },
 
-  async getTasks(status = null, limit = 50) {
+  async getTasks(status = null, limit = 100, brandId = null) {
     const query = new URLSearchParams();
     if (status) query.set('status', status);
     if (limit) query.set('limit', limit);
+    if (brandId !== null && brandId !== undefined && brandId !== '') query.set('brand_id', brandId);
     return this.request(`/api/tasks?${query.toString()}`);
   },
 
