@@ -593,7 +593,9 @@ python enviar_brief.py        # publica {client_id, content} en ideation_queue
 | orchestrator | POST | `/ideas/generate` | Lanza lote asíncrono de 1–5 ideas |
 | orchestrator | GET | `/ideas/batches/{id}?brand_id=` | Progreso y resultados parciales |
 | orchestrator | POST | `/ideas/{id}/publish` | Prepara variantes para revisar; no llama a Postiz |
+| orchestrator | POST | `/publications/{prepare_task_id}/approve` | Guarda los copies revisados como aprobados; no llama a Postiz |
 | orchestrator | POST | `/publications/{prepare_task_id}/deliver` | Entrega a Postiz copies revisados con modo/fecha/canales |
+| orchestrator | GET | `/publications?brand_id=` | Preparaciones y entregas de la marca con estado derivado |
 | orchestrator | POST | `/process` | Compatibilidad: generación individual sin publicar |
 | orchestrator | GET | `/tasks/{id}` | Metadatos + resultados (TaskStore/Redis) |
 | orchestrator | GET | `/tasks/{id}/history` | Historial de chat (PostgreSQL) |
@@ -646,15 +648,16 @@ proyecto multiagente/
 │   ├── providers.py              # registro + balanceo ponderado + salud
 │   ├── resilience.py             # backoff exponencial + cadena de fallback
 │   └── cache.py                  # caché Redis de prompts/embeddings
-├── tool_services/                # TOOLS-AS-A-SERVICE (6, :8010-8015)
+├── tool_services/                # TOOLS-AS-A-SERVICE (7, :8010-8016)
 │   ├── Dockerfile                # build parametrizado (ARG TOOL_DIR)
-│   └── tool_client|trends|competitors|rag|news|trending/main.py
+│   └── tool_client|trends|competitors|rag|news|trending|postiz/main.py
+├── frontend/                     # BFF FastAPI (:3000) + SPA React 19/Vite (ver docs/FRONTEND.md)
 ├── shared_tools/                 # librería de dominio (SÓLO la usan los tools)
 ├── tests/
 │   ├── PLAN_DE_PRUEBAS.md        # plan de pruebas (IDs, cobertura, criterios)
 │   ├── unit/ integration/ performance/
 ├── docs/                         # ARQUITECTURA · TECNOLOGIAS · CHANGELOG
-├── docker-compose.yml            # 13 servicios
+├── docker-compose.yml            # 14 servicios backend (el BFF corre local)
 ├── init.sql                      # esquema + seed
 ├── prueba_e2e.py                 # E2E (HTTP + eventos + estado externo)
 ├── prueba_orquestador.py         # demo de la API del orquestador
