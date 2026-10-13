@@ -42,13 +42,6 @@ export function LibraryView() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [showJsonDossier, setShowJsonDossier] = useState(false);
 
-  // Asegurar carga de ideas si la lista está vacía al montar
-  useEffect(() => {
-    if (selectedClient) {
-      loadIdeas(ideaLibraryQuery, ideaLibraryOffset);
-    }
-  }, [selectedClient?.id, selectedClient?.brand_id]);
-
   // Pre-seleccionar canal si no hay ninguno seleccionado
   useEffect(() => {
     if (brandChannels.length > 0 && selectedChannels.length === 0) {
@@ -131,9 +124,13 @@ export function LibraryView() {
             Explora las campañas generadas para {selectedClient?.nombre || 'la marca'}. Selecciona una idea para revisar su preproducción y preparar copies.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-indigo-300">
-            {ideaLibraryTotal} ideas guardadas
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs px-2.5 py-1 rounded-lg bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-semibold flex items-center gap-1.5 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Marca: {selectedClient?.nombre} (ID: {selectedClient?.brand_id || selectedClient?.id})</span>
+          </span>
+          <span className="text-xs font-mono px-3 py-1 rounded-lg bg-slate-900 border border-slate-800 text-cyan-300">
+            {ideaLibraryTotal} dossiers en BD
           </span>
         </div>
       </div>
