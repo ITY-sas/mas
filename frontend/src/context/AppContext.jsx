@@ -234,13 +234,14 @@ export function AppProvider({ children }) {
   }, [loadBrandChannels, loadIdeas, loadPublications]);
 
   // ── Carga de Historial de Tareas (Redis) ────────────────────
-  const loadTasks = useCallback(async (statusFilter = null) => {
+  const loadTasks = useCallback(async (statusFilter = null, brandId = null) => {
     setIsLoadingTasks(true);
     try {
-      const result = await API.getTasks(statusFilter, 60);
-      setTasks(result);
+      const result = await API.getTasks(statusFilter, 100, brandId);
+      setTasks(result || []);
     } catch (err) {
       console.warn('Error cargando tareas de Redis:', err);
+      setTasks([]);
     } finally {
       setIsLoadingTasks(false);
     }
@@ -603,8 +604,14 @@ export function AppProvider({ children }) {
     showToast(`Archivo ${filename} descargado exitosamente.`, 'success');
   }, [currentTask, showToast]);
 
-  // Carga inicial
+  const initExecutedRef = useRef(false);
+  const activeBrandIdRef = useRef(null);
+
+  // Carga inicial: corre estrictamente una sola vez al montar la aplicación
   useEffect(() => {
+    if (initExecutedRef.current) return;
+    initExecutedRef.current = true;
+
     async function init() {
       let initialBrandId = 1;
       try {
@@ -619,6 +626,8 @@ export function AppProvider({ children }) {
         console.warn('Error inicial cargando clientes:', err);
       }
 
+      activeBrandIdRef.current = initialBrandId;
+
       await Promise.all([
         loadBrandChannels(initialBrandId),
         loadIdeas('', 0, initialBrandId),
@@ -632,22 +641,25 @@ export function AppProvider({ children }) {
 
     init();
 
-    const healthInterval = setInterval(checkSystemHealth, 15000);
+    const healthInterval = setInterval(checkSystemHealth, 30000);
     return () => {
       clearInterval(healthInterval);
       if (streamSubRef.current) streamSubRef.current.close();
       if (batchPollTimerRef.current) clearInterval(batchPollTimerRef.current);
     };
-  }, [checkSystemHealth, loadBrandChannels, loadIdeas, loadPostizIntegrations, loadPublications, loadTasks, loadToolsCatalog]);
+  }, []);
 
-  // Recargar ideas y publicaciones cuando cambia el cliente activo (por ID)
+  // Sincronización al cambiar el cliente activo (por ID)
   useEffect(() => {
-    if (selectedClient) {
-      const brandId = selectedClient.brand_id || selectedClient.id;
-      loadBrandChannels(brandId);
-      loadIdeas(ideaLibraryQuery, ideaLibraryOffset, brandId);
-      loadPublications(brandId);
-    }
+    if (!selectedClient) return;
+    const brandId = selectedClient.brand_id || selectedClient.id;
+    // Si ya fue cargada por init o por selección manual, no repetir
+    if (activeBrandIdRef.current === brandId) return;
+    activeBrandIdRef.current = brandId;
+
+    loadBrandChannels(brandId);
+    loadIdeas('', 0, brandId);
+    loadPublications(brandId);
   }, [selectedClient?.id, selectedClient?.brand_id]);
 
   const value = {
