@@ -41,7 +41,9 @@ export function DashboardView() {
     services.postgres === 'ok' &&
     typeof services.llm_gateway === 'object';
 
-  const recentTasks = tasks.slice(0, 6);
+  const activeBrandId = selectedClient?.brand_id || selectedClient?.id;
+  const brandTasks = tasks.filter((t) => (t.brand_id || t.client_id) === activeBrandId);
+  const recentTasks = (brandTasks.length > 0 ? brandTasks : tasks).slice(0, 6);
 
   return (
     <div className="space-y-6">
@@ -209,9 +211,9 @@ export function DashboardView() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-indigo-400" /> Tareas Recientes en Redis
+                  <Clock className="w-4 h-4 text-indigo-400" /> Tareas Recientes: {selectedClient?.nombre || 'Marca'} ({brandTasks.length})
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">Historial de ejecuciones multi-agente con trazabilidad auditable.</p>
+                <p className="text-xs text-slate-400 mt-0.5">Historial de ejecuciones multi-agente para esta marca con trazabilidad auditable.</p>
               </div>
               <button
                 onClick={() => setActiveTab('history')}
