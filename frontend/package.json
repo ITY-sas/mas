@@ -1,0 +1,23 @@
+{
+  "name": "multi-agent-studio-frontend",
+  "version": "2.0.0",
+  "description": "Backoffice moderno y SPA para el Sistema Multi-Agente (LangGraph Supervisor, Ideación y Publicación)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^1.55.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright-core": "^1.64.0",
+    "tailwindcss": "^4.0.0",
+    "vite": "^6.2.0"
+  }
+}
