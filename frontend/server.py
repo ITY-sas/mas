@@ -710,8 +710,12 @@ def create_demo(req: DemoBriefRequest):
 
 
 @app.get("/api/tasks")
-def list_tasks(status: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200)):
-    """Lista tareas guardadas en Redis ordenadas cronológicamente."""
+def list_tasks(
+    status: Optional[str] = Query(None),
+    brand_id: Optional[int] = Query(None),
+    limit: int = Query(100, ge=1, le=200),
+):
+    """Lista tareas guardadas en Redis ordenadas cronológicamente, con soporte de filtro por marca."""
     r_client = get_redis_client()
     if not r_client:
         return []
@@ -728,13 +732,18 @@ def list_tasks(status: Optional[str] = Query(None), limit: int = Query(50, ge=1,
                 if status and task.get("status") != status:
                     continue
 
+                brief = task.get("brief") or {}
+                task_brand_id = brief.get("brand_id") or task.get("brand_id") or task.get("client_id")
+                if brand_id is not None and task_brand_id != brand_id:
+                    continue
+
                 # Resumen ligero para listado
                 result = task.get("result") or {}
-                brief = task.get("brief") or {}
                 tasks.append({
                     "task_id": task.get("task_id"),
                     "status": task.get("status"),
                     "client_id": task.get("client_id"),
+                    "brand_id": task_brand_id,
                     "brief_content": brief.get("content", ""),
                     "content_format": brief.get("content_format", "auto"),
                     "has_idea": bool(result.get("idea")),
