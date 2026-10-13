@@ -53,6 +53,7 @@ POSTGRES_CFG = {
     "database": os.getenv("POSTGRES_DB", "ideation_db"),
     "user": os.getenv("POSTGRES_USER", "postgres"),
     "password": os.getenv("POSTGRES_PASSWORD", "password"),
+    "connect_timeout": 1,
 }
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -88,6 +89,7 @@ class TaskBriefRequest(BaseModel):
 
 class LinkBrandChannelRequest(BaseModel):
     external_id: str = Field(..., min_length=1)
+    reassign: bool = Field(False, description="Si es True y ya pertenece a otra marca, transfiere el canal")
 
 
 class DemoBriefRequest(BaseModel):
@@ -133,7 +135,12 @@ def get_redis_client():
     try:
         import redis
 
-        return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        return redis.Redis.from_url(
+            REDIS_URL,
+            socket_timeout=1.0,
+            socket_connect_timeout=1.0,
+            decode_responses=True,
+        )
     except Exception as exc:
         logger.warning("No se pudo conectar a Redis: %s", exc)
         return None
@@ -381,7 +388,7 @@ def get_brand_channels(brand_id: int):
 
 @app.get("/api/postiz/integrations")
 def get_postiz_integrations():
-    """Devuelve el catálogo saneado de integraciones de la cuenta Postiz."""
+    """Devuelve el catálogo saneado de integraciones de la cuenta Postiz enriquecido con el estado de asignación."""
     try:
         resp = requests.get(f"{TOOL_POSTIZ_URL}/available-integrations", timeout=5)
         if resp.status_code >= 400:
@@ -389,7 +396,39 @@ def get_postiz_integrations():
         envelope = resp.json()
         if envelope.get("status") != "ok":
             raise HTTPException(status_code=502, detail=envelope.get("error") or "Error consultando Postiz")
-        return envelope.get("data", [])
+        items = envelope.get("data", [])
+
+        # Enriquecer con marcas vinculadas desde PostgreSQL
+        conn = get_pg_connection()
+        if conn:
+            try:
+                from psycopg2.extras import RealDictCursor
+
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT bc.external_id, bc.brand_id, c.nombre AS brand_name
+                        FROM brand_channels bc
+                        LEFT JOIN clientes c ON c.id = bc.brand_id
+                        WHERE bc.status = 'active';
+                        """
+                    )
+                    mapping = {r["external_id"]: r for r in cur.fetchall()}
+                conn.close()
+                for item in items:
+                    ext = item.get("external_id")
+                    if ext in mapping:
+                        item["linked_brand_id"] = mapping[ext]["brand_id"]
+                        item["linked_brand_name"] = mapping[ext]["brand_name"] or f"Marca {mapping[ext]['brand_id']}"
+                    else:
+                        item["linked_brand_id"] = None
+                        item["linked_brand_name"] = None
+            except Exception as e:
+                logger.warning("No se pudo enriquecer integraciones: %s", e)
+                if conn:
+                    conn.close()
+
+        return items
     except requests.RequestException as exc:
         logger.warning("No se pudo consultar catálogo Postiz: %s", exc)
         raise HTTPException(status_code=502, detail="No se pudo consultar el catálogo Postiz") from exc
@@ -404,6 +443,39 @@ def link_brand_channel(brand_id: int, req: LinkBrandChannelRequest):
             json={"brand_id": brand_id, "external_id": req.external_id},
             timeout=10,
         )
+        if resp.status_code == 400 and ("ya está vinculado" in resp.text or req.reassign):
+            # Si el canal ya está vinculado a otra marca y se permite transferir, reasignar directamente en DB
+            conn = get_pg_connection()
+            if conn:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE brand_channels
+                            SET brand_id = %s, status = 'active'
+                            WHERE external_id = %s
+                            RETURNING id, brand_id, provider, external_id, display_name;
+                            """,
+                            (brand_id, req.external_id),
+                        )
+                        updated = cur.fetchone()
+                        conn.commit()
+                    conn.close()
+                    if updated:
+                        return {
+                            "id": updated[0],
+                            "brand_id": updated[1],
+                            "provider": updated[2],
+                            "external_id": updated[3],
+                            "display_name": updated[4],
+                            "configured": True,
+                            "transferred": True,
+                        }
+                except Exception as db_err:
+                    logger.warning("Error reasignando canal en DB: %s", db_err)
+                    if conn:
+                        conn.close()
+
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         envelope = resp.json()
@@ -413,6 +485,28 @@ def link_brand_channel(brand_id: int, req: LinkBrandChannelRequest):
     except requests.RequestException as exc:
         logger.warning("No se pudo vincular canal %s a marca %s: %s", req.external_id, brand_id, exc)
         raise HTTPException(status_code=502, detail="No se pudo conectar con tool-postiz") from exc
+
+
+@app.delete("/api/brands/{brand_id}/channels/{external_id}")
+def unlink_brand_channel(brand_id: int, external_id: str):
+    """Desvincula un canal Postiz de la marca seleccionada."""
+    conn = get_pg_connection()
+    if not conn:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM brand_channels WHERE brand_id = %s AND external_id = %s;",
+                (brand_id, external_id),
+            )
+            conn.commit()
+        conn.close()
+        return {"status": "ok", "message": f"Canal {external_id} desvinculado de marca {brand_id}"}
+    except Exception as exc:
+        if conn:
+            conn.close()
+        logger.warning("Error desvinculando canal: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/ideas/generate")
