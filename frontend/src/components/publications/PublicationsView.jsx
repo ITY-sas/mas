@@ -31,13 +31,6 @@ export function PublicationsView() {
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Asegurar carga de publicaciones al montar o cambiar cliente
-  useEffect(() => {
-    if (selectedClient) {
-      loadPublications();
-    }
-  }, [selectedClient?.id, selectedClient?.brand_id]);
-
   const statusLabels = {
     preparing: 'Preparando Copy',
     awaiting_approval: 'Pendiente de Aprobación',
@@ -96,14 +89,23 @@ export function PublicationsView() {
             Seguimiento por marca de copies preparados, aprobaciones y despachos hacia Postiz. El estado refleja la respuesta de entrega.
           </p>
         </div>
-        <button
-          onClick={loadPublications}
-          disabled={isLoadingPublications}
-          className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition self-start md:self-auto"
-        >
-          <RotateCw className={`w-3.5 h-3.5 ${isLoadingPublications ? 'animate-spin' : ''}`} />
-          <span>Actualizar Entregas</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-semibold flex items-center gap-1.5 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Marca: {selectedClient?.nombre} (ID: {selectedClient?.brand_id || selectedClient?.id})</span>
+          </span>
+          <span className="text-xs font-mono px-3 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+            {publications.length} entregas
+          </span>
+          <button
+            onClick={loadPublications}
+            disabled={isLoadingPublications}
+            className="px-3.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isLoadingPublications ? 'animate-spin' : ''}`} />
+            <span>Actualizar</span>
+          </button>
+        </div>
       </div>
 
       {/* Filtros y Buscador */}
