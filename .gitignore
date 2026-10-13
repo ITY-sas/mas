@@ -7,6 +7,8 @@ __pycache__/
 venv/
 .venv/
 env/
+frontend/node_modules/
+.playwright-mcp/
 
 # IDE
 .idea/
@@ -37,3 +39,15 @@ Desktop.ini
 
 # Archivos con backtick (esqueletos no oficiales)
 `*
+
+docs/*
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
+postiz.env
+
+.agents/skills/*
+frontend/node_modules/*
+frontend/.agents/*
