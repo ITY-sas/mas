@@ -5,18 +5,21 @@ Convención de commits: [Conventional Commits](https://www.conventionalcommits.o
 
 ## [Unreleased]
 
-### Added
-- Generación asíncrona de lotes de 1–5 dossiers, briefs opcionales/individuales,
-  progreso en Redis y biblioteca paginada de ideas scopeada por marca.
-- Publicación bajo selección manual de idea/canales/modo; el publicador recupera
-  el dossier persistido y ya no se despacha automáticamente tras ideación.
-- Preparación de variantes separada de entrega: el copy queda editable y Postiz
-  solo recibe el envío después de una aprobación explícita.
-- Migraciones 004/005 para posición de lote e idempotencia dentro de `brand_id`.
+## [2.2.0] — 2026-10-13
 
-### Changed
-- Studio separa generación, biblioteca y publicación; briefs vacíos se derivan
-  del perfil, pilares y señales de marca.
+### Added
+- **feat(lifecycle & crud)**:
+  - Migración `006_crud_and_lifecycle_states.sql` con soporte de ciclo de vida, trazabilidad temporal (`updated_at`, `deleted_at`) e índices parciales para `ideas_generadas` y `publicaciones_generadas`, más `rag_config` JSONB en `brands`.
+  - Máquina de estados formal: ideas transicionan de `approved` a `published` o `archived`; publicaciones de `draft` a `sent_to_postiz` o `archived`.
+  - Sincronización automática de embeddings pgvector: cualquier modificación de contenido en `tool-rag` recalcula de inmediato el vector de 768 dimensiones vía LLM Gateway.
+  - Inmutabilidad y rechazo `HTTP 409 Conflict`: las publicaciones enviadas a Postiz no pueden editarse ni eliminarse; las ideas con publicaciones despachadas no pueden eliminarse.
+  - Exclusión estricta de registros archivados (`status = 'archived'`) en recuperación semántica RAG (`search_similar_ideas`, `search_similar_content`).
+  - Endpoints CRUD en `tool-client` (`GET/PUT/DELETE /brands/{id}`), `tool-rag` (`PUT/DELETE /ideas/{id}`, `GET/PUT/DELETE /publicaciones/{pub_id}`) y proxies completos en el BFF (`frontend/server.py`).
+  - Frontend Backoffice UI:
+    - Edición de ideas con re-indexación vectorial instantánea en modal.
+    - Eliminación de ideas con advertencia de inmutabilidad y captura de error 409.
+    - Modal de configuración de marca y parámetros RAG (`similarity_threshold`, `top_k`, `contrast_enabled`).
+    - Badges visuales de inmutabilidad (`Lock`) en copias despachadas a Postiz.
 
 ## [2.1.0] — 2026-10-07
 

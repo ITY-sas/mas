@@ -64,6 +64,7 @@ erDiagram
         string name
         string slug
         string status
+        jsonb rag_config
         vector embedding
     }
     BRAND_MEMBERS {
@@ -85,6 +86,9 @@ erDiagram
         int client_id
         uuid generation_batch_id
         smallint generation_index
+        string status
+        timestamp updated_at
+        timestamp deleted_at
         vector embedding
         text content
     }
@@ -94,6 +98,9 @@ erDiagram
         int client_id
         int idea_id
         string platform
+        string status
+        timestamp updated_at
+        timestamp deleted_at
         vector embedding
         text content
     }
@@ -335,7 +342,47 @@ FROM brand_channels
 WHERE brand_id = 1;
 ```
 
-## 11. Estado actual
+## 11. Ciclo de vida de entidades, máquina de estados e inmutabilidad (Migración 006)
+
+### 11.1 Diagrama de estados
+
+```mermaid
+stateDiagram-v2
+    [*] --> ApprovedIdea: Generación de Idea
+    ApprovedIdea --> PublishedIdea: Publicación vinculada despachada a Postiz
+    ApprovedIdea --> ArchivedIdea: Soft-Delete (sin publicaciones despachadas)
+    PublishedIdea --> [*]: Inmutable (Bloqueo HTTP 409 Conflict ante eliminación)
+    ArchivedIdea --> [*]: Excluida de búsquedas vectoriales RAG
+
+    [*] --> DraftPost: Generación de Copia / Borrador
+    DraftPost --> SentToPostiz: Despacho a Postiz (publish / deliver)
+    DraftPost --> ArchivedPost: Soft-Delete
+    SentToPostiz --> [*]: Inmutable (Bloqueo HTTP 409 Conflict ante edición o borrado)
+    ArchivedPost --> [*]: Excluida de consultas y recuperaciones activas
+```
+
+### 11.2 Reglas de negocio e inmutabilidad
+
+1. **Re-indexación vectorial RAG automática en edición (`PUT /ideas/{id}`, `PUT /publicaciones/{pub_id}`)**:
+   - Cuando se modifica el contenido de una idea no archivada o de un borrador de publicación, el sistema invoca el LLM Gateway (`POST /v1/embeddings`), recalcula el vector de 768 dimensiones y actualiza el campo `embedding` y `updated_at = NOW()`.
+2. **Exclusión estricta de registros archivados (`status = 'archived'`)**:
+   - `search_similar_ideas` y `search_similar_content` aplican la condición obligatoria `COALESCE(status, 'approved') != 'archived'` antes del ordenamiento por similitud de coseno `<=>`.
+   - Se crearon índices parciales optimizados:
+     - `idx_ideas_active_brand_status ON ideas_generadas (brand_id, status) WHERE status != 'archived';`
+     - `idx_publications_active_brand_status ON publicaciones_generadas (brand_id, status) WHERE status != 'archived';`
+3. **Protección de Ideas Publicadas contra Eliminación**:
+   - Antes de archivar una idea (`DELETE /ideas/{id}`), el sistema valida si existen registros hijos en `publicaciones_generadas` con estado `'sent_to_postiz'` o `'published'`.
+   - Si existen, se aborta la operación arrojando `LifecycleConflictError` y el BFF responde con código `HTTP 409 Conflict`.
+   - Si no existen publicaciones despachadas, se archiva la idea (`status = 'archived'`, `deleted_at = NOW()`) y se archivan en cascada sus borradores (`draft`).
+4. **Inmutabilidad absoluta de Publicaciones Despachadas**:
+   - Las copias enviadas a Postiz (`status IN ('sent_to_postiz', 'published')`) son inmutables. Cualquier intento de modificación (`PUT`) o eliminación (`DELETE`) es rechazado con `HTTP 409 Conflict`.
+5. **Configuración RAG dinámica por Marca (`brands.rag_config`)**:
+   - Cada marca almacena en JSONB parámetros de control vectorial:
+     - `similarity_threshold`: umbral mínimo de similitud coseno.
+     - `top_k`: cantidad de recuerdos relevantes a inyectar en el prompt.
+     - `contrast_enabled`: bandera booleana para contrastar briefs contra el histórico RAG de la marca.
+
+## 12. Estado actual
 
 Implementado:
 
@@ -347,12 +394,15 @@ Implementado:
 - Onboarding inicial de marcas.
 - Ingesta de documentos, chunks y procedencia.
 - Canales Postiz por marca.
+- Ciclo de vida completo y máquina de estados (Migración 006).
+- Sincronización automática de embeddings pgvector en mutaciones.
+- Inmutabilidad de publicaciones enviadas con protección HTTP 409 Conflict.
+- Configuración dinámica de RAG por marca (`rag_config` JSONB).
 
 Pendiente para producción:
 
-- Autenticación y autorización real.
-- Políticas de acceso por usuario.
-- FK obligatoria de `publicaciones_generadas.idea_id`.
-- Rotación y almacenamiento seguro de credenciales.
-- Conectores oficiales de plataformas.
-- Auditoría completa de accesos y cambios.
+- Autenticación y autorización real con tokens JWT.
+- Políticas de acceso granular por usuario (RBAC).
+- Rotación y almacenamiento seguro de credenciales con KMS/Vault.
+- Conectores oficiales OAuth para LinkedIn, Instagram, TikTok.
+- Auditoría completa de accesos y cambios en eventos de observabilidad.

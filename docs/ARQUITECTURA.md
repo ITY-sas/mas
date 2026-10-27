@@ -221,14 +221,21 @@ cola `reply_to` (RPC sobre eventos, `common/rpc.py`). Es el transporte
 
 **Propiedad de datos por tool** (sin solapamientos):
 
-| Tool | Dueña de tablas | Fuente externa |
-|------|-----------------|----------------|
-| tool-client | `clientes` | — |
-| tool-trends | `tendencias` | — |
-| tool-competitors | `referencias_competencia` | — |
-| tool-rag | `ideas_generadas`, `publicaciones_generadas` (lectura + escritura) | — |
-| tool-news | — | Google News RSS |
-| tool-trending | — | Google News RSS |
+| Tool | Dueña de tablas | Fuente externa | Operaciones CRUD & Ciclo de vida |
+|------|-----------------|----------------|----------------------------------|
+| tool-client | `brands`, `clientes` | — | `get_brand`, `update_brand` (perfil + `rag_config`), `delete_brand` (soft-delete) |
+| tool-trends | `tendencias` | — | `search`, `all`, `by_category` |
+| tool-competitors | `referencias_competencia` | — | `get_competitors` |
+| tool-rag | `ideas_generadas`, `publicaciones_generadas` (lectura + escritura) | — | Ideas: `list_ideas`, `get_idea`, `save_idea`, `update_idea` (re-embedding pgvector), `delete_idea` (409 ante publicaciones enviadas). Publicaciones: `save_publicacion`, `list_publicaciones`, `get_publicacion`, `update_publicacion` (inmutabilidad 409 si enviada), `delete_publicacion` (inmutabilidad 409 si enviada) |
+| tool-news | — | Google News RSS | `fetch_news` |
+| tool-trending | — | Google News RSS | `fetch_trending` |
+
+**Sincronización RAG y Máquina de Estados**:
+1. **Re-cálculo Vectorial**: Toda actualización en `update_idea` o `update_publicacion` re-calcula su vector de 768 dimensiones vía LLM Gateway de forma síncrona.
+2. **Inmutabilidad y Error 409 Conflict**:
+   - `DELETE /ideas/{id}` valida la existencia de publicaciones vinculadas despachadas a Postiz (`status IN ('sent_to_postiz', 'published')`). Si existen, rechaza con HTTP 409 Conflict.
+   - `PUT /publicaciones/{pub_id}` y `DELETE /publicaciones/{pub_id}` bloquean con HTTP 409 Conflict cualquier mutación si la copia ya fue despachada a Postiz.
+3. **Exclusión de Archivados**: Las búsquedas vectoriales (`search_similar_ideas`, `search_similar_content`) filtran estrictamente registros no archivados (`COALESCE(status, 'approved') != 'archived'`).
 
 ### 2.3 Resiliencia del bucle asíncrono (requisito 3)
 
