@@ -1,0 +1,255 @@
+﻿{
+    "task_id":  "505c764b-438e-4427-a7e2-cef2f3ce80cd",
+    "status":  "completed",
+    "idea":  "{\n  \"content_type\": \"reel\",\n  \"title\": \"Sol Consciente: Tu Verano Natural\",\n  \"concept\": \"This Reel transports viewers to a sun-drenched Colombian beach, highlighting EcoBrandâs natural sunscreen as the perfect, sustainable choice. Weâll showcase the refreshing application, the beautiful ocean backdrop, and the peace of mind knowing our formula is kind to your skin and the environment. The reel culminates with a call to protect our precious natural resources.\",\n  \"objective\": \"Increase brand awareness and drive traffic to EcoBrandâs website for sunscreen purchases.\",\n  \"audience\": \"Millennial Colombians (18-35) interested in eco-friendly skincare, travel, and ocean conservation.\",\n  \"key_message\": \"EcoBrand sunscreen: Feel good, do good, protect your skin and our planet.\",\n  \"format\": \"Instagram Reel\",\n  \"duration_seconds\": 30,\n  \"script\": [\n    {\n      \"scene\": 1,\n      \"duration_seconds\": 3,\n      \"visual\": \"Plano general: Playa paradisÃ­aca en Colombia - arena blanca, mar turquesa, cielo azul.\",\n      \"action\": \"CÃ¡mara lenta. Gente joven disfrutando de la playa: nadando, tomando el sol, riendo.\",\n      \"dialogue_or_voiceover\": \"Narrador (Voz tranquila y relajada): \u0027El verano colombiano merece un cuidado especialâ¦\u0027\",\n      \"on_screen_text\": \"Sol Consciente\"\n    },\n    {\n      \"scene\": 2,\n      \"duration_seconds\": 6,\n      \"visual\": \"Primer plano: Manos aplicando EcoBrand sunscreen en la piel.\",\n      \"action\": \"La persona aplica generosamente el protector solar en su cara y brazo. La textura del producto es suave y ligera.\",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027Con EcoBrand, disfrÃºtalo sin preocupaciones. Nuestra fÃ³rmula natural protege tu piel de los rayos UVâ¦\u0027\",\n      \"on_screen_text\": \"Ingredientes naturales | Origen responsable\"\n    },\n    {\n      \"scene\": 3,\n      \"duration_seconds\": 5,\n      \"visual\": \"Plano medio: El mismo individuo bebiendo agua y sonriendo al sol.\",\n      \"action\": \"Enfoque en la tranquilidad y la relajaciÃ³n.\",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027â¦y minimiza el impacto ambiental. Porque cada gota cuenta.\u0027\",\n      \"on_screen_text\": \"98% natural | Cruelty-Free\"\n    },\n    {\n      \"scene\": 4,\n      \"duration_seconds\": 6,\n      \"visual\": \"Plano general: El mismo individuo observando el ocÃ©ano con asombro.\",\n      \"action\": \"La cÃ¡mara se acerca al mar, mostrando su belleza y fragilidad. \",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027Protege nuestro paraÃ­so. Elige EcoBrand.\u0027\",\n      \"on_screen_text\": \"Cuidado consciente | Sostenibilidad\"\n    },\n    {\n      \"scene\": 5,\n      \"duration_seconds\": 4,\n      \"visual\": \"Primer plano: El logo de EcoBrand sobre un fondo de olas.\",\n      \"action\": \"El logo aparece con un degradado azul-verde.\",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027EcoBrand: Cuidado personal con transparencia.\u0027\",\n      \"on_screen_text\": \"EcoBrand - Encuentra tu protecciÃ³n natural\"\n    }\n  ],\n  \"camera\": [\n    {\n      \"scene\": 1,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento suave de cÃ¡mara\",\n      \"framing\": \"ComposiciÃ³n equilibrada con el mar y la playa en primer plano\"\n    },\n    {\n      \"scene\": 2,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"45 grados\",\n      \"movement\": \"Movimiento de cÃ¡mara suave hacia el frente\",\n      \"framing\": \"Enfoque en la textura del protector solar y en la piel\"\n    },\n    {\n      \"scene\": 3,\n      \"shot\": \"Plano medio\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento de cÃ¡mara hacia adelante\",\n      \"framing\": \"El individuo debe estar en el centro del encuadre\"\n    },\n    {\n      \"scene\": 4,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento de cÃ¡mara hacia adelante, lento\",\n      \"framing\": \"Enfoque en el ocÃ©ano y la sensaciÃ³n de libertad\"\n    },\n    {\n      \"scene\": 5,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento de cÃ¡mara lento\",\n      \"framing\": \"Logo de EcoBrand centrado en la pantalla\"\n    }\n  ],\n  \"performance_direction\": \"La persona debe transmitir alegrÃ­a, relajaciÃ³n y confianza. Debe tener una sonrisa natural y una expresiÃ³n de bienestar. El ritmo debe ser pausado y sin prisas.\",\n  \"location_and_art_direction\": \"Playa paradisÃ­aca en Colombia (Cartagena, San AndrÃ©s, etc.). Props: Protector solar EcoBrand, toalla de playa, gafas de sol. Wardrobe: Ropa de verano cÃ³moda y casual. Lighting: Luz natural del sol. Visual style: Vibrante y alegre, con colores cÃ¡lidos.\",\n  \"audio\": \"MÃºsica: MÃºsica ambiental relajante con influencias latinas (instrumental, ukulele, etc.). Ambience: Sonidos de olas, gaviotas (en segundo plano, sutiles). Sound effects: Sonido de aplicaciÃ³n del protector solar. Voice direction: Narrador con voz tranquila y amable.\",\n  \"editing_notes\": \"Cuts rÃ¡pidos y fluidos entre las diferentes escenas. Transiciones suaves y naturales. Uso de efectos visuales sutiles (luz solar, brillo). TÃ­tulo y texto en pantalla claros y legibles. El ritmo debe ser dinÃ¡mico pero no frenÃ©tico. AnimaciÃ³n del logo y del texto en pantalla.\",\n  \"post_spec\": {\n    \"visual_concept\": \"Un video que evoca una experiencia de verano relajada y consciente, mostrando los beneficios del protector solar EcoBrand en un entorno hermoso y sostenible.\",\n    \"composition\": \"Uso de planos generales, planos medios y primeros planos para crear una narrativa visual atractiva. El enfoque estÃ¡ en el producto y su aplicaciÃ³n, pero tambiÃ©n en el entorno y el estado de Ã¡nimo.\",\n    \"image_direction\": \"FotografÃ­a de alta calidad que capture la belleza de la playa colombiana y la frescura del protector solar. Colores vibrantes y alegres.\",\n    \"text_on_asset\": \"Sol Consciente: Tu Verano Natural. EcoBrand - Cuidado personal con transparencia.\",\n    \"caption_direction\": \"La descripciÃ³n debe complementar el video, enfatizando los beneficios del protector solar EcoBrand y la importancia de la sostenibilidad. Se invita a los usuarios a visitar el sitio web de EcoBrand para obtener mÃ¡s informaciÃ³n y realizar una compra.\",\n    \"carousel_slides\": [],\n    \"alt_text\": \"Una persona aplicando protector solar EcoBrand en una hermosa playa en Colombia, disfrutando de un dÃ­a de verano consciente.\",\n    \"platform_adaptations\": \"Adaptado para Instagram Reels y Facebook, optimizando las dimensiones para cada plataforma. Considerar subtÃ­tulos para mayor accesibilidad.\"\n  },\n  \"cta\": \"Visita nuestro sitio web para encontrar el protector solar perfecto para tu verano. #EcoBrand #SolConsciente #VeranoNatural\",\n  \"deliverables\": [],\n  \"why_it_works\": \"This concept aligns with current market trends favoring authentic storytelling and short-form video content. Leveraging a visually stunning Colombian beach setting taps into the audienceâs desire for travel and wellness. The integration of key messages about sustainable ingredients and ocean conservation reinforces EcoBrand\u0027s values, while the use of a relatable voiceover and on-screen text increases engagement and memorability. This builds on past successful ideas â âReto Zero Wasteâ and âCada Gota Cuentaâ â by creating a compelling narrative that resonates with the target audience\u0027s values and aspirations.\"\n}",
+    "idea_id":  43,
+    "preproduction":  {
+                          "content_type":  "reel",
+                          "title":  "Sol Consciente: Tu Verano Natural",
+                          "concept":  "This Reel transports viewers to a sun-drenched Colombian beach, highlighting EcoBrandâs natural sunscreen as the perfect, sustainable choice. Weâll showcase the refreshing application, the beautiful ocean backdrop, and the peace of mind knowing our formula is kind to your skin and the environment. The reel culminates with a call to protect our precious natural resources.",
+                          "objective":  "Increase brand awareness and drive traffic to EcoBrandâs website for sunscreen purchases.",
+                          "audience":  "Millennial Colombians (18-35) interested in eco-friendly skincare, travel, and ocean conservation.",
+                          "key_message":  "EcoBrand sunscreen: Feel good, do good, protect your skin and our planet.",
+                          "format":  "Instagram Reel",
+                          "duration_seconds":  30,
+                          "script":  [
+                                         {
+                                             "scene":  1,
+                                             "duration_seconds":  3,
+                                             "visual":  "Plano general: Playa paradisÃ­aca en Colombia - arena blanca, mar turquesa, cielo azul.",
+                                             "action":  "CÃ¡mara lenta. Gente joven disfrutando de la playa: nadando, tomando el sol, riendo.",
+                                             "dialogue_or_voiceover":  "Narrador (Voz tranquila y relajada): \u0027El verano colombiano merece un cuidado especialâ¦\u0027",
+                                             "on_screen_text":  "Sol Consciente"
+                                         },
+                                         {
+                                             "scene":  2,
+                                             "duration_seconds":  6,
+                                             "visual":  "Primer plano: Manos aplicando EcoBrand sunscreen en la piel.",
+                                             "action":  "La persona aplica generosamente el protector solar en su cara y brazo. La textura del producto es suave y ligera.",
+                                             "dialogue_or_voiceover":  "Narrador: \u0027Con EcoBrand, disfrÃºtalo sin preocupaciones. Nuestra fÃ³rmula natural protege tu piel de los rayos UVâ¦\u0027",
+                                             "on_screen_text":  "Ingredientes naturales | Origen responsable"
+                                         },
+                                         {
+                                             "scene":  3,
+                                             "duration_seconds":  5,
+                                             "visual":  "Plano medio: El mismo individuo bebiendo agua y sonriendo al sol.",
+                                             "action":  "Enfoque en la tranquilidad y la relajaciÃ³n.",
+                                             "dialogue_or_voiceover":  "Narrador: \u0027â¦y minimiza el impacto ambiental. Porque cada gota cuenta.\u0027",
+                                             "on_screen_text":  "98% natural | Cruelty-Free"
+                                         },
+                                         {
+                                             "scene":  4,
+                                             "duration_seconds":  6,
+                                             "visual":  "Plano general: El mismo individuo observando el ocÃ©ano con asombro.",
+                                             "action":  "La cÃ¡mara se acerca al mar, mostrando su belleza y fragilidad. ",
+                                             "dialogue_or_voiceover":  "Narrador: \u0027Protege nuestro paraÃ­so. Elige EcoBrand.\u0027",
+                                             "on_screen_text":  "Cuidado consciente | Sostenibilidad"
+                                         },
+                                         {
+                                             "scene":  5,
+                                             "duration_seconds":  4,
+                                             "visual":  "Primer plano: El logo de EcoBrand sobre un fondo de olas.",
+                                             "action":  "El logo aparece con un degradado azul-verde.",
+                                             "dialogue_or_voiceover":  "Narrador: \u0027EcoBrand: Cuidado personal con transparencia.\u0027",
+                                             "on_screen_text":  "EcoBrand - Encuentra tu protecciÃ³n natural"
+                                         }
+                                     ],
+                          "camera":  [
+                                         {
+                                             "scene":  1,
+                                             "shot":  "Plano general",
+                                             "angle":  "Nivel",
+                                             "movement":  "Movimiento suave de cÃ¡mara",
+                                             "framing":  "ComposiciÃ³n equilibrada con el mar y la playa en primer plano"
+                                         },
+                                         {
+                                             "scene":  2,
+                                             "shot":  "Primer plano",
+                                             "angle":  "45 grados",
+                                             "movement":  "Movimiento de cÃ¡mara suave hacia el frente",
+                                             "framing":  "Enfoque en la textura del protector solar y en la piel"
+                                         },
+                                         {
+                                             "scene":  3,
+                                             "shot":  "Plano medio",
+                                             "angle":  "Nivel",
+                                             "movement":  "Movimiento de cÃ¡mara hacia adelante",
+                                             "framing":  "El individuo debe estar en el centro del encuadre"
+                                         },
+                                         {
+                                             "scene":  4,
+                                             "shot":  "Plano general",
+                                             "angle":  "Nivel",
+                                             "movement":  "Movimiento de cÃ¡mara hacia adelante, lento",
+                                             "framing":  "Enfoque en el ocÃ©ano y la sensaciÃ³n de libertad"
+                                         },
+                                         {
+                                             "scene":  5,
+                                             "shot":  "Primer plano",
+                                             "angle":  "Nivel",
+                                             "movement":  "Movimiento de cÃ¡mara lento",
+                                             "framing":  "Logo de EcoBrand centrado en la pantalla"
+                                         }
+                                     ],
+                          "performance_direction":  "La persona debe transmitir alegrÃ­a, relajaciÃ³n y confianza. Debe tener una sonrisa natural y una expresiÃ³n de bienestar. El ritmo debe ser pausado y sin prisas.",
+                          "location_and_art_direction":  "Playa paradisÃ­aca en Colombia (Cartagena, San AndrÃ©s, etc.). Props: Protector solar EcoBrand, toalla de playa, gafas de sol. Wardrobe: Ropa de verano cÃ³moda y casual. Lighting: Luz natural del sol. Visual style: Vibrante y alegre, con colores cÃ¡lidos.",
+                          "audio":  "MÃºsica: MÃºsica ambiental relajante con influencias latinas (instrumental, ukulele, etc.). Ambience: Sonidos de olas, gaviotas (en segundo plano, sutiles). Sound effects: Sonido de aplicaciÃ³n del protector solar. Voice direction: Narrador con voz tranquila y amable.",
+                          "editing_notes":  "Cuts rÃ¡pidos y fluidos entre las diferentes escenas. Transiciones suaves y naturales. Uso de efectos visuales sutiles (luz solar, brillo). TÃ­tulo y texto en pantalla claros y legibles. El ritmo debe ser dinÃ¡mico pero no frenÃ©tico. AnimaciÃ³n del logo y del texto en pantalla.",
+                          "post_spec":  {
+                                            "visual_concept":  "Un video que evoca una experiencia de verano relajada y consciente, mostrando los beneficios del protector solar EcoBrand en un entorno hermoso y sostenible.",
+                                            "composition":  "Uso de planos generales, planos medios y primeros planos para crear una narrativa visual atractiva. El enfoque estÃ¡ en el producto y su aplicaciÃ³n, pero tambiÃ©n en el entorno y el estado de Ã¡nimo.",
+                                            "image_direction":  "FotografÃ­a de alta calidad que capture la belleza de la playa colombiana y la frescura del protector solar. Colores vibrantes y alegres.",
+                                            "text_on_asset":  "Sol Consciente: Tu Verano Natural. EcoBrand - Cuidado personal con transparencia.",
+                                            "caption_direction":  "La descripciÃ³n debe complementar el video, enfatizando los beneficios del protector solar EcoBrand y la importancia de la sostenibilidad. Se invita a los usuarios a visitar el sitio web de EcoBrand para obtener mÃ¡s informaciÃ³n y realizar una compra.",
+                                            "carousel_slides":  [
+
+                                                                ],
+                                            "alt_text":  "Una persona aplicando protector solar EcoBrand en una hermosa playa en Colombia, disfrutando de un dÃ­a de verano consciente.",
+                                            "platform_adaptations":  "Adaptado para Instagram Reels y Facebook, optimizando las dimensiones para cada plataforma. Considerar subtÃ­tulos para mayor accesibilidad."
+                                        },
+                          "cta":  "Visita nuestro sitio web para encontrar el protector solar perfecto para tu verano. #EcoBrand #SolConsciente #VeranoNatural",
+                          "deliverables":  [
+
+                                           ],
+                          "why_it_works":  "This concept aligns with current market trends favoring authentic storytelling and short-form video content. Leveraging a visually stunning Colombian beach setting taps into the audienceâs desire for travel and wellness. The integration of key messages about sustainable ingredients and ocean conservation reinforces EcoBrand\u0027s values, while the use of a relatable voiceover and on-screen text increases engagement and memorability. This builds on past successful ideas â âReto Zero Wasteâ and âCada Gota Cuentaâ â by creating a compelling narrative that resonates with the target audience\u0027s values and aspirations."
+                      },
+    "publication":  "âï¸ Â¡EscÃ¡pate al paraÃ­so con EcoBrand! ð´ Disfruta un verano consciente y natural en Colombia. ð ProtecciÃ³n solar sostenible + belleza oceÃ¡nica = felicidad. â¨ #EcoBrand #SolConsciente #VeranoNatural #Colombia #Travel #SustainableLiving #OceanConservation â¡ï¸ Visita nuestro sitio web: [link]",
+    "publication_id":  28,
+    "postiz":  {
+
+               },
+    "agents":  {
+                   "ideacion":  {
+                                    "status":  "completed",
+                                    "error":  null,
+                                    "result":  {
+                                                   "idea":  "{\n  \"content_type\": \"reel\",\n  \"title\": \"Sol Consciente: Tu Verano Natural\",\n  \"concept\": \"This Reel transports viewers to a sun-drenched Colombian beach, highlighting EcoBrandâs natural sunscreen as the perfect, sustainable choice. Weâll showcase the refreshing application, the beautiful ocean backdrop, and the peace of mind knowing our formula is kind to your skin and the environment. The reel culminates with a call to protect our precious natural resources.\",\n  \"objective\": \"Increase brand awareness and drive traffic to EcoBrandâs website for sunscreen purchases.\",\n  \"audience\": \"Millennial Colombians (18-35) interested in eco-friendly skincare, travel, and ocean conservation.\",\n  \"key_message\": \"EcoBrand sunscreen: Feel good, do good, protect your skin and our planet.\",\n  \"format\": \"Instagram Reel\",\n  \"duration_seconds\": 30,\n  \"script\": [\n    {\n      \"scene\": 1,\n      \"duration_seconds\": 3,\n      \"visual\": \"Plano general: Playa paradisÃ­aca en Colombia - arena blanca, mar turquesa, cielo azul.\",\n      \"action\": \"CÃ¡mara lenta. Gente joven disfrutando de la playa: nadando, tomando el sol, riendo.\",\n      \"dialogue_or_voiceover\": \"Narrador (Voz tranquila y relajada): \u0027El verano colombiano merece un cuidado especialâ¦\u0027\",\n      \"on_screen_text\": \"Sol Consciente\"\n    },\n    {\n      \"scene\": 2,\n      \"duration_seconds\": 6,\n      \"visual\": \"Primer plano: Manos aplicando EcoBrand sunscreen en la piel.\",\n      \"action\": \"La persona aplica generosamente el protector solar en su cara y brazo. La textura del producto es suave y ligera.\",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027Con EcoBrand, disfrÃºtalo sin preocupaciones. Nuestra fÃ³rmula natural protege tu piel de los rayos UVâ¦\u0027\",\n      \"on_screen_text\": \"Ingredientes naturales | Origen responsable\"\n    },\n    {\n      \"scene\": 3,\n      \"duration_seconds\": 5,\n      \"visual\": \"Plano medio: El mismo individuo bebiendo agua y sonriendo al sol.\",\n      \"action\": \"Enfoque en la tranquilidad y la relajaciÃ³n.\",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027â¦y minimiza el impacto ambiental. Porque cada gota cuenta.\u0027\",\n      \"on_screen_text\": \"98% natural | Cruelty-Free\"\n    },\n    {\n      \"scene\": 4,\n      \"duration_seconds\": 6,\n      \"visual\": \"Plano general: El mismo individuo observando el ocÃ©ano con asombro.\",\n      \"action\": \"La cÃ¡mara se acerca al mar, mostrando su belleza y fragilidad. \",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027Protege nuestro paraÃ­so. Elige EcoBrand.\u0027\",\n      \"on_screen_text\": \"Cuidado consciente | Sostenibilidad\"\n    },\n    {\n      \"scene\": 5,\n      \"duration_seconds\": 4,\n      \"visual\": \"Primer plano: El logo de EcoBrand sobre un fondo de olas.\",\n      \"action\": \"El logo aparece con un degradado azul-verde.\",\n      \"dialogue_or_voiceover\": \"Narrador: \u0027EcoBrand: Cuidado personal con transparencia.\u0027\",\n      \"on_screen_text\": \"EcoBrand - Encuentra tu protecciÃ³n natural\"\n    }\n  ],\n  \"camera\": [\n    {\n      \"scene\": 1,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento suave de cÃ¡mara\",\n      \"framing\": \"ComposiciÃ³n equilibrada con el mar y la playa en primer plano\"\n    },\n    {\n      \"scene\": 2,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"45 grados\",\n      \"movement\": \"Movimiento de cÃ¡mara suave hacia el frente\",\n      \"framing\": \"Enfoque en la textura del protector solar y en la piel\"\n    },\n    {\n      \"scene\": 3,\n      \"shot\": \"Plano medio\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento de cÃ¡mara hacia adelante\",\n      \"framing\": \"El individuo debe estar en el centro del encuadre\"\n    },\n    {\n      \"scene\": 4,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento de cÃ¡mara hacia adelante, lento\",\n      \"framing\": \"Enfoque en el ocÃ©ano y la sensaciÃ³n de libertad\"\n    },\n    {\n      \"scene\": 5,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Nivel\",\n      \"movement\": \"Movimiento de cÃ¡mara lento\",\n      \"framing\": \"Logo de EcoBrand centrado en la pantalla\"\n    }\n  ],\n  \"performance_direction\": \"La persona debe transmitir alegrÃ­a, relajaciÃ³n y confianza. Debe tener una sonrisa natural y una expresiÃ³n de bienestar. El ritmo debe ser pausado y sin prisas.\",\n  \"location_and_art_direction\": \"Playa paradisÃ­aca en Colombia (Cartagena, San AndrÃ©s, etc.). Props: Protector solar EcoBrand, toalla de playa, gafas de sol. Wardrobe: Ropa de verano cÃ³moda y casual. Lighting: Luz natural del sol. Visual style: Vibrante y alegre, con colores cÃ¡lidos.\",\n  \"audio\": \"MÃºsica: MÃºsica ambiental relajante con influencias latinas (instrumental, ukulele, etc.). Ambience: Sonidos de olas, gaviotas (en segundo plano, sutiles). Sound effects: Sonido de aplicaciÃ³n del protector solar. Voice direction: Narrador con voz tranquila y amable.\",\n  \"editing_notes\": \"Cuts rÃ¡pidos y fluidos entre las diferentes escenas. Transiciones suaves y naturales. Uso de efectos visuales sutiles (luz solar, brillo). TÃ­tulo y texto en pantalla claros y legibles. El ritmo debe ser dinÃ¡mico pero no frenÃ©tico. AnimaciÃ³n del logo y del texto en pantalla.\",\n  \"post_spec\": {\n    \"visual_concept\": \"Un video que evoca una experiencia de verano relajada y consciente, mostrando los beneficios del protector solar EcoBrand en un entorno hermoso y sostenible.\",\n    \"composition\": \"Uso de planos generales, planos medios y primeros planos para crear una narrativa visual atractiva. El enfoque estÃ¡ en el producto y su aplicaciÃ³n, pero tambiÃ©n en el entorno y el estado de Ã¡nimo.\",\n    \"image_direction\": \"FotografÃ­a de alta calidad que capture la belleza de la playa colombiana y la frescura del protector solar. Colores vibrantes y alegres.\",\n    \"text_on_asset\": \"Sol Consciente: Tu Verano Natural. EcoBrand - Cuidado personal con transparencia.\",\n    \"caption_direction\": \"La descripciÃ³n debe complementar el video, enfatizando los beneficios del protector solar EcoBrand y la importancia de la sostenibilidad. Se invita a los usuarios a visitar el sitio web de EcoBrand para obtener mÃ¡s informaciÃ³n y realizar una compra.\",\n    \"carousel_slides\": [],\n    \"alt_text\": \"Una persona aplicando protector solar EcoBrand en una hermosa playa en Colombia, disfrutando de un dÃ­a de verano consciente.\",\n    \"platform_adaptations\": \"Adaptado para Instagram Reels y Facebook, optimizando las dimensiones para cada plataforma. Considerar subtÃ­tulos para mayor accesibilidad.\"\n  },\n  \"cta\": \"Visita nuestro sitio web para encontrar el protector solar perfecto para tu verano. #EcoBrand #SolConsciente #VeranoNatural\",\n  \"deliverables\": [],\n  \"why_it_works\": \"This concept aligns with current market trends favoring authentic storytelling and short-form video content. Leveraging a visually stunning Colombian beach setting taps into the audienceâs desire for travel and wellness. The integration of key messages about sustainable ingredients and ocean conservation reinforces EcoBrand\u0027s values, while the use of a relatable voiceover and on-screen text increases engagement and memorability. This builds on past successful ideas â âReto Zero Wasteâ and âCada Gota Cuentaâ â by creating a compelling narrative that resonates with the target audience\u0027s values and aspirations.\"\n}",
+                                                   "idea_id":  43,
+                                                   "preproduction":  {
+                                                                         "content_type":  "reel",
+                                                                         "title":  "Sol Consciente: Tu Verano Natural",
+                                                                         "concept":  "This Reel transports viewers to a sun-drenched Colombian beach, highlighting EcoBrandâs natural sunscreen as the perfect, sustainable choice. Weâll showcase the refreshing application, the beautiful ocean backdrop, and the peace of mind knowing our formula is kind to your skin and the environment. The reel culminates with a call to protect our precious natural resources.",
+                                                                         "objective":  "Increase brand awareness and drive traffic to EcoBrandâs website for sunscreen purchases.",
+                                                                         "audience":  "Millennial Colombians (18-35) interested in eco-friendly skincare, travel, and ocean conservation.",
+                                                                         "key_message":  "EcoBrand sunscreen: Feel good, do good, protect your skin and our planet.",
+                                                                         "format":  "Instagram Reel",
+                                                                         "duration_seconds":  30,
+                                                                         "script":  [
+                                                                                        {
+                                                                                            "scene":  1,
+                                                                                            "duration_seconds":  3,
+                                                                                            "visual":  "Plano general: Playa paradisÃ­aca en Colombia - arena blanca, mar turquesa, cielo azul.",
+                                                                                            "action":  "CÃ¡mara lenta. Gente joven disfrutando de la playa: nadando, tomando el sol, riendo.",
+                                                                                            "dialogue_or_voiceover":  "Narrador (Voz tranquila y relajada): \u0027El verano colombiano merece un cuidado especialâ¦\u0027",
+                                                                                            "on_screen_text":  "Sol Consciente"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  2,
+                                                                                            "duration_seconds":  6,
+                                                                                            "visual":  "Primer plano: Manos aplicando EcoBrand sunscreen en la piel.",
+                                                                                            "action":  "La persona aplica generosamente el protector solar en su cara y brazo. La textura del producto es suave y ligera.",
+                                                                                            "dialogue_or_voiceover":  "Narrador: \u0027Con EcoBrand, disfrÃºtalo sin preocupaciones. Nuestra fÃ³rmula natural protege tu piel de los rayos UVâ¦\u0027",
+                                                                                            "on_screen_text":  "Ingredientes naturales | Origen responsable"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  3,
+                                                                                            "duration_seconds":  5,
+                                                                                            "visual":  "Plano medio: El mismo individuo bebiendo agua y sonriendo al sol.",
+                                                                                            "action":  "Enfoque en la tranquilidad y la relajaciÃ³n.",
+                                                                                            "dialogue_or_voiceover":  "Narrador: \u0027â¦y minimiza el impacto ambiental. Porque cada gota cuenta.\u0027",
+                                                                                            "on_screen_text":  "98% natural | Cruelty-Free"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  4,
+                                                                                            "duration_seconds":  6,
+                                                                                            "visual":  "Plano general: El mismo individuo observando el ocÃ©ano con asombro.",
+                                                                                            "action":  "La cÃ¡mara se acerca al mar, mostrando su belleza y fragilidad. ",
+                                                                                            "dialogue_or_voiceover":  "Narrador: \u0027Protege nuestro paraÃ­so. Elige EcoBrand.\u0027",
+                                                                                            "on_screen_text":  "Cuidado consciente | Sostenibilidad"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  5,
+                                                                                            "duration_seconds":  4,
+                                                                                            "visual":  "Primer plano: El logo de EcoBrand sobre un fondo de olas.",
+                                                                                            "action":  "El logo aparece con un degradado azul-verde.",
+                                                                                            "dialogue_or_voiceover":  "Narrador: \u0027EcoBrand: Cuidado personal con transparencia.\u0027",
+                                                                                            "on_screen_text":  "EcoBrand - Encuentra tu protecciÃ³n natural"
+                                                                                        }
+                                                                                    ],
+                                                                         "camera":  [
+                                                                                        {
+                                                                                            "scene":  1,
+                                                                                            "shot":  "Plano general",
+                                                                                            "angle":  "Nivel",
+                                                                                            "movement":  "Movimiento suave de cÃ¡mara",
+                                                                                            "framing":  "ComposiciÃ³n equilibrada con el mar y la playa en primer plano"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  2,
+                                                                                            "shot":  "Primer plano",
+                                                                                            "angle":  "45 grados",
+                                                                                            "movement":  "Movimiento de cÃ¡mara suave hacia el frente",
+                                                                                            "framing":  "Enfoque en la textura del protector solar y en la piel"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  3,
+                                                                                            "shot":  "Plano medio",
+                                                                                            "angle":  "Nivel",
+                                                                                            "movement":  "Movimiento de cÃ¡mara hacia adelante",
+                                                                                            "framing":  "El individuo debe estar en el centro del encuadre"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  4,
+                                                                                            "shot":  "Plano general",
+                                                                                            "angle":  "Nivel",
+                                                                                            "movement":  "Movimiento de cÃ¡mara hacia adelante, lento",
+                                                                                            "framing":  "Enfoque en el ocÃ©ano y la sensaciÃ³n de libertad"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  5,
+                                                                                            "shot":  "Primer plano",
+                                                                                            "angle":  "Nivel",
+                                                                                            "movement":  "Movimiento de cÃ¡mara lento",
+                                                                                            "framing":  "Logo de EcoBrand centrado en la pantalla"
+                                                                                        }
+                                                                                    ],
+                                                                         "performance_direction":  "La persona debe transmitir alegrÃ­a, relajaciÃ³n y confianza. Debe tener una sonrisa natural y una expresiÃ³n de bienestar. El ritmo debe ser pausado y sin prisas.",
+                                                                         "location_and_art_direction":  "Playa paradisÃ­aca en Colombia (Cartagena, San AndrÃ©s, etc.). Props: Protector solar EcoBrand, toalla de playa, gafas de sol. Wardrobe: Ropa de verano cÃ³moda y casual. Lighting: Luz natural del sol. Visual style: Vibrante y alegre, con colores cÃ¡lidos.",
+                                                                         "audio":  "MÃºsica: MÃºsica ambiental relajante con influencias latinas (instrumental, ukulele, etc.). Ambience: Sonidos de olas, gaviotas (en segundo plano, sutiles). Sound effects: Sonido de aplicaciÃ³n del protector solar. Voice direction: Narrador con voz tranquila y amable.",
+                                                                         "editing_notes":  "Cuts rÃ¡pidos y fluidos entre las diferentes escenas. Transiciones suaves y naturales. Uso de efectos visuales sutiles (luz solar, brillo). TÃ­tulo y texto en pantalla claros y legibles. El ritmo debe ser dinÃ¡mico pero no frenÃ©tico. AnimaciÃ³n del logo y del texto en pantalla.",
+                                                                         "post_spec":  {
+                                                                                           "visual_concept":  "Un video que evoca una experiencia de verano relajada y consciente, mostrando los beneficios del protector solar EcoBrand en un entorno hermoso y sostenible.",
+                                                                                           "composition":  "Uso de planos generales, planos medios y primeros planos para crear una narrativa visual atractiva. El enfoque estÃ¡ en el producto y su aplicaciÃ³n, pero tambiÃ©n en el entorno y el estado de Ã¡nimo.",
+                                                                                           "image_direction":  "FotografÃ­a de alta calidad que capture la belleza de la playa colombiana y la frescura del protector solar. Colores vibrantes y alegres.",
+                                                                                           "text_on_asset":  "Sol Consciente: Tu Verano Natural. EcoBrand - Cuidado personal con transparencia.",
+                                                                                           "caption_direction":  "La descripciÃ³n debe complementar el video, enfatizando los beneficios del protector solar EcoBrand y la importancia de la sostenibilidad. Se invita a los usuarios a visitar el sitio web de EcoBrand para obtener mÃ¡s informaciÃ³n y realizar una compra.",
+                                                                                           "carousel_slides":  [
+
+                                                                                                               ],
+                                                                                           "alt_text":  "Una persona aplicando protector solar EcoBrand en una hermosa playa en Colombia, disfrutando de un dÃ­a de verano consciente.",
+                                                                                           "platform_adaptations":  "Adaptado para Instagram Reels y Facebook, optimizando las dimensiones para cada plataforma. Considerar subtÃ­tulos para mayor accesibilidad."
+                                                                                       },
+                                                                         "cta":  "Visita nuestro sitio web para encontrar el protector solar perfecto para tu verano. #EcoBrand #SolConsciente #VeranoNatural",
+                                                                         "deliverables":  [
+
+                                                                                          ],
+                                                                         "why_it_works":  "This concept aligns with current market trends favoring authentic storytelling and short-form video content. Leveraging a visually stunning Colombian beach setting taps into the audienceâs desire for travel and wellness. The integration of key messages about sustainable ingredients and ocean conservation reinforces EcoBrand\u0027s values, while the use of a relatable voiceover and on-screen text increases engagement and memorability. This builds on past successful ideas â âReto Zero Wasteâ and âCada Gota Cuentaâ â by creating a compelling narrative that resonates with the target audience\u0027s values and aspirations."
+                                                                     }
+                                               },
+                                    "at":  1791427872.4590762
+                                },
+                   "publicacion":  {
+                                       "status":  "completed",
+                                       "error":  null,
+                                       "result":  {
+                                                      "publication":  "âï¸ Â¡EscÃ¡pate al paraÃ­so con EcoBrand! ð´ Disfruta un verano consciente y natural en Colombia. ð ProtecciÃ³n solar sostenible + belleza oceÃ¡nica = felicidad. â¨ #EcoBrand #SolConsciente #VeranoNatural #Colombia #Travel #SustainableLiving #OceanConservation â¡ï¸ Visita nuestro sitio web: [link]",
+                                                      "publication_id":  28,
+                                                      "postiz":  {
+                                                                     "status":  "skipped",
+                                                                     "reason":  "sin canales Postiz"
+                                                                 }
+                                                  },
+                                       "at":  1791427875.2294388
+                                   }
+               }
+}

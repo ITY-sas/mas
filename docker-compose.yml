@@ -43,6 +43,7 @@ services:
       - ./migrations/003_publication_platform.sql:/docker-entrypoint-initdb.d/zzzz_publication_platform.sql
       - ./migrations/004_idea_generation_batches.sql:/docker-entrypoint-initdb.d/zzzzz_idea_generation_batches.sql
       - ./migrations/005_brand_scoped_idea_batches.sql:/docker-entrypoint-initdb.d/zzzzzz_brand_scoped_idea_batches.sql
+      - ./migrations/006_crud_and_lifecycle_states.sql:/docker-entrypoint-initdb.d/zzzzzzz_crud_and_lifecycle_states.sql
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ideation_db"]

@@ -1,0 +1,255 @@
+﻿{
+    "task_id":  "288323a8-d919-49e4-bde7-a900fce3bb1e",
+    "status":  "completed",
+    "idea":  "{\n  \"content_type\": \"reel\",\n  \"title\": \"RaÃ­ces del Sol: El Secreto Natural\",\n  \"concept\": \"This Reel takes viewers on a journey from the sustainable source of EcoBrandâs natural sunscreen ingredients â rainforest botanicals â to their radiant protection on Colombian skin. Weâll showcase the brandâs commitment to transparency and efficacy, highlighting the connection between nature and personal wellbeing. The overall aesthetic will be vibrant, authentic, and feel like a genuine glimpse into the brandâs values.\",\n  \"objective\": \"Increase brand awareness and drive engagement by showcasing EcoBrandâs unique origin story and connection to natural skincare.\",\n  \"audience\": \"Millennial and Gen Z Colombians (18-35) interested in sustainable beauty, natural ingredients, and mindful self-care.\",\n  \"key_message\": \"EcoBrand: Naturally protected, consciously created.\",\n  \"format\": \"Instagram Reel\",\n  \"duration_seconds\": 30,\n  \"script\": [\n    {\n      \"scene\": 1,\n      \"duration_seconds\": 3,\n      \"visual\": \"Plano general: Selva colombiana exuberante, luz del sol filtrÃ¡ndose entre el follaje.\",\n      \"action\": \"CÃ¡mara lenta mostrando la diversidad de plantas.\",\n      \"dialogue_or_voiceover\": \"Narrador: âEn el corazÃ³n de la AmazonÃ­a colombiana, donde la biodiversidad floreceâ¦â\",\n      \"on_screen_text\": \"EcoBrand\"\n    },\n    {\n      \"scene\": 2,\n      \"duration_seconds\": 5,\n      \"visual\": \"Primer plano: Mano recolectando hojas de acai con un campesino local.\",\n      \"action\": \"El campesino explica brevemente sobre el proceso de recolecciÃ³n sostenible.\",\n      \"dialogue_or_voiceover\": \"Campesino (subtÃ­tulo): âRecolectamos con respeto, para honrar la tierraâ¦ââ, \",\n      \"on_screen_text\": \"Ingrediente clave: Acai\"\n    },\n    {\n      \"scene\": 3,\n      \"duration_seconds\": 6,\n      \"visual\": \"Montaje rÃ¡pido: Proceso de extracciÃ³n de aceite de la planta, mostrando la atenciÃ³n al detalle.\",\n      \"action\": \"CÃ¡mara rÃ¡pida mostrando el proceso de extracciÃ³n en laboratorio.\",\n      \"dialogue_or_voiceover\": \"Narrador: âDesde la extracciÃ³n cuidadosa hasta la formulaciÃ³n, cada paso es una declaraciÃ³n de compromisoâ¦â\",\n      \"on_screen_text\": \"ExtracciÃ³n natural\"\n    },\n    {\n      \"scene\": 4,\n      \"duration_seconds\": 7,\n      \"visual\": \"Primer plano: Mujer (28 aÃ±os) aplicando el protector solar EcoBrand en su piel en una playa de Colombia.\",\n      \"action\": \"La mujer sonrÃ­e y disfruta del sol.\",\n      \"dialogue_or_voiceover\": \"Mujer: âMe encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.ââ, \",\n      \"on_screen_text\": \"ProtecciÃ³n solar natural\"\n    },\n    {\n      \"scene\": 5,\n      \"duration_seconds\": 5,\n      \"visual\": \"Plano general: La mujer y un grupo de amigos disfrutando de la playa.\",\n      \"action\": \"La cÃ¡mara se enfoca en el protector solar EcoBrand en el bolso de la mujer.\",\n      \"dialogue_or_voiceover\": \"Narrador: âEcoBrand: Cuidado personal efectivo con transparencia y menor impacto ambiental.ââ, \",\n      \"on_screen_text\": \"EcoBrand - Cuidado Consciente\"\n    }\n  ],\n  \"camera\": [\n    {\n      \"scene\": 1,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Leve Ã¡ngulo bajo\",\n      \"movement\": \"CÃ¡mara lenta, suave traslaciÃ³n horizontal\",\n      \"framing\": \"Encuadre amplio mostrando la selva\"\n    },\n    {\n      \"scene\": 2,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"Lenta aproximaciÃ³n\",\n      \"framing\": \"Enfocado en la mano y el campesino\"\n    },\n    {\n      \"scene\": 3,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"CÃ¡mara rÃ¡pida, movimiento circulo\",\n      \"framing\": \"Enfocado en el proceso de extracciÃ³n\"\n    },\n    {\n      \"scene\": 4,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"Lento movimiento de cÃ¡mara\",\n      \"framing\": \"Enfocado en la piel de la mujer\"\n    },\n    {\n      \"scene\": 5,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"Movimiento de cÃ¡mara lento horizontal\",\n      \"framing\": \"Encuadre amplio mostrando el grupo\"\n    }\n  ],\n  \"performance_direction\": \"La mujer debe proyectar confianza, autenticidad y una conexiÃ³n genuina con el producto. Los campesinos deben transmitir respeto y conocimiento.\",\n  \"location_and_art_direction\": \"Selva colombiana autÃ©ntica, playa de Colombia, laboratorio limpio y moderno.\",\n  \"audio\": \"MÃºsica: Chill-out instrumental con sonidos ambientales de la selva. Sonidos de la naturaleza, risas, voz en off relajada.\",\n  \"editing_notes\": \"Transiciones suaves y fluidas. Uso de efectos visuales sutiles para resaltar la belleza de los ingredientes naturales. Textos superpuestos claros y legibles.\",\n  \"post_spec\": {\n    \"visual_concept\": \"El reel presenta una narrativa visual que conecta la fuente natural del protector solar con su aplicaciÃ³n en la piel, transmitiendo una sensaciÃ³n de bienestar y conexiÃ³n con la naturaleza.\",\n    \"composition\": \"La composiciÃ³n visual se centra en el producto y en su contexto natural, con planos generales que muestran el entorno y primeros planos que resaltan los detalles.\",\n    \"image_direction\": \"FotografÃ­a naturalista, colores vibrantes, iluminaciÃ³n cÃ¡lida y suave.\",\n    \"text_on_asset\": \"EcoBrand - Cuidado Consciente. ProtecciÃ³n solar natural. Ingrediente clave: Acai.  Me encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.\",\n    \"caption_direction\": \"La descripciÃ³n complementa la narrativa del reel, proporcionando informaciÃ³n adicional sobre la sostenibilidad del producto y la importancia de elegir ingredientes naturales.\",\n    \"carousel_slides\": [],\n    \"alt_text\": \"Mujer aplicando protector solar natural EcoBrand en una playa de Colombia, rodeada de exuberante vegetaciÃ³n.\",\n    \"platform_adaptations\": \"Instagram Reel: AdaptaciÃ³n automÃ¡tica para la plataforma. Facebook: AdaptaciÃ³n para la interfaz de Facebook, con menor Ã©nfasis en el video y mayor Ã©nfasis en la descripciÃ³n y los enlaces.\"\n  },\n  \"cta\": \"Visita nuestro sitio web para obtener mÃ¡s informaciÃ³n y comprar EcoBrand.\",\n  \"deliverables\": [],\n  \"why_it_works\": \"This Reel leverages current trends â short-form video dominance â while incorporating the clientâs core values of transparency and sustainability. The focus on the natural origin of ingredients aligns with growing consumer interest in âclean beautyâ and avoids greenwashing by showcasing verifiable sourcing. The storytelling personal, through the voice of the woman using the product, taps into past campaign successes, maximizing engagement and shareability.\"\n}",
+    "idea_id":  42,
+    "preproduction":  {
+                          "content_type":  "reel",
+                          "title":  "RaÃ­ces del Sol: El Secreto Natural",
+                          "concept":  "This Reel takes viewers on a journey from the sustainable source of EcoBrandâs natural sunscreen ingredients â rainforest botanicals â to their radiant protection on Colombian skin. Weâll showcase the brandâs commitment to transparency and efficacy, highlighting the connection between nature and personal wellbeing. The overall aesthetic will be vibrant, authentic, and feel like a genuine glimpse into the brandâs values.",
+                          "objective":  "Increase brand awareness and drive engagement by showcasing EcoBrandâs unique origin story and connection to natural skincare.",
+                          "audience":  "Millennial and Gen Z Colombians (18-35) interested in sustainable beauty, natural ingredients, and mindful self-care.",
+                          "key_message":  "EcoBrand: Naturally protected, consciously created.",
+                          "format":  "Instagram Reel",
+                          "duration_seconds":  30,
+                          "script":  [
+                                         {
+                                             "scene":  1,
+                                             "duration_seconds":  3,
+                                             "visual":  "Plano general: Selva colombiana exuberante, luz del sol filtrÃ¡ndose entre el follaje.",
+                                             "action":  "CÃ¡mara lenta mostrando la diversidad de plantas.",
+                                             "dialogue_or_voiceover":  "Narrador: âEn el corazÃ³n de la AmazonÃ­a colombiana, donde la biodiversidad floreceâ¦â",
+                                             "on_screen_text":  "EcoBrand"
+                                         },
+                                         {
+                                             "scene":  2,
+                                             "duration_seconds":  5,
+                                             "visual":  "Primer plano: Mano recolectando hojas de acai con un campesino local.",
+                                             "action":  "El campesino explica brevemente sobre el proceso de recolecciÃ³n sostenible.",
+                                             "dialogue_or_voiceover":  "Campesino (subtÃ­tulo): âRecolectamos con respeto, para honrar la tierraâ¦ââ, ",
+                                             "on_screen_text":  "Ingrediente clave: Acai"
+                                         },
+                                         {
+                                             "scene":  3,
+                                             "duration_seconds":  6,
+                                             "visual":  "Montaje rÃ¡pido: Proceso de extracciÃ³n de aceite de la planta, mostrando la atenciÃ³n al detalle.",
+                                             "action":  "CÃ¡mara rÃ¡pida mostrando el proceso de extracciÃ³n en laboratorio.",
+                                             "dialogue_or_voiceover":  "Narrador: âDesde la extracciÃ³n cuidadosa hasta la formulaciÃ³n, cada paso es una declaraciÃ³n de compromisoâ¦â",
+                                             "on_screen_text":  "ExtracciÃ³n natural"
+                                         },
+                                         {
+                                             "scene":  4,
+                                             "duration_seconds":  7,
+                                             "visual":  "Primer plano: Mujer (28 aÃ±os) aplicando el protector solar EcoBrand en su piel en una playa de Colombia.",
+                                             "action":  "La mujer sonrÃ­e y disfruta del sol.",
+                                             "dialogue_or_voiceover":  "Mujer: âMe encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.ââ, ",
+                                             "on_screen_text":  "ProtecciÃ³n solar natural"
+                                         },
+                                         {
+                                             "scene":  5,
+                                             "duration_seconds":  5,
+                                             "visual":  "Plano general: La mujer y un grupo de amigos disfrutando de la playa.",
+                                             "action":  "La cÃ¡mara se enfoca en el protector solar EcoBrand en el bolso de la mujer.",
+                                             "dialogue_or_voiceover":  "Narrador: âEcoBrand: Cuidado personal efectivo con transparencia y menor impacto ambiental.ââ, ",
+                                             "on_screen_text":  "EcoBrand - Cuidado Consciente"
+                                         }
+                                     ],
+                          "camera":  [
+                                         {
+                                             "scene":  1,
+                                             "shot":  "Plano general",
+                                             "angle":  "Leve Ã¡ngulo bajo",
+                                             "movement":  "CÃ¡mara lenta, suave traslaciÃ³n horizontal",
+                                             "framing":  "Encuadre amplio mostrando la selva"
+                                         },
+                                         {
+                                             "scene":  2,
+                                             "shot":  "Primer plano",
+                                             "angle":  "Medio Ã¡ngulo",
+                                             "movement":  "Lenta aproximaciÃ³n",
+                                             "framing":  "Enfocado en la mano y el campesino"
+                                         },
+                                         {
+                                             "scene":  3,
+                                             "shot":  "Primer plano",
+                                             "angle":  "Medio Ã¡ngulo",
+                                             "movement":  "CÃ¡mara rÃ¡pida, movimiento circulo",
+                                             "framing":  "Enfocado en el proceso de extracciÃ³n"
+                                         },
+                                         {
+                                             "scene":  4,
+                                             "shot":  "Primer plano",
+                                             "angle":  "Medio Ã¡ngulo",
+                                             "movement":  "Lento movimiento de cÃ¡mara",
+                                             "framing":  "Enfocado en la piel de la mujer"
+                                         },
+                                         {
+                                             "scene":  5,
+                                             "shot":  "Plano general",
+                                             "angle":  "Medio Ã¡ngulo",
+                                             "movement":  "Movimiento de cÃ¡mara lento horizontal",
+                                             "framing":  "Encuadre amplio mostrando el grupo"
+                                         }
+                                     ],
+                          "performance_direction":  "La mujer debe proyectar confianza, autenticidad y una conexiÃ³n genuina con el producto. Los campesinos deben transmitir respeto y conocimiento.",
+                          "location_and_art_direction":  "Selva colombiana autÃ©ntica, playa de Colombia, laboratorio limpio y moderno.",
+                          "audio":  "MÃºsica: Chill-out instrumental con sonidos ambientales de la selva. Sonidos de la naturaleza, risas, voz en off relajada.",
+                          "editing_notes":  "Transiciones suaves y fluidas. Uso de efectos visuales sutiles para resaltar la belleza de los ingredientes naturales. Textos superpuestos claros y legibles.",
+                          "post_spec":  {
+                                            "visual_concept":  "El reel presenta una narrativa visual que conecta la fuente natural del protector solar con su aplicaciÃ³n en la piel, transmitiendo una sensaciÃ³n de bienestar y conexiÃ³n con la naturaleza.",
+                                            "composition":  "La composiciÃ³n visual se centra en el producto y en su contexto natural, con planos generales que muestran el entorno y primeros planos que resaltan los detalles.",
+                                            "image_direction":  "FotografÃ­a naturalista, colores vibrantes, iluminaciÃ³n cÃ¡lida y suave.",
+                                            "text_on_asset":  "EcoBrand - Cuidado Consciente. ProtecciÃ³n solar natural. Ingrediente clave: Acai.  Me encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.",
+                                            "caption_direction":  "La descripciÃ³n complementa la narrativa del reel, proporcionando informaciÃ³n adicional sobre la sostenibilidad del producto y la importancia de elegir ingredientes naturales.",
+                                            "carousel_slides":  [
+
+                                                                ],
+                                            "alt_text":  "Mujer aplicando protector solar natural EcoBrand en una playa de Colombia, rodeada de exuberante vegetaciÃ³n.",
+                                            "platform_adaptations":  "Instagram Reel: AdaptaciÃ³n automÃ¡tica para la plataforma. Facebook: AdaptaciÃ³n para la interfaz de Facebook, con menor Ã©nfasis en el video y mayor Ã©nfasis en la descripciÃ³n y los enlaces."
+                                        },
+                          "cta":  "Visita nuestro sitio web para obtener mÃ¡s informaciÃ³n y comprar EcoBrand.",
+                          "deliverables":  [
+
+                                           ],
+                          "why_it_works":  "This Reel leverages current trends â short-form video dominance â while incorporating the clientâs core values of transparency and sustainability. The focus on the natural origin of ingredients aligns with growing consumer interest in âclean beautyâ and avoids greenwashing by showcasing verifiable sourcing. The storytelling personal, through the voice of the woman using the product, taps into past campaign successes, maximizing engagement and shareability."
+                      },
+    "publication":  "â¨ Â¿SabÃ­as que tu protector solar puede tener un secreto natural? â¨\n\nDescubre cÃ³mo EcoBrand crea protecciÃ³n solar efectiva con ingredientes de origen responsable ð¿. Â¡ConÃ©ctate con la naturaleza y cuida tu piel! ð\n\n#EcoBrand #CuidadoNatural #Sostenibilidad #Colombia #BellezaConsciente #ProtectorSolarNatural #RetosZeroWaste #MarketingAutentico",
+    "publication_id":  27,
+    "postiz":  {
+
+               },
+    "agents":  {
+                   "ideacion":  {
+                                    "status":  "completed",
+                                    "error":  null,
+                                    "result":  {
+                                                   "idea":  "{\n  \"content_type\": \"reel\",\n  \"title\": \"RaÃ­ces del Sol: El Secreto Natural\",\n  \"concept\": \"This Reel takes viewers on a journey from the sustainable source of EcoBrandâs natural sunscreen ingredients â rainforest botanicals â to their radiant protection on Colombian skin. Weâll showcase the brandâs commitment to transparency and efficacy, highlighting the connection between nature and personal wellbeing. The overall aesthetic will be vibrant, authentic, and feel like a genuine glimpse into the brandâs values.\",\n  \"objective\": \"Increase brand awareness and drive engagement by showcasing EcoBrandâs unique origin story and connection to natural skincare.\",\n  \"audience\": \"Millennial and Gen Z Colombians (18-35) interested in sustainable beauty, natural ingredients, and mindful self-care.\",\n  \"key_message\": \"EcoBrand: Naturally protected, consciously created.\",\n  \"format\": \"Instagram Reel\",\n  \"duration_seconds\": 30,\n  \"script\": [\n    {\n      \"scene\": 1,\n      \"duration_seconds\": 3,\n      \"visual\": \"Plano general: Selva colombiana exuberante, luz del sol filtrÃ¡ndose entre el follaje.\",\n      \"action\": \"CÃ¡mara lenta mostrando la diversidad de plantas.\",\n      \"dialogue_or_voiceover\": \"Narrador: âEn el corazÃ³n de la AmazonÃ­a colombiana, donde la biodiversidad floreceâ¦â\",\n      \"on_screen_text\": \"EcoBrand\"\n    },\n    {\n      \"scene\": 2,\n      \"duration_seconds\": 5,\n      \"visual\": \"Primer plano: Mano recolectando hojas de acai con un campesino local.\",\n      \"action\": \"El campesino explica brevemente sobre el proceso de recolecciÃ³n sostenible.\",\n      \"dialogue_or_voiceover\": \"Campesino (subtÃ­tulo): âRecolectamos con respeto, para honrar la tierraâ¦ââ, \",\n      \"on_screen_text\": \"Ingrediente clave: Acai\"\n    },\n    {\n      \"scene\": 3,\n      \"duration_seconds\": 6,\n      \"visual\": \"Montaje rÃ¡pido: Proceso de extracciÃ³n de aceite de la planta, mostrando la atenciÃ³n al detalle.\",\n      \"action\": \"CÃ¡mara rÃ¡pida mostrando el proceso de extracciÃ³n en laboratorio.\",\n      \"dialogue_or_voiceover\": \"Narrador: âDesde la extracciÃ³n cuidadosa hasta la formulaciÃ³n, cada paso es una declaraciÃ³n de compromisoâ¦â\",\n      \"on_screen_text\": \"ExtracciÃ³n natural\"\n    },\n    {\n      \"scene\": 4,\n      \"duration_seconds\": 7,\n      \"visual\": \"Primer plano: Mujer (28 aÃ±os) aplicando el protector solar EcoBrand en su piel en una playa de Colombia.\",\n      \"action\": \"La mujer sonrÃ­e y disfruta del sol.\",\n      \"dialogue_or_voiceover\": \"Mujer: âMe encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.ââ, \",\n      \"on_screen_text\": \"ProtecciÃ³n solar natural\"\n    },\n    {\n      \"scene\": 5,\n      \"duration_seconds\": 5,\n      \"visual\": \"Plano general: La mujer y un grupo de amigos disfrutando de la playa.\",\n      \"action\": \"La cÃ¡mara se enfoca en el protector solar EcoBrand en el bolso de la mujer.\",\n      \"dialogue_or_voiceover\": \"Narrador: âEcoBrand: Cuidado personal efectivo con transparencia y menor impacto ambiental.ââ, \",\n      \"on_screen_text\": \"EcoBrand - Cuidado Consciente\"\n    }\n  ],\n  \"camera\": [\n    {\n      \"scene\": 1,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Leve Ã¡ngulo bajo\",\n      \"movement\": \"CÃ¡mara lenta, suave traslaciÃ³n horizontal\",\n      \"framing\": \"Encuadre amplio mostrando la selva\"\n    },\n    {\n      \"scene\": 2,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"Lenta aproximaciÃ³n\",\n      \"framing\": \"Enfocado en la mano y el campesino\"\n    },\n    {\n      \"scene\": 3,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"CÃ¡mara rÃ¡pida, movimiento circulo\",\n      \"framing\": \"Enfocado en el proceso de extracciÃ³n\"\n    },\n    {\n      \"scene\": 4,\n      \"shot\": \"Primer plano\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"Lento movimiento de cÃ¡mara\",\n      \"framing\": \"Enfocado en la piel de la mujer\"\n    },\n    {\n      \"scene\": 5,\n      \"shot\": \"Plano general\",\n      \"angle\": \"Medio Ã¡ngulo\",\n      \"movement\": \"Movimiento de cÃ¡mara lento horizontal\",\n      \"framing\": \"Encuadre amplio mostrando el grupo\"\n    }\n  ],\n  \"performance_direction\": \"La mujer debe proyectar confianza, autenticidad y una conexiÃ³n genuina con el producto. Los campesinos deben transmitir respeto y conocimiento.\",\n  \"location_and_art_direction\": \"Selva colombiana autÃ©ntica, playa de Colombia, laboratorio limpio y moderno.\",\n  \"audio\": \"MÃºsica: Chill-out instrumental con sonidos ambientales de la selva. Sonidos de la naturaleza, risas, voz en off relajada.\",\n  \"editing_notes\": \"Transiciones suaves y fluidas. Uso de efectos visuales sutiles para resaltar la belleza de los ingredientes naturales. Textos superpuestos claros y legibles.\",\n  \"post_spec\": {\n    \"visual_concept\": \"El reel presenta una narrativa visual que conecta la fuente natural del protector solar con su aplicaciÃ³n en la piel, transmitiendo una sensaciÃ³n de bienestar y conexiÃ³n con la naturaleza.\",\n    \"composition\": \"La composiciÃ³n visual se centra en el producto y en su contexto natural, con planos generales que muestran el entorno y primeros planos que resaltan los detalles.\",\n    \"image_direction\": \"FotografÃ­a naturalista, colores vibrantes, iluminaciÃ³n cÃ¡lida y suave.\",\n    \"text_on_asset\": \"EcoBrand - Cuidado Consciente. ProtecciÃ³n solar natural. Ingrediente clave: Acai.  Me encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.\",\n    \"caption_direction\": \"La descripciÃ³n complementa la narrativa del reel, proporcionando informaciÃ³n adicional sobre la sostenibilidad del producto y la importancia de elegir ingredientes naturales.\",\n    \"carousel_slides\": [],\n    \"alt_text\": \"Mujer aplicando protector solar natural EcoBrand en una playa de Colombia, rodeada de exuberante vegetaciÃ³n.\",\n    \"platform_adaptations\": \"Instagram Reel: AdaptaciÃ³n automÃ¡tica para la plataforma. Facebook: AdaptaciÃ³n para la interfaz de Facebook, con menor Ã©nfasis en el video y mayor Ã©nfasis en la descripciÃ³n y los enlaces.\"\n  },\n  \"cta\": \"Visita nuestro sitio web para obtener mÃ¡s informaciÃ³n y comprar EcoBrand.\",\n  \"deliverables\": [],\n  \"why_it_works\": \"This Reel leverages current trends â short-form video dominance â while incorporating the clientâs core values of transparency and sustainability. The focus on the natural origin of ingredients aligns with growing consumer interest in âclean beautyâ and avoids greenwashing by showcasing verifiable sourcing. The storytelling personal, through the voice of the woman using the product, taps into past campaign successes, maximizing engagement and shareability.\"\n}",
+                                                   "idea_id":  42,
+                                                   "preproduction":  {
+                                                                         "content_type":  "reel",
+                                                                         "title":  "RaÃ­ces del Sol: El Secreto Natural",
+                                                                         "concept":  "This Reel takes viewers on a journey from the sustainable source of EcoBrandâs natural sunscreen ingredients â rainforest botanicals â to their radiant protection on Colombian skin. Weâll showcase the brandâs commitment to transparency and efficacy, highlighting the connection between nature and personal wellbeing. The overall aesthetic will be vibrant, authentic, and feel like a genuine glimpse into the brandâs values.",
+                                                                         "objective":  "Increase brand awareness and drive engagement by showcasing EcoBrandâs unique origin story and connection to natural skincare.",
+                                                                         "audience":  "Millennial and Gen Z Colombians (18-35) interested in sustainable beauty, natural ingredients, and mindful self-care.",
+                                                                         "key_message":  "EcoBrand: Naturally protected, consciously created.",
+                                                                         "format":  "Instagram Reel",
+                                                                         "duration_seconds":  30,
+                                                                         "script":  [
+                                                                                        {
+                                                                                            "scene":  1,
+                                                                                            "duration_seconds":  3,
+                                                                                            "visual":  "Plano general: Selva colombiana exuberante, luz del sol filtrÃ¡ndose entre el follaje.",
+                                                                                            "action":  "CÃ¡mara lenta mostrando la diversidad de plantas.",
+                                                                                            "dialogue_or_voiceover":  "Narrador: âEn el corazÃ³n de la AmazonÃ­a colombiana, donde la biodiversidad floreceâ¦â",
+                                                                                            "on_screen_text":  "EcoBrand"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  2,
+                                                                                            "duration_seconds":  5,
+                                                                                            "visual":  "Primer plano: Mano recolectando hojas de acai con un campesino local.",
+                                                                                            "action":  "El campesino explica brevemente sobre el proceso de recolecciÃ³n sostenible.",
+                                                                                            "dialogue_or_voiceover":  "Campesino (subtÃ­tulo): âRecolectamos con respeto, para honrar la tierraâ¦ââ, ",
+                                                                                            "on_screen_text":  "Ingrediente clave: Acai"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  3,
+                                                                                            "duration_seconds":  6,
+                                                                                            "visual":  "Montaje rÃ¡pido: Proceso de extracciÃ³n de aceite de la planta, mostrando la atenciÃ³n al detalle.",
+                                                                                            "action":  "CÃ¡mara rÃ¡pida mostrando el proceso de extracciÃ³n en laboratorio.",
+                                                                                            "dialogue_or_voiceover":  "Narrador: âDesde la extracciÃ³n cuidadosa hasta la formulaciÃ³n, cada paso es una declaraciÃ³n de compromisoâ¦â",
+                                                                                            "on_screen_text":  "ExtracciÃ³n natural"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  4,
+                                                                                            "duration_seconds":  7,
+                                                                                            "visual":  "Primer plano: Mujer (28 aÃ±os) aplicando el protector solar EcoBrand en su piel en una playa de Colombia.",
+                                                                                            "action":  "La mujer sonrÃ­e y disfruta del sol.",
+                                                                                            "dialogue_or_voiceover":  "Mujer: âMe encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.ââ, ",
+                                                                                            "on_screen_text":  "ProtecciÃ³n solar natural"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  5,
+                                                                                            "duration_seconds":  5,
+                                                                                            "visual":  "Plano general: La mujer y un grupo de amigos disfrutando de la playa.",
+                                                                                            "action":  "La cÃ¡mara se enfoca en el protector solar EcoBrand en el bolso de la mujer.",
+                                                                                            "dialogue_or_voiceover":  "Narrador: âEcoBrand: Cuidado personal efectivo con transparencia y menor impacto ambiental.ââ, ",
+                                                                                            "on_screen_text":  "EcoBrand - Cuidado Consciente"
+                                                                                        }
+                                                                                    ],
+                                                                         "camera":  [
+                                                                                        {
+                                                                                            "scene":  1,
+                                                                                            "shot":  "Plano general",
+                                                                                            "angle":  "Leve Ã¡ngulo bajo",
+                                                                                            "movement":  "CÃ¡mara lenta, suave traslaciÃ³n horizontal",
+                                                                                            "framing":  "Encuadre amplio mostrando la selva"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  2,
+                                                                                            "shot":  "Primer plano",
+                                                                                            "angle":  "Medio Ã¡ngulo",
+                                                                                            "movement":  "Lenta aproximaciÃ³n",
+                                                                                            "framing":  "Enfocado en la mano y el campesino"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  3,
+                                                                                            "shot":  "Primer plano",
+                                                                                            "angle":  "Medio Ã¡ngulo",
+                                                                                            "movement":  "CÃ¡mara rÃ¡pida, movimiento circulo",
+                                                                                            "framing":  "Enfocado en el proceso de extracciÃ³n"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  4,
+                                                                                            "shot":  "Primer plano",
+                                                                                            "angle":  "Medio Ã¡ngulo",
+                                                                                            "movement":  "Lento movimiento de cÃ¡mara",
+                                                                                            "framing":  "Enfocado en la piel de la mujer"
+                                                                                        },
+                                                                                        {
+                                                                                            "scene":  5,
+                                                                                            "shot":  "Plano general",
+                                                                                            "angle":  "Medio Ã¡ngulo",
+                                                                                            "movement":  "Movimiento de cÃ¡mara lento horizontal",
+                                                                                            "framing":  "Encuadre amplio mostrando el grupo"
+                                                                                        }
+                                                                                    ],
+                                                                         "performance_direction":  "La mujer debe proyectar confianza, autenticidad y una conexiÃ³n genuina con el producto. Los campesinos deben transmitir respeto y conocimiento.",
+                                                                         "location_and_art_direction":  "Selva colombiana autÃ©ntica, playa de Colombia, laboratorio limpio y moderno.",
+                                                                         "audio":  "MÃºsica: Chill-out instrumental con sonidos ambientales de la selva. Sonidos de la naturaleza, risas, voz en off relajada.",
+                                                                         "editing_notes":  "Transiciones suaves y fluidas. Uso de efectos visuales sutiles para resaltar la belleza de los ingredientes naturales. Textos superpuestos claros y legibles.",
+                                                                         "post_spec":  {
+                                                                                           "visual_concept":  "El reel presenta una narrativa visual que conecta la fuente natural del protector solar con su aplicaciÃ³n en la piel, transmitiendo una sensaciÃ³n de bienestar y conexiÃ³n con la naturaleza.",
+                                                                                           "composition":  "La composiciÃ³n visual se centra en el producto y en su contexto natural, con planos generales que muestran el entorno y primeros planos que resaltan los detalles.",
+                                                                                           "image_direction":  "FotografÃ­a naturalista, colores vibrantes, iluminaciÃ³n cÃ¡lida y suave.",
+                                                                                           "text_on_asset":  "EcoBrand - Cuidado Consciente. ProtecciÃ³n solar natural. Ingrediente clave: Acai.  Me encanta la sensaciÃ³n de protecciÃ³n natural y saber que estoy cuidando mi piel y el planeta.",
+                                                                                           "caption_direction":  "La descripciÃ³n complementa la narrativa del reel, proporcionando informaciÃ³n adicional sobre la sostenibilidad del producto y la importancia de elegir ingredientes naturales.",
+                                                                                           "carousel_slides":  [
+
+                                                                                                               ],
+                                                                                           "alt_text":  "Mujer aplicando protector solar natural EcoBrand en una playa de Colombia, rodeada de exuberante vegetaciÃ³n.",
+                                                                                           "platform_adaptations":  "Instagram Reel: AdaptaciÃ³n automÃ¡tica para la plataforma. Facebook: AdaptaciÃ³n para la interfaz de Facebook, con menor Ã©nfasis en el video y mayor Ã©nfasis en la descripciÃ³n y los enlaces."
+                                                                                       },
+                                                                         "cta":  "Visita nuestro sitio web para obtener mÃ¡s informaciÃ³n y comprar EcoBrand.",
+                                                                         "deliverables":  [
+
+                                                                                          ],
+                                                                         "why_it_works":  "This Reel leverages current trends â short-form video dominance â while incorporating the clientâs core values of transparency and sustainability. The focus on the natural origin of ingredients aligns with growing consumer interest in âclean beautyâ and avoids greenwashing by showcasing verifiable sourcing. The storytelling personal, through the voice of the woman using the product, taps into past campaign successes, maximizing engagement and shareability."
+                                                                     }
+                                               },
+                                    "at":  1791032494.2970011
+                                },
+                   "publicacion":  {
+                                       "status":  "completed",
+                                       "error":  null,
+                                       "result":  {
+                                                      "publication":  "â¨ Â¿SabÃ­as que tu protector solar puede tener un secreto natural? â¨\n\nDescubre cÃ³mo EcoBrand crea protecciÃ³n solar efectiva con ingredientes de origen responsable ð¿. Â¡ConÃ©ctate con la naturaleza y cuida tu piel! ð\n\n#EcoBrand #CuidadoNatural #Sostenibilidad #Colombia #BellezaConsciente #ProtectorSolarNatural #RetosZeroWaste #MarketingAutentico",
+                                                      "publication_id":  27,
+                                                      "postiz":  {
+                                                                     "status":  "skipped",
+                                                                     "reason":  "sin canales Postiz"
+                                                                 }
+                                                  },
+                                       "at":  1791032497.1192756
+                                   }
+               }
+}
