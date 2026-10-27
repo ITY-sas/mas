@@ -25,7 +25,7 @@ if _ROOT not in sys.path:
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Query  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
@@ -66,6 +66,19 @@ class PublicacionBody(BaseModel):
     content: str
     idea_id: int | None = None
     platform: str | None = None
+    status: str | None = "draft"
+
+
+class IdeaUpdateBody(BaseModel):
+    brand_id: int | None = None
+    content: str
+    status: str | None = None
+
+
+class PublicacionUpdateBody(BaseModel):
+    brand_id: int | None = None
+    content: str
+    status: str | None = None
 
 
 class DocumentBody(BaseModel):
@@ -155,10 +168,12 @@ def _serialize_idea(row: dict) -> dict:
         "client_id": row.get("client_id"),
         "generation_batch_id": row.get("generation_batch_id"),
         "generation_index": row.get("generation_index"),
+        "status": row.get("status") or "approved",
         "title": dossier.get("title") or raw_content[:120],
         "content": raw_content,
         "dossier": dossier,
         "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -169,12 +184,15 @@ def op_list_ideas(
     offset: int = 0,
     query: str | None = None,
     generation_batch_id: str | None = None,
+    include_archived: bool = False,
 ) -> dict:
     """List persisted ideas for one brand, optionally scoped to a batch/search."""
     from shared_tools.db import query_db
 
     conditions = ["brand_id = %s"]
     params: list = [brand_id]
+    if not include_archived:
+        conditions.append("COALESCE(status, 'approved') != 'archived'")
     if generation_batch_id:
         conditions.append("generation_batch_id = %s")
         params.append(generation_batch_id)
@@ -183,7 +201,7 @@ def op_list_ideas(
         params.append(f"%{query.strip()}%")
     where = " AND ".join(conditions)
     rows = query_db(
-        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, content, created_at "
+        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, status, content, created_at, updated_at "
         f"FROM ideas_generadas WHERE {where} "
         "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
         tuple([*params, limit, offset]),
@@ -206,7 +224,7 @@ def op_ideas_batch_status(brand_id: int, batch_id: str) -> dict:
     from shared_tools.db import query_db
 
     rows = query_db(
-        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, content, created_at "
+        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, status, content, created_at, updated_at "
         "FROM ideas_generadas WHERE brand_id = %s AND generation_batch_id = %s "
         "ORDER BY generation_index, id",
         (brand_id, batch_id),
@@ -223,11 +241,25 @@ def op_get_idea(brand_id: int, idea_id: int) -> dict | None:
     from shared_tools.db import query_db
 
     rows = query_db(
-        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, content, created_at "
+        "SELECT id, brand_id, client_id, generation_batch_id, generation_index, status, content, created_at, updated_at "
         "FROM ideas_generadas WHERE brand_id = %s AND id = %s LIMIT 1",
         (brand_id, idea_id),
     )
     return _serialize_idea(rows[0]) if rows else None
+
+
+def op_update_idea(brand_id: int, idea_id: int, content: str, status: str | None = None) -> dict:
+    """Actualiza el contenido y/o estado de una idea regenerando su vector."""
+    from shared_tools.rag import update_idea
+
+    return update_idea(idea_id, brand_id, content, status)
+
+
+def op_delete_idea(brand_id: int, idea_id: int) -> dict:
+    """Archiva una idea comprobando que no tenga publicaciones enviadas."""
+    from shared_tools.rag import delete_idea
+
+    return delete_idea(idea_id, brand_id)
 
 
 def op_save_publicacion(
@@ -236,6 +268,7 @@ def op_save_publicacion(
     content: str,
     idea_id: int | None = None,
     platform: str | None = None,
+    status: str | None = "draft",
 ) -> dict:
     """Persiste una publicación generada (+ embedding vía LLM Gateway)."""
     from shared_tools.db import execute_db
@@ -243,19 +276,57 @@ def op_save_publicacion(
 
     embedding = generate_embedding(content)
     vec = embedding_to_vector(embedding)
+    pub_status = status or "draft"
     if vec:
         new_id = execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, platform, content, embedding) "
-            "VALUES (%s, %s, %s, %s, %s, %s::vector) RETURNING id",
-            (client_id, brand_id, idea_id, platform, content, vec),
+            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, platform, status, content, embedding) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s::vector) RETURNING id",
+            (client_id, brand_id, idea_id, platform, pub_status, content, vec),
         )
     else:
         new_id = execute_db(
-            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, platform, content) "
-            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (client_id, brand_id, idea_id, platform, content),
+            "INSERT INTO publicaciones_generadas (client_id, brand_id, idea_id, platform, status, content) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (client_id, brand_id, idea_id, platform, pub_status, content),
         )
-    return {"id": new_id}
+    return {"id": new_id, "status": pub_status}
+
+
+def op_list_publicaciones(
+    brand_id: int,
+    idea_id: int | None = None,
+    include_archived: bool = False,
+) -> list[dict]:
+    """Lista las publicaciones de una marca."""
+    from shared_tools.rag import list_publicaciones
+
+    return list_publicaciones(brand_id, idea_id, include_archived)
+
+
+def op_get_publicacion(brand_id: int, pub_id: int) -> dict | None:
+    """Obtiene una publicación de una marca."""
+    from shared_tools.rag import get_publicacion
+
+    return get_publicacion(pub_id, brand_id)
+
+
+def op_update_publicacion(
+    brand_id: int,
+    pub_id: int,
+    content: str,
+    status: str | None = None,
+) -> dict:
+    """Actualiza una publicación comprobando su inmutabilidad."""
+    from shared_tools.rag import update_publicacion
+
+    return update_publicacion(pub_id, brand_id, content, status)
+
+
+def op_delete_publicacion(brand_id: int, pub_id: int) -> dict:
+    """Archiva una publicación comprobando que no esté enviada."""
+    from shared_tools.rag import delete_publicacion
+
+    return delete_publicacion(pub_id, brand_id)
 
 
 def op_stats() -> dict:
@@ -494,6 +565,60 @@ OPERATIONS: dict = {
         "returns": "objeto {source_id, document_id, chunks, content_hash}",
         "handler": op_ingest_document,
     },
+    "update_idea": {
+        "id": "update_idea",
+        "method": "PUT",
+        "path": "/ideas/{idea_id}",
+        "description": "Actualiza una idea y recalcula su vector en pgvector.",
+        "params": [],
+        "returns": "objeto {id, brand_id, status, content}",
+        "handler": op_update_idea,
+    },
+    "delete_idea": {
+        "id": "delete_idea",
+        "method": "DELETE",
+        "path": "/ideas/{idea_id}",
+        "description": "Archiva una idea comprobando que no tenga publicaciones enviadas.",
+        "params": [],
+        "returns": "objeto {id, brand_id, status}",
+        "handler": op_delete_idea,
+    },
+    "list_publicaciones": {
+        "id": "list_publicaciones",
+        "method": "GET",
+        "path": "/publicaciones",
+        "description": "Lista publicaciones de una marca.",
+        "params": [],
+        "returns": "lista de publicaciones",
+        "handler": op_list_publicaciones,
+    },
+    "get_publicacion": {
+        "id": "get_publicacion",
+        "method": "GET",
+        "path": "/publicaciones/{pub_id}",
+        "description": "Obtiene el detalle de una publicación.",
+        "params": [],
+        "returns": "objeto publicacion",
+        "handler": op_get_publicacion,
+    },
+    "update_publicacion": {
+        "id": "update_publicacion",
+        "method": "PUT",
+        "path": "/publicaciones/{pub_id}",
+        "description": "Actualiza un copy si aún no ha sido enviado a redes.",
+        "params": [],
+        "returns": "objeto {id, brand_id, status, content}",
+        "handler": op_update_publicacion,
+    },
+    "delete_publicacion": {
+        "id": "delete_publicacion",
+        "method": "DELETE",
+        "path": "/publicaciones/{pub_id}",
+        "description": "Archiva una publicación si aún no ha sido enviada a redes.",
+        "params": [],
+        "returns": "objeto {id, brand_id, status}",
+        "handler": op_delete_publicacion,
+    },
 }
 
 MANIFEST = build_manifest(
@@ -630,12 +755,150 @@ def get_idea(idea_id: int, brand_id: int):
     return get_idea_detail(idea_id, brand_id)
 
 
+@app.put("/ideas/{idea_id}")
+def update_idea(idea_id: int, body: IdeaUpdateBody, brand_id: int | None = Query(None)):
+    from shared_tools.rag import LifecycleConflictError
+
+    actual_brand_id = body.brand_id or brand_id
+    if not actual_brand_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": [{"loc": ["body", "brand_id"], "msg": "brand_id is required in body or query"}]},
+        )
+    started = time.perf_counter()
+    try:
+        data = op_update_idea(int(actual_brand_id), idea_id, body.content, body.status)
+        return make_envelope("rag.update_idea", data, (time.perf_counter() - started) * 1000)
+    except LifecycleConflictError as exc:
+        return JSONResponse(status_code=409, content=make_envelope(
+            "rag.update_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except ValueError as exc:
+        return JSONResponse(status_code=404, content=make_envelope(
+            "rag.update_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("update_idea falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.update_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.delete("/ideas/{idea_id}")
+def delete_idea(idea_id: int, brand_id: int):
+    from shared_tools.rag import LifecycleConflictError
+
+    started = time.perf_counter()
+    try:
+        data = op_delete_idea(brand_id, idea_id)
+        return make_envelope("rag.delete_idea", data, (time.perf_counter() - started) * 1000)
+    except LifecycleConflictError as exc:
+        return JSONResponse(status_code=409, content=make_envelope(
+            "rag.delete_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except ValueError as exc:
+        return JSONResponse(status_code=404, content=make_envelope(
+            "rag.delete_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("delete_idea falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.delete_idea", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/publicaciones")
+def list_publicaciones(
+    brand_id: int,
+    idea_id: int | None = None,
+    include_archived: bool = False,
+):
+    started = time.perf_counter()
+    try:
+        data = op_list_publicaciones(brand_id, idea_id, include_archived)
+        return make_envelope("rag.list_publicaciones", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("list_publicaciones falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.list_publicaciones", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.get("/publicaciones/{pub_id}")
+def get_publicacion(pub_id: int, brand_id: int):
+    started = time.perf_counter()
+    try:
+        data = op_get_publicacion(brand_id, pub_id)
+        if data is None:
+            return JSONResponse(status_code=404, content=make_envelope(
+                "rag.get_publicacion", None, (time.perf_counter() - started) * 1000,
+                status="error", error="publicación no encontrada para la marca solicitada"))
+        return make_envelope("rag.get_publicacion", data, (time.perf_counter() - started) * 1000)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("get_publicacion falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.get_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.put("/publicaciones/{pub_id}")
+def update_publicacion(pub_id: int, body: PublicacionUpdateBody, brand_id: int | None = Query(None)):
+    from shared_tools.rag import LifecycleConflictError
+
+    actual_brand_id = body.brand_id or brand_id
+    if not actual_brand_id:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": [{"loc": ["body", "brand_id"], "msg": "brand_id is required in body or query"}]},
+        )
+    started = time.perf_counter()
+    try:
+        data = op_update_publicacion(int(actual_brand_id), pub_id, body.content, body.status)
+        return make_envelope("rag.update_publicacion", data, (time.perf_counter() - started) * 1000)
+    except LifecycleConflictError as exc:
+        return JSONResponse(status_code=409, content=make_envelope(
+            "rag.update_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except ValueError as exc:
+        return JSONResponse(status_code=404, content=make_envelope(
+            "rag.update_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("update_publicacion falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.update_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
+@app.delete("/publicaciones/{pub_id}")
+def delete_publicacion(pub_id: int, brand_id: int):
+    from shared_tools.rag import LifecycleConflictError
+
+    started = time.perf_counter()
+    try:
+        data = op_delete_publicacion(brand_id, pub_id)
+        return make_envelope("rag.delete_publicacion", data, (time.perf_counter() - started) * 1000)
+    except LifecycleConflictError as exc:
+        return JSONResponse(status_code=409, content=make_envelope(
+            "rag.delete_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except ValueError as exc:
+        return JSONResponse(status_code=404, content=make_envelope(
+            "rag.delete_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("delete_publicacion falló")
+        return JSONResponse(status_code=500, content=make_envelope(
+            "rag.delete_publicacion", None, (time.perf_counter() - started) * 1000,
+            status="error", error=str(exc)))
+
+
 @app.post("/publicaciones")
 def save_publicacion(body: PublicacionBody):
     started = time.perf_counter()
     try:
         data = op_save_publicacion(
-            body.brand_id, body.client_id, body.content, body.idea_id, body.platform
+            body.brand_id, body.client_id, body.content, body.idea_id, body.platform, body.status
         )
         return make_envelope(
             f"{TOOL}.save_publicacion", data, (time.perf_counter() - started) * 1000
