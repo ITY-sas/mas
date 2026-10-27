@@ -369,7 +369,7 @@ class OrchestratorRuntime:
         if getattr(self, "_consumer", None) is not None:
             return
         self._consumer = EventConsumer(
-            AGENT_RESULTS_QUEUE, self.on_agent_completed, name="agent-results"
+            AGENT_RESULTS_QUEUE, self.on_agent_completed, auto_ack=False, name="agent-results"
         )
         self._consumer.start()
         logger.info("consumidor de '%s' iniciado", AGENT_RESULTS_QUEUE)

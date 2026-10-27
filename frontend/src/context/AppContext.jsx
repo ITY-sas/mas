@@ -600,6 +600,14 @@ export function AppProvider({ children }) {
     }
 
     try {
+      const currentPostizStatus = currentTask?.result?.postiz?.status;
+      if (currentPostizStatus !== 'approved_pending') {
+        await API.approvePreparedPublication(taskId, {
+          brand_id: brief.brand_id,
+          publication_variants: variants,
+        });
+      }
+
       const delivery = await API.deliverPreparedPublication(taskId, {
         brand_id: brief.brand_id,
         publish_mode: config.mode || 'draft',

@@ -447,8 +447,12 @@ def deliver_prepared_publication(
         raise HTTPException(status_code=409, detail="la preparación todavía no termina correctamente")
 
     prepared_result = prepared_task.get("result") or {}
-    if (prepared_result.get("postiz") or {}).get("status") not in {"prepared", "approved_pending"}:
-        raise HTTPException(status_code=409, detail="la tarea no contiene copies listos para entregar")
+    postiz_status = (prepared_result.get("postiz") or {}).get("status")
+    if postiz_status != "approved_pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"la tarea requiere aprobación previa antes de entregar (estado actual: '{postiz_status}')",
+        )
 
     previous_config = prepared_brief.get("publication") or {}
     previous_ids = set(previous_config.get("integration_ids") or [])
@@ -721,7 +725,7 @@ async def startup_event():
     runtime.recover_running_tasks()
 
     # 5) Ingreso de briefs por eventos (compatibilidad)
-    EventConsumer("ideation_queue", _ingress_handler, name="ideation-ingress").start()
+    EventConsumer("ideation_queue", _ingress_handler, auto_ack=False, name="ideation-ingress").start()
 
     # 6) Tool Discovery (best-effort, no bloquea el arranque)
     try:

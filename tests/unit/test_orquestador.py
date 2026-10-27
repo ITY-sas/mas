@@ -678,7 +678,7 @@ class TestManualPublicationEndpoint:
                 "publication": {"integration_ids": ["li-1"]},
             },
             "result": {
-                "postiz": {"status": "prepared"},
+                "postiz": {"status": "approved_pending"},
                 "publication_variants": [{
                     "platform": "linkedin", "integration_ids": ["li-1"], "content": "copy",
                 }],
@@ -716,4 +716,53 @@ class TestManualPublicationEndpoint:
             )
 
         assert error.value.status_code == 422
+        assert runtime.started is False
+
+    def test_delivery_rejects_unapproved_publication(self, monkeypatch):
+        import main as orchestrator_main
+        from fastapi import HTTPException
+
+        prepared = {
+            "client_id": 1,
+            "status": "completed",
+            "brief": {
+                "workflow": "prepare_publication",
+                "brand_id": 1,
+                "publication": {"integration_ids": ["li-1"]},
+            },
+            "result": {
+                "postiz": {"status": "prepared"},
+                "publication_variants": [{
+                    "platform": "linkedin", "integration_ids": ["li-1"], "content": "copy",
+                }],
+            },
+        }
+
+        class FakeStore:
+            def get(self, task_id):
+                return prepared
+
+        class FakeRuntime:
+            store = FakeStore()
+            started = False
+
+            def start_task(self, brief, client_id):
+                self.started = True
+                return "should-not-start"
+
+        runtime = FakeRuntime()
+        monkeypatch.setattr(orchestrator_main, "_get_runtime", lambda: runtime)
+
+        with pytest.raises(HTTPException) as error:
+            orchestrator_main.deliver_prepared_publication(
+                "prepare-task",
+                orchestrator_main.DeliverPreparedPublicationRequest(
+                    brand_id=1,
+                    publish_mode="draft",
+                    integration_ids=["li-1"],
+                ),
+            )
+
+        assert error.value.status_code == 409
+        assert "aprobación previa" in error.value.detail
         assert runtime.started is False
