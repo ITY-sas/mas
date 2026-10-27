@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
   Share2,
+  Lock,
 } from 'lucide-react';
 
 export function PublicationsView() {
@@ -197,6 +198,12 @@ export function PublicationsView() {
                     >
                       {statusLabels[status] || status}
                     </span>
+
+                    {(status === 'sent' || status === 'scheduled') && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1 font-semibold">
+                        <Lock className="w-3 h-3 text-emerald-400" /> Inmutable
+                      </span>
+                    )}
 
                     {/* Botón Revisar Copy */}
                     {isPendingApproval && (

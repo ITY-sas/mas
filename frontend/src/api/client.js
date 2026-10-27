@@ -59,6 +59,19 @@ export const API = {
     return this.request(`/api/clients/${id}`);
   },
 
+  async updateBrand(brandId, data) {
+    return this.request(`/api/brands/${brandId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteBrand(brandId) {
+    return this.request(`/api/brands/${brandId}`, {
+      method: 'DELETE',
+    });
+  },
+
   async getBrandChannels(brandId) {
     return this.request(`/api/brands/${brandId}/channels`);
   },
@@ -108,6 +121,21 @@ export const API = {
     return this.request(`/api/ideas/${ideaId}?${params}`);
   },
 
+  async updateIdea(ideaId, brandId, data) {
+    const params = new URLSearchParams({ brand_id: brandId });
+    return this.request(`/api/ideas/${ideaId}?${params}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...data, brand_id: Number(brandId) }),
+    });
+  },
+
+  async deleteIdea(ideaId, brandId) {
+    const params = new URLSearchParams({ brand_id: brandId });
+    return this.request(`/api/ideas/${ideaId}?${params}`, {
+      method: 'DELETE',
+    });
+  },
+
   // ── Publicación ─────────────────────────────────
   async publishIdea(ideaId, publication) {
     return this.request(`/api/ideas/${ideaId}/publish`, {
@@ -119,6 +147,32 @@ export const API = {
   async getPublications(brandId, limit = 100) {
     const params = new URLSearchParams({ brand_id: brandId, limit });
     return this.request(`/api/publications?${params}`);
+  },
+
+  async getSavedPublications(brandId, { ideaId = null, limit = 50, offset = 0, includeArchived = false } = {}) {
+    const params = new URLSearchParams({ brand_id: brandId, limit, offset, include_archived: includeArchived });
+    if (ideaId) params.set('idea_id', ideaId);
+    return this.request(`/api/publications/saved?${params}`);
+  },
+
+  async getSavedPublication(pubId, brandId) {
+    const params = new URLSearchParams({ brand_id: brandId });
+    return this.request(`/api/publications/saved/${pubId}?${params}`);
+  },
+
+  async updatePublication(pubId, brandId, data) {
+    const params = new URLSearchParams({ brand_id: brandId });
+    return this.request(`/api/publications/saved/${pubId}?${params}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...data, brand_id: Number(brandId) }),
+    });
+  },
+
+  async deletePublication(pubId, brandId) {
+    const params = new URLSearchParams({ brand_id: brandId });
+    return this.request(`/api/publications/saved/${pubId}?${params}`, {
+      method: 'DELETE',
+    });
   },
 
   async approvePreparedPublication(taskId, publication) {

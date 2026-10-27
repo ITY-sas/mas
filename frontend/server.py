@@ -298,9 +298,12 @@ def get_clients():
                               c.nombre, c.perfil_marca, c.restricciones_tono, c.historico,
                               c.producto_servicio, c.audiencia_objetivo, c.objetivo_marketing,
                               c.propuesta_valor, c.pilares_contenido, c.canales_objetivo,
-                              c.pais, c.zona_horaria, c.restricciones_legales
+                              c.pais, c.zona_horaria, c.restricciones_legales,
+                              COALESCE(b.rag_config, '{}'::jsonb) AS rag_config,
+                              COALESCE(b.status, 'active') AS brand_status
                           FROM clientes c
                           LEFT JOIN legacy_client_brand m ON m.client_id = c.id
+                          LEFT JOIN brands b ON b.id = COALESCE(m.brand_id, c.id)
                           ORDER BY c.id ASC;
                     """
                 )
@@ -326,6 +329,7 @@ def get_clients():
             "objetivo_marketing": "Aumentar reconocimiento y contenido compartible en redes sociales.",
             "pais": "Colombia",
             "zona_horaria": "America/Bogota",
+            "rag_config": {},
         },
         {
             "id": 2,
@@ -339,6 +343,7 @@ def get_clients():
             "objetivo_marketing": "Generar registros y demostrar cobros digitales sencillos.",
             "pais": "Colombia",
             "zona_horaria": "America/Bogota",
+            "rag_config": {},
         },
         {
             "id": 3,
@@ -352,6 +357,7 @@ def get_clients():
             "objetivo_marketing": "Aumentar consideración de producto y retos saludables.",
             "pais": "Colombia",
             "zona_horaria": "America/Bogota",
+            "rag_config": {},
         },
     ]
 
@@ -364,6 +370,70 @@ def get_client(client_id: int):
         if c.get("id") == client_id:
             return c
     raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+
+@app.get("/api/brands/{brand_id}")
+def get_brand_detail(brand_id: int):
+    """Consulta directa a tool-client para detalles de marca y su rag_config."""
+    try:
+        resp = requests.get(f"{TOOL_CLIENT_URL}/brands/{brand_id}", timeout=5)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Marca no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        logger.warning("Error contactando tool-client para marca %s: %s", brand_id, exc)
+        return get_client(brand_id)
+
+
+@app.put("/api/brands/{brand_id}")
+def update_brand_detail(brand_id: int, payload: dict):
+    """Actualiza configuración de marca, perfil y parámetros RAG en tool-client."""
+    try:
+        resp = requests.put(f"{TOOL_CLIENT_URL}/brands/{brand_id}", json=payload, timeout=10)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Marca no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        logger.exception("Error actualizando marca en tool-client")
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-client") from exc
+
+
+@app.put("/api/clients/{client_id}")
+def update_client_detail(client_id: int, payload: dict):
+    return update_brand_detail(client_id, payload)
+
+
+@app.delete("/api/brands/{brand_id}")
+def delete_brand_detail(brand_id: int):
+    """Soft-delete (archivado) de una marca en tool-client."""
+    try:
+        resp = requests.delete(f"{TOOL_CLIENT_URL}/brands/{brand_id}", timeout=10)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Marca no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        logger.exception("Error eliminando marca en tool-client")
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-client") from exc
+
+
+@app.delete("/api/clients/{client_id}")
+def delete_client_detail(client_id: int):
+    return delete_brand_detail(client_id)
 
 
 @app.get("/api/brands/{brand_id}/channels")
@@ -592,6 +662,110 @@ def get_saved_idea(idea_id: int, brand_id: int):
         raise HTTPException(status_code=502, detail="No se pudo consultar la idea") from exc
 
 
+@app.put("/api/ideas/{idea_id}")
+def update_saved_idea(idea_id: int, payload: dict, brand_id: Optional[int] = Query(None)):
+    """Actualiza una idea guardada y sincroniza su vector embedding en tool-rag."""
+    actual_brand_id = brand_id or payload.get("brand_id")
+    if not actual_brand_id:
+        raise HTTPException(status_code=422, detail="brand_id es requerido en query o body")
+
+    body = dict(payload)
+    body["brand_id"] = int(actual_brand_id)
+
+    # Si se pasa un title separado y content no es JSON, preservar o estructurar el dossier JSON
+    raw_content = body.get("content") or ""
+    title = body.get("title")
+    if title and raw_content:
+        is_json = False
+        try:
+            parsed = json.loads(raw_content)
+            if isinstance(parsed, dict):
+                is_json = True
+                parsed["title"] = title
+                body["content"] = json.dumps(parsed, ensure_ascii=False, indent=2)
+        except (ValueError, TypeError):
+            is_json = False
+
+        if not is_json:
+            try:
+                exist_resp = requests.get(
+                    f"{TOOL_RAG_URL}/ideas/detail",
+                    params={"idea_id": idea_id, "brand_id": int(actual_brand_id)},
+                    timeout=5,
+                )
+                if exist_resp.status_code == 200:
+                    dossier = exist_resp.json().get("data", {}).get("dossier") or {}
+                    if isinstance(dossier, dict) and dossier:
+                        dossier["title"] = title
+                        dossier["concept"] = raw_content
+                        body["content"] = json.dumps(dossier, ensure_ascii=False, indent=2)
+                    else:
+                        body["content"] = json.dumps({"title": title, "concept": raw_content}, ensure_ascii=False, indent=2)
+                else:
+                    body["content"] = json.dumps({"title": title, "concept": raw_content}, ensure_ascii=False, indent=2)
+            except Exception:
+                body["content"] = json.dumps({"title": title, "concept": raw_content}, ensure_ascii=False, indent=2)
+
+    try:
+        resp = requests.put(
+            f"{TOOL_RAG_URL}/ideas/{idea_id}",
+            params={"brand_id": int(actual_brand_id)},
+            json=body,
+            timeout=60,
+        )
+        if resp.status_code == 409:
+            err_msg = "Conflicto de ciclo de vida: la idea no puede ser modificada"
+            try:
+                env = resp.json()
+                err_msg = env.get("error") or env.get("detail") or err_msg
+            except Exception:
+                err_msg = resp.text or err_msg
+            raise HTTPException(status_code=409, detail=err_msg)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Idea no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        if envelope.get("status") != "ok":
+            raise HTTPException(status_code=502, detail=envelope.get("error") or "Error actualizando idea")
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-rag") from exc
+
+
+@app.delete("/api/ideas/{idea_id}")
+def delete_saved_idea(idea_id: int, brand_id: int):
+    """Soft-delete de una idea. Retorna 409 Conflict si ya fue publicada en Postiz."""
+    try:
+        resp = requests.delete(
+            f"{TOOL_RAG_URL}/ideas/{idea_id}",
+            params={"brand_id": brand_id},
+            timeout=15,
+        )
+        if resp.status_code == 409:
+            err_msg = "Conflicto de ciclo de vida: la idea ya fue enviada o publicada"
+            try:
+                env = resp.json()
+                err_msg = env.get("error") or env.get("detail") or err_msg
+            except Exception:
+                err_msg = resp.text or err_msg
+            raise HTTPException(status_code=409, detail=err_msg)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Idea no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        if envelope.get("status") != "ok":
+            raise HTTPException(status_code=502, detail=envelope.get("error") or "Error eliminando idea")
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-rag") from exc
+
+
 @app.get("/api/publications")
 def list_publication_deliveries(
     brand_id: int,
@@ -660,6 +834,110 @@ def approve_prepared_publication(
         return response.json()
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail="No se pudo contactar al orquestador") from exc
+
+
+@app.get("/api/publications/saved")
+def list_saved_publications(
+    brand_id: int,
+    idea_id: Optional[int] = None,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    include_archived: bool = Query(False),
+):
+    """Lista publicaciones persistidas en PostgreSQL vía tool-rag."""
+    try:
+        params = {"brand_id": brand_id, "limit": limit, "offset": offset, "include_archived": include_archived}
+        if idea_id is not None:
+            params["idea_id"] = idea_id
+        resp = requests.get(f"{TOOL_RAG_URL}/publicaciones", params=params, timeout=10)
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-rag") from exc
+
+
+@app.get("/api/publications/saved/{pub_id}")
+def get_saved_publication(pub_id: int, brand_id: int):
+    """Obtiene el detalle de una publicación persistida."""
+    try:
+        resp = requests.get(f"{TOOL_RAG_URL}/publicaciones/{pub_id}", params={"brand_id": brand_id}, timeout=10)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Publicación no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-rag") from exc
+
+
+@app.put("/api/publications/saved/{pub_id}")
+def update_saved_publication(pub_id: int, payload: dict, brand_id: Optional[int] = Query(None)):
+    """Edita una publicación borrador. Bloquea con 409 si ya fue enviada a Postiz."""
+    actual_brand_id = brand_id or payload.get("brand_id")
+    if not actual_brand_id:
+        raise HTTPException(status_code=422, detail="brand_id es requerido en query o body")
+
+    body = dict(payload)
+    body["brand_id"] = int(actual_brand_id)
+    try:
+        resp = requests.put(
+            f"{TOOL_RAG_URL}/publicaciones/{pub_id}",
+            params={"brand_id": int(actual_brand_id)},
+            json=body,
+            timeout=60,
+        )
+        if resp.status_code == 409:
+            err_msg = "Inmutabilidad: no se puede editar una publicación enviada a Postiz"
+            try:
+                env = resp.json()
+                err_msg = env.get("error") or env.get("detail") or err_msg
+            except Exception:
+                err_msg = resp.text or err_msg
+            raise HTTPException(status_code=409, detail=err_msg)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Publicación no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-rag") from exc
+
+
+@app.delete("/api/publications/saved/{pub_id}")
+def delete_saved_publication(pub_id: int, brand_id: int):
+    """Soft-delete de publicación. Bloquea con 409 si ya fue enviada a Postiz."""
+    try:
+        resp = requests.delete(
+            f"{TOOL_RAG_URL}/publicaciones/{pub_id}",
+            params={"brand_id": brand_id},
+            timeout=15,
+        )
+        if resp.status_code == 409:
+            err_msg = "Inmutabilidad: no se puede eliminar una publicación enviada a Postiz"
+            try:
+                env = resp.json()
+                err_msg = env.get("error") or env.get("detail") or err_msg
+            except Exception:
+                err_msg = resp.text or err_msg
+            raise HTTPException(status_code=409, detail=err_msg)
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="Publicación no encontrada")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        envelope = resp.json()
+        return envelope.get("data", {})
+    except HTTPException:
+        raise
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="No se pudo conectar a tool-rag") from exc
 
 
 @app.post("/api/tasks")

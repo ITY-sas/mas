@@ -205,6 +205,35 @@ export function AppProvider({ children }) {
     }
   }, [selectedClient, showToast]);
 
+  const updateIdea = useCallback(async (ideaId, data) => {
+    if (!selectedClient) return;
+    const brandId = selectedClient.brand_id || selectedClient.id;
+    try {
+      const res = await API.updateIdea(ideaId, brandId, data);
+      await Promise.all([loadIdeas(), selectIdea(ideaId)]);
+      showToast('Idea actualizada y re-indexada en memoria vectorial RAG.', 'success');
+      return res;
+    } catch (err) {
+      showToast('Error al actualizar idea: ' + err.message, 'error');
+      throw err;
+    }
+  }, [selectedClient, loadIdeas, selectIdea, showToast]);
+
+  const deleteIdea = useCallback(async (ideaId) => {
+    if (!selectedClient) return;
+    const brandId = selectedClient.brand_id || selectedClient.id;
+    try {
+      const res = await API.deleteIdea(ideaId, brandId);
+      setSelectedIdea(null);
+      await loadIdeas();
+      showToast('Idea archivada exitosamente.', 'info');
+      return res;
+    } catch (err) {
+      showToast('Conflicto: ' + err.message, 'error');
+      throw err;
+    }
+  }, [selectedClient, loadIdeas, showToast]);
+
   // ── Carga de Publicaciones ──────────────────────────────────
   const loadPublications = useCallback(async (overrideBrandId = null) => {
     const brandId = overrideBrandId || selectedClient?.brand_id || selectedClient?.id;
@@ -221,7 +250,75 @@ export function AppProvider({ children }) {
     }
   }, [selectedClient]);
 
-  // ── Selección de Cliente ─────────────────────────────────────
+  const updatePublication = useCallback(async (pubId, data) => {
+    if (!selectedClient) return;
+    const brandId = selectedClient.brand_id || selectedClient.id;
+    try {
+      const res = await API.updatePublication(pubId, brandId, data);
+      await loadPublications();
+      showToast('Publicación actualizada exitosamente.', 'success');
+      return res;
+    } catch (err) {
+      showToast('Error de ciclo de vida / inmutabilidad: ' + err.message, 'error');
+      throw err;
+    }
+  }, [selectedClient, loadPublications, showToast]);
+
+  const deletePublication = useCallback(async (pubId) => {
+    if (!selectedClient) return;
+    const brandId = selectedClient.brand_id || selectedClient.id;
+    try {
+      const res = await API.deletePublication(pubId, brandId);
+      await loadPublications();
+      showToast('Publicación archivada exitosamente.', 'info');
+      return res;
+    } catch (err) {
+      showToast('Error de ciclo de vida / inmutabilidad: ' + err.message, 'error');
+      throw err;
+    }
+  }, [selectedClient, loadPublications, showToast]);
+
+  // ── Selección y Gestión de Clientes / Marcas ────────────────
+  const loadClients = useCallback(async () => {
+    try {
+      const clientsList = await API.getClients();
+      if (clientsList && clientsList.length > 0) {
+        setClients(clientsList);
+        setSelectedClient((prev) => {
+          if (!prev) return clientsList[0];
+          const found = clientsList.find((c) => (c.brand_id || c.id) === (prev.brand_id || prev.id));
+          return found || clientsList[0];
+        });
+      }
+    } catch (err) {
+      console.warn('Error cargando clientes:', err);
+    }
+  }, []);
+
+  const updateBrand = useCallback(async (brandId, data) => {
+    try {
+      const res = await API.updateBrand(brandId, data);
+      await loadClients();
+      showToast('Configuración de marca y RAG actualizada exitosamente.', 'success');
+      return res;
+    } catch (err) {
+      showToast('Error al actualizar marca: ' + err.message, 'error');
+      throw err;
+    }
+  }, [loadClients, showToast]);
+
+  const deleteBrand = useCallback(async (brandId) => {
+    try {
+      const res = await API.deleteBrand(brandId);
+      await loadClients();
+      showToast('Marca archivada exitosamente.', 'info');
+      return res;
+    } catch (err) {
+      showToast('Error al archivar marca: ' + err.message, 'error');
+      throw err;
+    }
+  }, [loadClients, showToast]);
+
   const handleSelectClient = useCallback((client) => {
     if (!client) return;
     setSelectedClient(client);
@@ -718,6 +815,13 @@ export function AppProvider({ children }) {
     sendApprovedPublication,
     loadTaskDetails,
     checkSystemHealth,
+    loadClients,
+    updateBrand,
+    deleteBrand,
+    updateIdea,
+    deleteIdea,
+    updatePublication,
+    deletePublication,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

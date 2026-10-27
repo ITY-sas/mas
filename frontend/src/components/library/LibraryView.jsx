@@ -13,6 +13,10 @@ import {
   AlertCircle,
   FileCode,
   Layers,
+  Edit3,
+  Trash2,
+  X,
+  Save,
 } from 'lucide-react';
 
 export function LibraryView() {
@@ -33,6 +37,8 @@ export function LibraryView() {
     copyText,
     isExecuting,
     showToast,
+    updateIdea,
+    deleteIdea,
   } = useApp();
 
   // Estados locales para publicación
@@ -41,6 +47,15 @@ export function LibraryView() {
   const [publishAt, setPublishAt] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
   const [showJsonDossier, setShowJsonDossier] = useState(false);
+
+  // Estados locales para CRUD de Idea
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editConcept, setEditConcept] = useState('');
+  const [editStatus, setEditStatus] = useState('approved');
+  const [isSavingIdea, setIsSavingIdea] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingIdea, setIsDeletingIdea] = useState(false);
 
   // Pre-seleccionar canal si no hay ninguno seleccionado
   useEffect(() => {
@@ -99,6 +114,80 @@ export function LibraryView() {
       // error handled in context
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleOpenEdit = () => {
+    if (!selectedIdea) return;
+    const dossier = selectedIdea.dossier || {};
+    setEditTitle(dossier.title || selectedIdea.title || '');
+    setEditConcept(dossier.concept || selectedIdea.content || '');
+    setEditStatus(selectedIdea.status || 'approved');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedIdea) return;
+    setIsSavingIdea(true);
+    try {
+      const baseDossier = (selectedIdea.dossier && typeof selectedIdea.dossier === 'object' && Object.keys(selectedIdea.dossier).length > 0)
+        ? { ...selectedIdea.dossier }
+        : null;
+
+      let contentToSave;
+      if (baseDossier) {
+        contentToSave = JSON.stringify({
+          ...baseDossier,
+          title: editTitle,
+          concept: editConcept,
+        }, null, 2);
+      } else {
+        try {
+          const parsed = JSON.parse(selectedIdea.content || '{}');
+          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            contentToSave = JSON.stringify({
+              ...parsed,
+              title: editTitle,
+              concept: editConcept,
+            }, null, 2);
+          } else {
+            contentToSave = JSON.stringify({
+              title: editTitle,
+              concept: editConcept,
+            }, null, 2);
+          }
+        } catch {
+          contentToSave = JSON.stringify({
+            title: editTitle,
+            concept: editConcept,
+          }, null, 2);
+        }
+      }
+
+      await updateIdea(selectedIdea.id, {
+        brand_id: selectedClient?.brand_id || selectedClient?.id,
+        title: editTitle,
+        content: contentToSave,
+        status: editStatus,
+      });
+      setIsEditModalOpen(false);
+    } catch (err) {
+      // toast shown in context
+    } finally {
+      setIsSavingIdea(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedIdea) return;
+    setIsDeletingIdea(true);
+    try {
+      await deleteIdea(selectedIdea.id);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      // toast handled in context
+    } finally {
+      setIsDeletingIdea(false);
     }
   };
 
@@ -203,7 +292,17 @@ export function LibraryView() {
                     </p>
 
                     <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                      <span>{dateStr}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span>{dateStr}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                          idea.status === 'published' ? 'bg-sky-950/80 text-sky-300 border-sky-800' :
+                          idea.status === 'approved' ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800' :
+                          idea.status === 'archived' ? 'bg-rose-950/80 text-rose-300 border-rose-800' :
+                          'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}>
+                          {idea.status || 'approved'}
+                        </span>
+                      </div>
                       {idea.generation_batch_id && (
                         <span className="font-mono text-cyan-400">lote</span>
                       )}
@@ -244,15 +343,37 @@ export function LibraryView() {
               <div className="p-6 rounded-2xl bo-surface border border-slate-800 space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-slate-800">
                   <div>
-                    <span className="text-[11px] font-mono uppercase text-amber-400 font-bold">
-                      Idea #{selectedIdea.id}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono uppercase text-amber-400 font-bold">
+                        Idea #{selectedIdea.id}
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
+                        selectedIdea.status === 'published' ? 'bg-sky-950 text-sky-300 border-sky-800' :
+                        selectedIdea.status === 'approved' ? 'bg-emerald-950 text-emerald-300 border-emerald-800' :
+                        selectedIdea.status === 'archived' ? 'bg-rose-950 text-rose-300 border-rose-800' :
+                        'bg-slate-800 text-slate-300 border-slate-700'
+                      }`}>
+                        {selectedIdea.status || 'approved'}
+                      </span>
+                    </div>
                     <h3 className="text-lg font-bold text-white mt-0.5">
                       {dossier.title || selectedIdea.title || 'Idea de Campaña'}
                     </h3>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleOpenEdit}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" /> Editar
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-rose-300 border border-slate-700 hover:border-rose-800 text-xs font-medium flex items-center gap-1.5 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                    </button>
                     <button
                       onClick={() => copyText(selectedIdea.content || JSON.stringify(dossier, null, 2))}
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition"
@@ -418,6 +539,132 @@ export function LibraryView() {
           )}
         </div>
       </div>
+
+      {/* Modal de Edición de Idea */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-sm font-bold text-white">Editar Idea #{selectedIdea?.id}</h3>
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Título de la Idea:</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Concepto / Guion Creativo (Sincroniza Embeddings en RAG):
+                </label>
+                <textarea
+                  rows={6}
+                  value={editConcept}
+                  onChange={(e) => setEditConcept(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500 font-sans leading-relaxed resize-y"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Al guardar, se recalculará automáticamente el vector de 768 dimensiones en PostgreSQL mediante pgvector.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">Estado de Ciclo de Vida:</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
+                >
+                  <option value="approved">Aprobada (Approved)</option>
+                  <option value="draft">Borrador (Draft)</option>
+                  <option value="archived">Archivada (Soft-Delete)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={isSavingIdea}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSavingIdea ? 'Guardando...' : 'Guardar y Re-indexar'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación de Eliminación */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-rose-900/60 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-950/80 border border-rose-800/80 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">¿Eliminar Idea #{selectedIdea?.id}?</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Esta acción archivará la idea y sus borradores asociados.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/50 text-[11px] text-amber-300 space-y-1">
+              <p className="font-semibold flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Restricción de Inmutabilidad
+              </p>
+              <p className="text-slate-300">
+                Si esta idea ya tiene publicaciones enviadas o despachadas a Postiz, la eliminación será bloqueada con un error 409 Conflict para preservar la integridad histórica.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeletingIdea}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingIdea ? 'Eliminando...' : 'Confirmar Eliminación'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

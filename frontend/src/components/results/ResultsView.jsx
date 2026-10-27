@@ -17,6 +17,7 @@ import {
   Send,
   Eye,
   BookOpen,
+  Lock,
 } from 'lucide-react';
 
 export function ResultsView() {
@@ -411,6 +412,11 @@ export function ResultsView() {
                   <span className="text-[10px] font-mono text-slate-400">ID #{result.publication_id || 'N/A'}</span>
                 </div>
               </div>
+              {['created', 'sent', 'scheduled'].includes(postizResult.status) && (
+                <span className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-800 flex items-center gap-1 font-semibold">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" /> Inmutable · Enviado
+                </span>
+              )}
             </div>
 
             {/* Variantes por Plataforma (Editables en modo preparación) */}
