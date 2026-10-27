@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    actor Cliente as Invocador de Tarea
+    participant Orq as Orchestrator Runtime
+    participant Redis as Redis (RedisSaver Checkpoints)
+    participant RMQ as RabbitMQ Bus
+    participant Agente as Worker Ideación
+
+    Cliente->>Orq: Inicia tarea (thread_id = task_id)
+    Orq->>Redis: Checkpoint de inicio guardado en Redis
+    Orq->>RMQ: Publica agent.task.triggered
+    
+    Note over RMQ: Inyección de Caída: docker stop rabbitmq (Fallo Catastrófico)
+    
+    Orq-xRMQ: Conexión AMQP perdida (Pika ConnectionClosed)
+    Agente-xRMQ: Conexión AMQP perdida
+    
+    Note over Orq: El orquestador detecta desconexión y retiene estado en Redis.<br/>Ningún estado de planificación se pierde.
+    
+    Note over RMQ: docker start rabbitmq (Reinicio del Bus AMQP)
+    
+    Orq->>RMQ: EventConsumer auto-reconnect (reintento exponencial)
+    Agente->>RMQ: EventConsumer auto-reconnect
+    
+    Note over Orq: OrchestratorRuntime.recover_running_tasks()
+    Orq->>Redis: Lee tareas con estado 'running' sin resultado
+    Orq->>RMQ: Re-publica agent.task.triggered pendiente (At-least-once)
+    
+    RMQ->>Agente: Entrega tarea redelivery
+    Note over Agente: AgentRunner detecta o procesa idempotentemente
+    Agente->>RMQ: Publica agent.task.completed
+    RMQ->>Orq: Entrega resultado
+    Orq->>Redis: LangGraph.invoke(Command(resume=result)) -> Finaliza
+    Orq-->>Cliente: Tarea recuperada exitosamente sin intervención humana

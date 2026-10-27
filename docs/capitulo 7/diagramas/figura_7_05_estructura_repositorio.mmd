@@ -1,0 +1,23 @@
+graph TB
+    ROOT["proyecto-multiagente/"]
+    
+    ROOT --> AG_IDE["agente_ideacion/\n(graph.py, main.py, prompts.py)"]
+    ROOT --> AG_PUB["agente_publicacion/\n(graph.py, main.py, prompts.py)"]
+    ROOT --> ORQ["orchestrator/\n(main.py, history.py, multi_agent/)"]
+    ROOT --> GW["llm_gateway/\n(main.py, providers.py, cache.py, resilience.py)"]
+    ROOT --> TOOLS["tool_services/\n(client, trends, competitors, rag, news, trending, postiz)"]
+    ROOT --> COMM["common/\n(events.py, contracts.py, tool_client.py, task_store.py)"]
+    ROOT --> MIG["migrations/\n(001 a 005 SQL) + init.sql"]
+    ROOT --> FRONT["frontend/\n(React 18 + Vite SPA, api/, components/)"]
+    ROOT --> POSTIZ["postiz/\n(postiz-docker-compose/)"]
+    ROOT --> TESTS["tests/\n(unit/, integration/, performance/, PLAN_DE_PRUEBAS.md)"]
+    ROOT --> DOCS["docs/\n(capitulo 6, capitulo 7, DATOS.md, ARQUITECTURA.md)"]
+    ROOT --> CFG["Configuración Raíz\n(docker-compose.yml, .env, seed_data.py, prueba_e2e.py)"]
+
+    style ROOT fill:#1565c0,stroke:#0d47a1,stroke-width:2px,color:#fff
+    style AG_IDE fill:#e3f2fd,stroke:#1976d2
+    style AG_PUB fill:#e3f2fd,stroke:#1976d2
+    style ORQ fill:#ede7f6,stroke:#512da8
+    style GW fill:#fff8e1,stroke:#fbc02d
+    style TOOLS fill:#e8f5e9,stroke:#388e3c
+    style FRONT fill:#fce4ec,stroke:#c2185b

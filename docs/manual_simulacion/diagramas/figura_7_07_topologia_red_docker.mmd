@@ -1,0 +1,29 @@
+graph TB
+    subgraph External["Red Externa / Host"]
+        DEV["Navegador Web / Cliente HTTP (Host Port: 8080)"]
+        HOST_OLLAMA["Host Machine (127.0.0.1:11434 / Ollama)"]
+    end
+
+    subgraph BridgeNet["Red Bridge Docker Interna ('default')"]
+        subgraph PortsPublish["Puertos Publicados al Host"]
+            P_ORQ["orchestrator (8002:8002)"]
+            P_GW["llm-gateway (8003:8003)"]
+            P_IDE["agente-ideacion (8000:8000)"]
+            P_PUB["agente-publicacion (8001:8001)"]
+            P_PG["postgres (5432:5432)"]
+            P_REDIS["redis (6379:6379)"]
+            P_RMQ["rabbitmq (5672:5672 / 15672:15672)"]
+            P_TOOLS["tool-* (8010 a 8016:8010 a 8016)"]
+        end
+        
+        DNS["Servicio DNS Integrado de Docker (Resolución por nombre de servicio)"]
+    end
+
+    DEV --> P_ORQ
+    DEV --> P_GW
+    P_GW -->|host.docker.internal:host-gateway| HOST_OLLAMA
+    
+    P_ORQ -.-> DNS
+    P_IDE -.-> DNS
+    P_PUB -.-> DNS
+    P_TOOLS -.-> DNS

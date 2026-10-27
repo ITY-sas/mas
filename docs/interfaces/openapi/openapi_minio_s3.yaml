@@ -1,0 +1,32 @@
+openapi: 3.0.3
+info:
+  title: MinIO / S3 Object Storage API
+  description: API compatible con Amazon S3 para el almacenamiento centralizado de videos (.mp4), miniaturas, proxies de baja resolución y archivos de log.
+  version: 2006-03-01
+servers:
+  - url: http://minio:9000
+paths:
+  /{bucket}/{object}:
+    put:
+      summary: Subir archivo multimedia versionado
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "ity-media"
+        - name: object
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "reels/2026-08_001_v1.mp4"
+      responses:
+        '200':
+          description: Objeto almacenado con hash ETag
+    get:
+      summary: Descargar archivo o generar URL prefirmada
+      responses:
+        '200':
+          description: Stream binario del archivo

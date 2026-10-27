@@ -1,0 +1,232 @@
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{longtable,booktabs,array}
+\usepackage{calc}
+\usepackage{graphicx}
+\usepackage{pdflscape}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{bookmark}
+\usepackage{hyperref}
+
+\hypersetup{
+  pdftitle={Diagnóstico Operativo VSM y ToC - Sistema Multiagente ITY SAS},
+  pdfauthor={Alvaro Felipe Lopez Russi - Universidad Católica de Colombia},
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\graphicspath{{./}{graficas/}}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!25},
+  showstringspaces=false,
+  columns=fullflexible
+}
+
+\title{
+  \vspace{-1.5cm}
+  \textbf{UNIVERSIDAD CATÓLICA DE COLOMBIA}\\[0.3em]
+  \large Facultad de Ingeniería --- Programa de Ingeniería de Sistemas y Computación\\[1.5em]
+  \Large \textbf{PRODUCTO TÉCNICO ENTREGABLE 2.1 (OE1)}\\[0.5em]
+  \huge \textbf{Diagnóstico Operativo del Flujo de Producción y Publicación de Contenidos Mediante Value Stream Mapping (VSM) y Teoría de Restricciones (ToC)}\\[0.8em]
+  \large Caracterización de Cuellos de Botella, Modelado Estocástico de Retrabajo y Matriz de Priorización de Restricciones para la Automatización Agéntica en ITY SAS
+}
+\author{\textbf{Alvaro Felipe Lopez Russi} (Cód. 67000867) \\ \texttt{aflopez67@ucatolica.edu.co} \\[0.5em] \textit{Director / Asesor Metodológico: Docente Titular de Grado}}
+\date{Bogotá D.C., Octubre 2026 --- Versión 3.0}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent En el sector del marketing digital en Bogotá D.C., la agencia \textbf{ITY SAS} experimenta una fractura operativa crítica ocasionada por la \textbf{saturación algorítmica} de redes sociales (Meta Business Suite y TikTok). Mientras que los algoritmos penalizan drásticamente a las marcas con baja frecuencia reduciendo su alcance orgánico y forzando entre 20 y 30 publicaciones mensuales por cuenta, el equipo de ITY SAS apenas logra producir 8 publicaciones mensuales por equipo de trabajo, registrando un $79\%$ de estrés creativo y burnout. El presente documento constituye el informe exhaustivo del \textbf{Objetivo Específico 1 (OE1)}. Se integraron las metodologías \textbf{Value Stream Mapping (VSM)} y \textbf{Teoría de Restricciones (ToC)} sobre un censo de \textbf{315 piezas de contenido} producidas durante agosto de 2026 para 10 marcas activas, auditando \textbf{29.150,23 horas de procesamiento activo} y \textbf{9.632,97 horas de esperas pasivas}, junto a una encuesta Likert aplicada a 10 colaboradores operativos (T1-T10) y 5 días de observación directa. Los resultados revelan una Eficiencia del Ciclo de Proceso ($PCE$) aparente del $75,16\%$, la cual oculta un severo retrabajo: se registraron \textbf{436 revisiones internas}. La \textbf{edición de video para Reels} se identificó como el cuello de botella primario ($R_1$, $IC=15/15$), acumulando 8.366,19 horas ($28,7\%$ del tiempo total de la agencia), con un promedio de 134,94 horas por reel y 2,23 revisiones, donde el $32,5\%$ del tiempo ($2.366,19$ horas/mes) se pierde en reprocesos técnicos evitables. La \textbf{ideación y briefing} ($R_2$, $IC=14/15$) consume 5.994,93 horas ($19,03$ h/pieza) y origina el $60\%$ de los cambios posteriores. La \textbf{publicación multicanal} ($R_3$, $IC=12/15$) genera demoras constantes en la última milla. Mediante el Índice de Automatización ($IA \ge 4,3$), se demostró que estas tres restricciones son computables algorítmicamente, justificando el diseño de un Sistema Multiagente en microservicios y contenedores Docker para transformar la productividad de ITY SAS.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introducción y Contexto Organizacional}\label{sec:intro}
+\subsection{Contexto de ITY SAS y su Entorno Operativo}
+En el dinámico tejido empresarial de Bogotá D.C., que concentra el $92\%$ de la oferta de servicios creativos del país, ITY SAS gestiona diez cuentas comerciales activas: Amatu, Astra, Car Rental Miami, Car Rental Panama, Car Share Miami, Car Share Panama, Liga de Bogotá, Marcela Arango, Clínica Sonrisas y Gourmet Express. La demanda mensual promedio exige entre 20 y 30 publicaciones por cuenta, pero la agencia solo entrega 8 publicaciones por equipo.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{graficas/fig_08_diagrama_flujo_16_pasos.png}
+\caption{Diagrama de Flujo As-Is de los 16 Pasos y 4 Macrociclos en ITY SAS.}
+\label{fig:flujo16}
+\end{figure}
+
+\subsection{El Fenómeno de la Saturación Algorítmica}
+Los algoritmos de Meta Suite y TikTok penalizan drásticamente a las marcas con baja frecuencia de publicación. Estudios sectoriales confirman que las marcas publican 9,5 veces al día y la efectividad de un activo publicitario se agota en 35 a 40 días (Atomic212, 2023).
+
+\section{Marco Metodológico y Conceptual: Integración de VSM y ToC}\label{sec:marco}
+\subsection{Lean Services y los Desperdicios en Procesos Cognitivos}
+Se adaptan los 7 desperdicios clásicos de Ohno (1988) a la producción de contenidos digitales: sobreproducción de borradores, esperas de cliente ($6.032,97$ h), transporte de archivos en WhatsApp/Drive, sobreprocesamiento, inventario WIP represado y 436 ciclos de retrabajo.
+
+\subsection{Formalismo Matemático del VSM}
+Tiempo de Ciclo activo:
+\begin{equation}
+C/T_i = t_{\text{fin\_activo}, i} - t_{\text{inicio\_activo}, i}
+\end{equation}
+Eficiencia del Ciclo de Proceso ($PCE$):
+\begin{equation}
+PCE = \eta = \frac{\sum VA_i}{\sum VA_i + \sum NVA_i} \times 100\%
+\end{equation}
+
+\subsection{Teoría de Restricciones (ToC)}
+Goldratt (1990) establece el proceso de mejora continua en cinco pasos: Identificar, Explotar, Subordinar, Elear y Repetir. Por la Ley de Little:
+\begin{equation}
+CT = \frac{WIP}{TH}
+\end{equation}
+
+\section{Caracterización y Modelado del Proceso Actual (As-Is)}\label{sec:asis}
+El flujo se descompone en 16 pasos secuenciales agrupados en 4 macrociclos:
+\begin{enumerate}
+\item \textbf{Macrociclo I (Ideación y Estrategia):} Pasos 1, 2 y 5 ($C/T = 19,03$ h/pieza).
+\item \textbf{Macrociclo II (Preproducción y Fabricación):} Pasos 3, 4 y 6 ($C/T = 27,40$ h/pieza).
+\item \textbf{Macrociclo III (Edición y Control de Calidad):} Pasos 7, 8 y 9 ($C/T = 134,94$ h/reel).
+\item \textbf{Macrociclo IV (Aprobación y Publicación):} Pasos 10 a 16 ($L/T = 19,15$ h/pieza).
+\end{enumerate}
+
+\section{Resultados Cuantitativos: Línea Base de Tiempos}\label{sec:cuanti}
+Sobre $N=315$ piezas producidas en agosto de 2026:
+\begin{itemize}
+\item Historias ($n=199$): Análisis 2.949,64 h, Diseño 3.981,65 h, Espera 2.172,77 h.
+\item Posts ($n=45$): Análisis 1.287,22 h, Diseño 2.495,18 h, Espera 1.251,67 h.
+\item Reels ($n=62$): Análisis 1.550,39 h, Diseño 1.353,13 h, Edición \textbf{8.366,19 h}, Espera 2.411,62 h.
+\item Carruseles ($n=9$): Análisis 207,68 h, Diseño 800,55 h, Espera 196,91 h.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_01_horas_por_fase.png}
+\caption{Distribución Total de Horas por Fase y Formato en ITY SAS ($N=315$).}
+\label{fig:horasfase}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_02_promedios_por_pieza.png}
+\caption{Comparación de Tiempos Unitarios y Frecuencia de Retrabajo.}
+\label{fig:promedios}
+\end{figure}
+
+\section{Resultados Cualitativos: Percepción y Carga Laboral}\label{sec:cuali}
+La encuesta Likert aplicada a los 10 colaboradores (T1-T10) arrojó un Coeficiente Alfa de Cronbach $\alpha = 0,884$. Los ítems más críticos fueron la disposición a automatizar ($\bar{x} = 4,90, \sigma = 0,31$), la espera por aprobación del cliente ($\bar{x} = 4,80, \sigma = 0,42$) y la ambigüedad en los briefs ($\bar{x} = 4,80, \sigma = 0,42$).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_03_encuesta_likert.png}
+\caption{Resultados consolidados de la Encuesta de Carga Laboral.}
+\label{fig:likert}
+\end{figure}
+
+\section{Value Stream Mapping (VSM) del Estado Actual}\label{sec:vsm}
+El balance cuantitativo establece:
+\begin{align}
+VA_{\text{total}} &= 29.150,23 \text{ h} \quad (92,54 \text{ h/pieza}) \\
+NVA_{\text{total}} &= 9.632,97 \text{ h} \quad (30,58 \text{ h/pieza}) \\
+Lead\ Time &= 38.783,20 \text{ h} \quad (123,12 \text{ h/pieza}) \\
+PCE &= \frac{29.150,23}{38.783,20} \times 100\% = 75,16\%
+\end{align}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{graficas/fig_09_vsm_macro_diagram.png}
+\caption{Value Stream Mapping (VSM) Macro Agregado del estado actual.}
+\label{fig:vsmmacro}
+\end{figure}
+
+\section{Identificación y Priorización de Restricciones (ToC)}\label{sec:toc}
+El Índice de Criticidad ($IC = I + F + C$) jerarquiza las cuatro restricciones operativas:
+\begin{itemize}
+\item $R_1$: Bucle de Edición de Video ($IC = 5+5+5 = \mathbf{15/15}$, Prioridad 1).
+\item $R_2$: Ineficiencia en Ideación y Briefing ($IC = 4+5+5 = \mathbf{14/15}$, Prioridad 2).
+\item $R_3$: Publicación Manual Multicanal ($IC = 3+4+5 = \mathbf{12/15}$, Prioridad 3).
+\item $R_4$: Espera de Aprobación de Cliente ($IC = 5+5+1 = \mathbf{11/15}$, Restricción Exógena).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_04_matriz_priorizacion.png}
+\caption{Matriz Estratégica de Priorización de Restricciones Operativas.}
+\label{fig:matriztoc}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_11_ishikawa_cuellos_botella.png}
+\caption{Diagrama de Causa y Efecto (Ishikawa 6M) de las ineficiencias operativas.}
+\label{fig:ishikawa}
+\end{figure}
+
+\section{Modelado Micro y Análisis Estocástico de la Restricción $R_1$}\label{sec:micro}
+Para los 62 reels, el modelo probabilístico de tiempo de ciclo es:
+\begin{equation}
+TC_{\text{Real}} = TC_{\text{Base}} + P(R_1) \cdot TC_{R1} + P(R_2) \cdot TC_{R2}
+\end{equation}
+Con $TC_{\text{Base}} = 6,0$ h, $P(R_1) = 0,60$, $TC_{R1} = 2,5$ h, $P(R_2) = 0,30$, $TC_{R2} = 1,5$ h:
+\begin{equation}
+TC_{\text{Real}} = 6,0 + 1,50 + 0,45 = \mathbf{7,95\text{ horas/pieza}} \quad (+32,5\% \text{ retrabajo})
+\end{equation}
+Capacidad mensual perdida: \textbf{2.366,19 horas de retrabajo evitable}. Reduciendo $P(R_1)$ a $0,10$ con validación agéntica, el tiempo baja a $6,70$ h, recuperando \textbf{1.314 horas mensuales}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_10_vsm_micro_edicion.png}
+\caption{Micro-VSM del subproceso de edición de Reels.}
+\label{fig:microvsm}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_05_curva_edicion_retrabajo.png}
+\caption{Curva del tiempo de ciclo esperado frente a la probabilidad de reproceso $P(R_1)$.}
+\label{fig:curva}
+\end{figure}
+
+\section{Factibilidad Técnica e Índice de Automatización (IA)}\label{sec:ia}
+\begin{equation}
+IA = \frac{\text{Repetitividad} + \text{Determinismo} + \text{Disponibilidad API}}{3}
+\end{equation}
+$R_1$ ($IA=5,0$), $R_2$ ($IA=4,3$) y $R_3$ ($IA=5,0$) superan el umbral ($IA \ge 4,0$), siendo seleccionadas para el MAS. $R_4$ ($IA=2,0$) es excluida por ser exógena y no determinista.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\textwidth]{graficas/fig_06_indice_automatizacion.png}
+\caption{Evaluación del Índice de Automatización (IA) por restricción.}
+\label{fig:ia}
+\end{figure}
+
+\section{Estado Futuro (VSM To-Be) y Plan de Mitigación}\label{sec:tobe}
+El flujo futuro asistido por agentes comprime el tiempo de ciclo activo en un $52,4\%$ (de $92,54$ h a $44,08$ h/pza) y el Lead Time en un $50,4\%$ (de $123,12$ h a $61,08$ h/pza), expandiendo la capacidad productiva de 88 a más de 220 publicaciones mensuales.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{graficas/fig_07_vsm_comparacion_as_is_to_be.png}
+\caption{Comparativa de Tiempos de Ciclo y Lead Time: As-Is vs To-Be.}
+\label{fig:comparativa}
+\end{figure}
+
+\section{Conclusiones del Diagnóstico}\label{sec:conclusiones}
+\begin{enumerate}
+\item El sistema presenta 3 restricciones endógenas ($R_1, R_2, R_3$) que acumulan el $70\%$ del tiempo operativo.
+\item El retrabajo en edición de video disipa 2.366,19 horas mensuales evitables.
+\item La espera de clientes ($6.032,97$ h) debe gestionarse vía SLA contractuales de 24 horas.
+\item Las restricciones priorizadas son computables ($IA \ge 4,3$) y viables para un MAS en Docker.
+\item La cultura de la agencia es favorable a la automatización ($\bar{x} = 4,90/5$).
+\end{enumerate}
+
+\end{document}

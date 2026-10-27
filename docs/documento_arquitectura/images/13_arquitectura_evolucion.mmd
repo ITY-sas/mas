@@ -1,0 +1,18 @@
+flowchart LR
+    input["Brief o lote 1-5"] --> supervisor["Supervisor: enrutamiento por workflow"]
+    supervisor --> idea["Agente de ideación"]
+    idea --> context["Perfil + tendencias + competencia + RAG + RSS"]
+    context --> llm1["LLM Gateway"]
+    llm1 --> dossier["Idea + dossier validado"]
+    dossier --> choose["Usuario elige idea y canales"]
+    choose --> publication["Agente de publicación: preparar"]
+    publication --> context2["Perfil + tendencias + trending"]
+    context2 --> channels["Canales elegidos + proveedor"]
+    channels --> llm2["LLM Gateway<br/>instrucciones por plataforma"]
+    llm2 --> copy["Variantes por plataforma"]
+    copy --> persist["Persistencia PostgreSQL/pgvector<br/>una fila por plataforma"]
+    persist --> review["Revisión y aprobación humana"]
+    review --> optional["Entrega a Postiz<br/>copy correspondiente a cada canal"]
+
+    note["El valor frente a una llamada aislada al LLM es la composición reproducible de contexto, validación, persistencia y trazabilidad; la mejora de calidad debe medirse experimentalmente."]
+    copy -.-> note

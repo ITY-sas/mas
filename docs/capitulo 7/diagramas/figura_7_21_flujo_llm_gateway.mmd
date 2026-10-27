@@ -1,0 +1,24 @@
+graph LR
+    REQ["POST /v1/generate<br/>(prompt, system, model, format)"] --> CACHE{"¿Caché Redis?<br/>(SHA-256 de parámetros)"}
+    
+    CACHE -->|Hit: TTL vigente| RET_CACHE["Retorna Respuesta Cacheadas<br/>(cached: true, attempts: 0, latencia < 5ms)"]
+    
+    CACHE -->|Miss| LB["Balanceador de Carga<br/>(Selección ponderada por weight)"]
+    
+    LB --> CALL_P1["Intento Proveedor Primario<br/>(Ej. Ollama gemma3:4b)"]
+    
+    CALL_P1 -->|Éxito| SAVE_CACHE["Guardar en Caché Redis<br/>(TTL configurable)"]
+    SAVE_CACHE --> RET_OK["Respuesta 200 OK<br/>(content, model, duration_ms)"]
+    
+    CALL_P1 -->|Fallo / Timeout / 502| FALLBACK["Mecanismo de Resiliencia<br/>(Exponential Backoff + Jitter)"]
+    
+    FALLBACK --> CALL_P2["Proveedor Secundario Fallback<br/>(Ej. mistral-nemo)"]
+    
+    CALL_P2 -->|Éxito| SAVE_CACHE
+    CALL_P2 -->|Fallo total| ERR_502["Respuesta HTTP 502<br/>(AllProvidersFailed con errores)"]
+
+    style CACHE fill:#fff8e1,stroke:#fbc02d,stroke-width:2px
+    style RET_CACHE fill:#e8f5e9,stroke:#388e3c
+    style CALL_P1 fill:#e1f5fe,stroke:#0288d1
+    style FALLBACK fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    style CALL_P2 fill:#fff3e0,stroke:#f57c00

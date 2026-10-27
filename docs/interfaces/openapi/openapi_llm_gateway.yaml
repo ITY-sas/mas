@@ -1,0 +1,69 @@
+openapi: 3.0.3
+info:
+  title: LLM Gateway API
+  description: Pasarela centralizada para modelos de lenguaje (LLM) que gestiona inferencia, extracción de entidades, generación de copys, embeddings, balanceo y caché.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8003
+    description: Contenedor LLM Gateway (:8003)
+paths:
+  /v1/generate:
+    post:
+      summary: Generar texto o completar estructuras JSON mediante LLM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                  example: "Genera 3 opciones de copy para Instagram sobre cuidado facial."
+                system:
+                  type: string
+                  example: "Eres un copywriter senior experto en marketing de cosmética natural."
+                model:
+                  type: string
+                  example: "llama3:8b"
+                temperature:
+                  type: number
+                  example: 0.7
+                json_schema:
+                  type: object
+                  description: Esquema JSON obligatorio para respuestas estructuradas (Pydantic)
+                timeout:
+                  type: integer
+                  default: 60
+      responses:
+        '200':
+          description: Generación exitosa con telemetría de tokens y latencia
+  /v1/embeddings:
+    post:
+      summary: Generar vectores semánticos (embeddings) de 768 dimensiones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [texts]
+              properties:
+                texts:
+                  type: array
+                  items:
+                    type: string
+                  example: ["Campana verano proteccion solar", "Rutina nocturna piel grasa"]
+                model:
+                  type: string
+                  example: "nomic-embed-text"
+      responses:
+        '200':
+          description: Lista de vectores numéricos para inserción en pgvector
+  /health:
+    get:
+      summary: Estado de salud del gateway y proveedores de inferencia (Ollama, OpenAI, Groq)
+      responses:
+        '200':
+          description: Proveedores disponibles y estado de conectividad

@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    participant Agent as Agente LangGraph
+    participant Registry as ToolRegistry
+    participant Tool as Tool Service
+    participant Domain as Dominio / PostgreSQL
+    participant Gateway as LLM Gateway
+
+    Agent->>Registry: discover(TOOL_URLS)
+    Registry->>Tool: GET /.well-known/tool-manifest
+    Tool-->>Registry: nombre, operaciones, método, ruta, parámetros
+    Registry->>Registry: validate_manifest()
+    Agent->>Registry: call(tool, operation, params)
+    Registry->>Tool: REST según método y path del manifiesto
+    Tool->>Domain: consulta o mutación acotada
+    Domain-->>Tool: resultado
+    Tool-->>Registry: envelope {tool,status,data,...}
+    Registry-->>Agent: data validada
+    opt operación de embeddings / generación
+        Tool->>Gateway: POST /v1/embeddings o /v1/generate
+        Gateway-->>Tool: resultado + proveedor + duración
+    end

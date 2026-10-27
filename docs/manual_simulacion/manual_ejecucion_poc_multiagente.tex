@@ -1,0 +1,732 @@
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[11pt,a4paper]{article}
+
+% --- Paquetes Fundamentales ---
+\usepackage[margin=2.2cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{longtable,booktabs,array,tabularx}
+\usepackage{calc}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{bookmark}
+\usepackage{hyperref}
+
+% --- Colores Institucionales y de Código ---
+\definecolor{primaryblue}{RGB}{24, 76, 120}
+\definecolor{secondaryblue}{RGB}{41, 128, 185}
+\definecolor{accentgreen}{RGB}{39, 174, 96}
+\definecolor{alertred}{RGB}{192, 57, 43}
+\definecolor{darkgray}{RGB}{44, 62, 80}
+\definecolor{lightgray}{RGB}{245, 247, 250}
+\definecolor{codegray}{RGB}{240, 242, 245}
+\definecolor{bordergray}{RGB}{218, 225, 231}
+
+% --- Configuración de Hipervínculos ---
+\hypersetup{
+  pdftitle={Manual de Ejecución y Simulación de la Prueba de Concepto (PoC) - ITY SAS},
+  pdfauthor={Equipo de Analistas y Arquitectura - Proyecto ITY SAS},
+  pdfsubject={Guía Técnica de Despliegue, Simulación, Logs y Métricas alineada con OE4},
+  pdfkeywords={Multi-agente, LangGraph, Docker, Ollama, PoC, OE4, Simulación, Métricas, ITY SAS},
+  colorlinks=true,
+  linkcolor=secondaryblue,
+  citecolor=primaryblue,
+  urlcolor=secondaryblue
+}
+
+% --- Configuración de Encabezados y Pies de Página ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{darkgray}\textbf{ITY SAS} | Manual de Ejecución PoC Multi-Agente}
+\fancyhead[R]{\small\color{darkgray}\textit{Alineación con Objetivo Específico 4 (OE4)}}
+\fancyfoot[L]{\small\color{darkgray}Documentación Técnica de Pruebas y Despliegue}
+\fancyfoot[R]{\small\color{darkgray}Página \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.5pt}
+
+% --- Configuración de Listados de Código ---
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\lstset{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize\color{darkgray},
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  commentstyle=\color{accentgreen},
+  keywordstyle=\color{primaryblue}\bfseries,
+  stringstyle=\color{alertred},
+  frame=single,
+  rulecolor=\color{bordergray},
+  numbers=left,
+  numberstyle=\tiny\color{darkgray!60},
+  numbersep=7pt,
+  tabsize=2,
+  showstringspaces=false,
+  columns=fullflexible,
+  keepspaces=true
+}
+
+\graphicspath{{./}{diagramas/}{../resultado_pruebas/}{../capitulo 7/diagramas/}}
+
+% ==============================================================================
+% PORTADA DEL DOCUMENTO
+% ==============================================================================
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{0.5cm}
+    
+    {\Huge \textbf{\color{primaryblue} MANUAL DE EJECUCIÓN Y VALIDACIÓN DE LA PRUEBA DE CONCEPTO (PoC)}}\\[0.5em]
+    {\LARGE \textbf{\color{secondaryblue} Sistema Multi-Agente para la Automatización de Ideación y Pre-Producción de Contenido Digital}}\\[1.5em]
+    
+    \rule{\linewidth}{1.5pt}\\[1.0em]
+    
+    {\Large \textbf{Guía Técnica para Desarrolladores y Personal de Operaciones de ITY SAS}}\\[0.4em]
+    {\large Despliegue de Contenedores, Inyección de Escenarios de Estrés, Telemetría de Logs y Extracción de Métricas Formales}\\[1.0em]
+    
+    \rule{\linewidth}{1.5pt}\\[2.0em]
+    
+    \begin{minipage}{0.9\textwidth}
+        \centering
+        \textbf{\color{darkgray} Vinculación Formal y Respuesta Literal al Objetivo Específico 4 (OE4):}\\[0.5em]
+        \textit{``Implementar una prueba de concepto de los dos agentes en un entorno de contenedores, ejecutando una simulación con datos históricos o sintéticos, para demostrar la viabilidad técnica y evaluar el potencial de reducción de cuellos de botella.''}
+    \end{minipage}\\[2.5em]
+    
+    \begin{minipage}{0.48\textwidth}
+        \flushleft
+        \textbf{Organización Beneficiaria:} ITY SAS\\
+        \textbf{Entorno de Pruebas:} Pila de 14 Microservicios\\
+        \textbf{Framework Base:} LangGraph + FastAPI\\
+        \textbf{Modelos LLM:} Gemma 3:4B / Mistral-Nemo\\
+        \textbf{Embeddings:} Nomic-Embed-Text (768d)
+    \end{minipage}
+    \begin{minipage}{0.48\textwidth}
+        \flushright
+        \textbf{Versión de Documento:} 3.0 (Final Definitiva)\\
+        \textbf{Fecha de Publicación:} Octubre de 2026\\
+        \textbf{Estado:} Validado en Simulación ($N=60$)\\
+        \textbf{Tasa de Éxito PoC:} 100.0\% ($60/60$ Casos)\\
+        \textbf{Reducción de Ciclo:} 99.97\% frente a manual
+    \end{minipage}
+    
+    \vfill
+    {\small \color{darkgray} Proyecto de Grado de Maestría en Ingeniería de Sistemas / Inteligencia Artificial\\
+    Documento Técnico Complementario de Tesis --- ITY SAS 2026}
+\end{titlepage}
+
+\newpage
+\tableofcontents
+\newpage
+
+% ==============================================================================
+% SECCIÓN 1: VINCULACIÓN CON OE4
+% ==============================================================================
+\section{Vinculación Formal con el Objetivo Específico 4 (OE4)}
+\label{sec:vinculacion_oe4}
+
+\subsection{Declaración literal y alcance del objetivo}
+El presente documento constituye el manual operativo oficial para la ejecución, monitoreo y evaluación de la Prueba de Concepto (PoC) desarrollada en el marco del proyecto de grado. Su diseño responde estrictamente al mandato del \textbf{Objetivo Específico 4 (OE4)}:
+
+\begin{quote}
+\textit{``Implementar una prueba de concepto de los dos agentes en un entorno de contenedores, ejecutando una simulación con datos históricos o sintéticos, para demostrar la viabilidad técnica y evaluar el potencial de reducción de cuellos de botella.''}
+\end{quote}
+
+Este manual capacita a futuros desarrolladores, arquitectos de software y personal técnico de la agencia digital \textbf{ITY SAS} para:
+\begin{enumerate}[leftmargin=*]
+    \item Instalar, aprovisionar y levantar de manera determinista y reproducible la pila completa de 14 microservicios contenerizados.
+    \item Reproducir de extremo a extremo los cinco escenarios de simulación y estrés operativo (briefs incompletos, sobrecarga AMQP, caídas de LLM, fallos de infraestructura y aislamiento multi-tenant).
+    \item Interpretar en tiempo real los registros estructurados (logs JSON) y trazar el ciclo de vida de los estados mediante identificadores de correlación (\code{task_id}).
+    \item Extraer analítica y matemáticamente las métricas empíricas de desempeño, demostrando el cumplimiento de los tres Indicadores Clave de Rendimiento (KPIs) del proyecto.
+\end{enumerate}
+
+\subsection{Contexto organizacional de ITY SAS y diagnóstico del OE1}
+En el diagnóstico de línea base realizado durante la fase inicial del proyecto (OE1), se recopiló y analizó una muestra representativa de 166 piezas de contenido producidas mediante el flujo manual tradicional de la agencia digital ITY SAS (\code{docs/resultado_pruebas/linea_base_manual_ity_sas.csv}). Dicho estudio identificó tres cuellos de botella altamente críticos:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{R1 --- Retrabajo editorial excesivo e inconsistencia creativa ($IC = 15/15$):} El 42.5\% de los contenidos requerían múltiples rondas de corrección debido a desalineación con el manual de identidad de marca o inconsistencias técnicas en la estructura de los guiones audiovisuales.
+    \item \textbf{R2 --- Lentitud operativa en la Fase 1 ($IC = 14/15$):} La etapa de investigación, ideación y estructuración de dossiers consumía una media de \textbf{18.83 horas} por pieza ($1,129.8\text{ minutos}$), elevándose hasta \textbf{30.12 horas} en Reels y \textbf{29.52 horas} en Posts estáticos, generando un bloqueo aguas abajo para el equipo de diseño y producción audiovisual.
+    \item \textbf{R3 --- Dispersión y fricción en la adaptación y publicación multicanal ($IC = 12/15$):} La fragmentación en la distribución entre Instagram, LinkedIn y otras plataformas ocasionaba tiempos de ciclo totales con una media de \textbf{93.05 horas} ($3.88\text{ días}$) y picos de hasta $315.71\text{ horas}$.
+\end{itemize}
+
+\subsection{Matriz de trazabilidad y metas de los KPIs}
+La Tabla \ref{tab:matriz_kpis_oe4} resume la matriz de correspondencia entre los KPIs contractualmente fijados para el OE4 y los resultados empíricos certificados durante la simulación de 60 casos reales.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Matriz de cumplimiento de KPIs para el Objetivo Específico 4 (OE4).}
+\label{tab:matriz_kpis_oe4}
+\begin{tabularx}{\textwidth}{lXcccX}
+\toprule
+\textbf{KPI} & \textbf{Descripción y Definición Operativa} & \textbf{Deficiente} & \textbf{Aceptable} & \textbf{Esperado} & \textbf{Resultado Obtenido} \\
+\midrule
+\textbf{KPI 1} & \textbf{Tasa de éxito en simulación} ($S_r$): Porcentaje de briefs procesados satisfactoriamente de punta a punta sin caídas ni estados inconsistentes. & $< 70\%$ & $70\% - 89\%$ & $\ge 90\%$ & \textbf{100.0\%} ($60/60$ casos). \newline \textit{Nivel Esperado Superado}. \\
+\addlinespace
+\textbf{KPI 2} & \textbf{Reducción de tiempo de ciclo} ($\Delta T_{\%}$): Disminución porcentual del tiempo de la Fase 1 frente a la línea base manual de ITY SAS ($18.83\text{ h}$). & $< 10\%$ & $10\% - 19\%$ & $\ge 20\%$ & \textbf{99.97\%} ($21.44\text{ s}$ en Fase 1 global). \newline \textit{Nivel Esperado Superado}. \\
+\addlinespace
+\textbf{KPI 3} & \textbf{Cobertura de pruebas unitarias} ($C_u$): Porcentaje de sentencias de código cubiertas por la suite automática de pruebas sobre los agentes. & $< 60\%$ & $60\% - 79\%$ & $\ge 80\%$ & \textbf{84.0\%} (397/475 sentencias, 36 pruebas unitarias). \newline \textit{Nivel Esperado Superado}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{diagramas/figura_7_46_cumplimiento_oe4.png}
+\caption{Diagrama de cumplimiento del Objetivo Específico 4 (OE4): Compromiso vs. Entrega real.}
+\label{fig:cumplimiento_oe4}
+\end{figure}
+
+% ==============================================================================
+% SECCIÓN 2: REQUISITOS TÉCNICOS Y ARQUITECTURA
+% ==============================================================================
+\section{Requisitos Técnicos y Arquitectura del Entorno}
+\label{sec:requisitos_arquitectura}
+
+\subsection{Especificaciones de hardware y plataforma}
+Para ejecutar el entorno contenerizado de manera fluida y reproducir las pruebas de estrés sin degradación por estrangulamiento térmico o paginación en disco, se definen los siguientes perfiles:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Hardware Mínimo Recomendado:}
+    \begin{itemize}
+        \item Procesador: x86\_64 o ARM64 con al menos 4 núcleos físicos y 8 hilos (Intel Core i5 10ma Gen, AMD Ryzen 5 3600, Apple M1 o superior).
+        \item Memoria RAM: 16 GB de RAM física (con mínimo 8 GB asignados a Docker Desktop / WSL2).
+        \item Almacenamiento: 25 GB de espacio libre en disco de estado sólido (SSD NVMe recomendado para acelerar la carga de capas Docker y modelos LLM).
+        \item Conectividad: Conexión a Internet activa únicamente para la descarga inicial de imágenes y modelos de Ollama. Una vez aprovisionado, el sistema opera de forma 100\% local y desconectada (\textit{offline-capable}).
+    \end{itemize}
+    \item \textbf{Software Base:}
+    \begin{itemize}
+        \item Sistema Operativo: Windows 10/11 Pro/Enterprise (con WSL2 habilitado), Ubuntu Linux 22.04 LTS o macOS 13+.
+        \item Docker Desktop: Versión 4.25 o superior, con Docker Engine $\ge 24.0$ y Docker Compose V2 (\code{docker compose}).
+        \item Python: Versión 3.10.x a 3.12.x instalado en el sistema anfitrión para la ejecución de scripts de prueba y el BFF de Studio.
+        \item Ollama Runtime: Motor de inferencia local instalado y escuchando en el puerto estándar \code{11434}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Topología del stack de microservicios (14 contenedores)}
+El sistema implementa una arquitectura orientada a servicios desacoplada mediante un bus de eventos y almacenamiento compartido. La Figura \ref{fig:despliegue_contenedores} y la Tabla \ref{tab:servicios_stack} desglosan los 14 servicios que componen el ecosistema.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_06_despliegue_contenedores.png}
+\caption{Diagrama de despliegue en contenedores: Capas de infraestructura, herramientas, agentes y orquestación.}
+\label{fig:despliegue_contenedores}
+\end{figure}
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Inventario de microservicios, imágenes y puertos del stack contenerizado.}
+\label{tab:servicios_stack}
+\begin{tabularx}{\textwidth}{lllp{6.8cm}}
+\toprule
+\textbf{Servicio} & \textbf{Puerto Host} & \textbf{Tecnología Base} & \textbf{Responsabilidad Operativa} \\
+\midrule
+\code{rabbitmq} & 5672, 15672 & RabbitMQ 3-management & Broker de mensajería AMQP, intercambio de eventos \code{agent.task.triggered} y \code{agent.task.completed}. \\
+\code{postgres} & 5432 & PostgreSQL 16 + pgvector & Base de datos relacional y vectorial. Tablas de marcas, ideas, publicaciones y embeddings de 768d. \\
+\code{redis} & 6379 & Redis Stack 7.4.0-v3 & Almacén de estado externo: Checkpoints de grafos LangGraph, \code{TaskStore} distribuido y caché semántica de LLM. \\
+\code{llm-gateway} & 8003 & FastAPI + LiteLLM + Redis & Enrutador inteligente de inferencia, control de balanceo, reintentos con backoff exponencial y contingencia de fallback. \\
+\code{tool-client} & 8010 & FastAPI + Psycopg2 & Consulta de datos maestros de clientes, tono de marca, manual de identidad y restricciones operativas. \\
+\code{tool-trends} & 8011 & FastAPI + HTTP & Búsqueda y análisis de tendencias globales y locales para enriquecer la ideación. \\
+\code{tool-competitors} & 8012 & FastAPI + Psycopg2 & Análisis de publicaciones y posicionamiento de marcas competidoras directas. \\
+\code{tool-rag} & 8013 & FastAPI + pgvector & Recuperación aumentada por generación (RAG) con filtros estrictos multi-marca (\code{brand_id}). \\
+\code{tool-news} & 8014 & FastAPI + HTTP & Recuperación de noticias del sector para asegurar pertinencia contextual. \\
+\code{tool-trending} & 8015 & FastAPI + HTTP & Detección de audios en tendencia, hashtags y formatos virales en redes sociales. \\
+\code{tool-postiz} & 8016 & FastAPI + Postiz SDK & Integración desacoplada con el motor Postiz para entrega de borradores y publicación real. \\
+\code{agente-ideacion} & 8000 & LangGraph + FastAPI & Generación autónoma de dossiers estructurados (Reel / Post) con auto-reparación Pydantic. \\
+\code{agente-publicacion} & 8001 & LangGraph + FastAPI & Adaptación y redacción de copys especializados por canal con bucle de crítica editorial. \\
+\code{orchestrator} & 8002 & LangGraph Supervisor & Orquestador stateless con capacidad de interrupción (\code{interrupt}), persistencia y reanudación (\code{resume}). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_07_topologia_red_docker.png}
+\caption{Topología de red interna Docker: Aislamiento entre contenedores y puente al host local.}
+\label{fig:topologia_red}
+\end{figure}
+
+\subsection{Configuración de secretos y variables de entorno (\code{.env})}
+En la raíz del repositorio debe residir el archivo \code{.env} con las credenciales maestras y la selección de modelos de inferencia:
+
+\begin{lstlisting}[language=bash,caption={Estructura requerida del archivo \code{.env}.}]
+# Modelos servidos por Ollama en el anfitrion
+OLLAMA_MODEL=gemma3:4b
+EMBEDDING_MODEL=nomic-embed-text
+LLM_FALLBACK_MODEL=mistral-nemo
+
+# Configuracion de integracion con Postiz
+POSTIZ_API_URL=http://host.docker.internal:4007/api/public/v1
+POSTIZ_API_KEY=tu_api_key_generada_en_postiz
+
+# Redes Sociales OAuth (en caso de requerir entrega real en Postiz)
+LINKEDIN_CLIENT_ID=tu_linkedin_client_id
+LINKEDIN_CLIENT_SECRET=tu_linkedin_client_secret
+\end{lstlisting}
+
+% ==============================================================================
+% SECCIÓN 3: GUÍA DE COMANDOS
+% ==============================================================================
+\section{Guía de Comandos: Construcción, Despliegue y Operación}
+\label{sec:guia_comandos}
+
+Esta sección detalla el procedimiento secuencial que debe ejecutar el operador técnico para inicializar el sistema de forma limpia.
+
+\subsection{Paso 1: Descarga y preparación de modelos en Ollama}
+Antes de encender los contenedores Docker, verifique que Ollama esté en ejecución en el sistema operativo anfitrión y descargue los pesos de los tres modelos requeridos:
+
+\begin{lstlisting}[language=bash,caption={Descarga de modelos en Ollama (PowerShell o Bash).}]
+# Descargar modelo primario de generacion creativa (Gemma 3 de 4B parametros)
+ollama pull gemma3:4b
+
+# Descargar modelo de fallback de contingencia (Mistral NeMo de 12B parametros)
+ollama pull mistral-nemo
+
+# Descargar modelo para generacion de representaciones vectoriales densas
+ollama pull nomic-embed-text
+
+# Verificar que los tres modelos se encuentren disponibles localmente
+ollama list
+\end{lstlisting}
+
+\subsection{Paso 2: Levantamiento de Postiz local (opcional/desacoplado)}
+Si la prueba incluye la validación de entrega de copys hacia canales sociales reales, inicie la instancia local de Postiz:
+
+\begin{lstlisting}[language=bash,caption={Arranque de Postiz desacoplado.}]
+cd postiz/postiz-docker-compose
+docker compose up -d
+cd ../..
+\end{lstlisting}
+El panel web de Postiz quedará accesible en \code{http://localhost:4007}. Desde allí se vincula la cuenta social (LinkedIn/Instagram) y se genera la clave API correspondiente para copiarla en el archivo \code{.env}.
+
+\subsection{Paso 3: Construcción y encendido de la pila multi-agente}
+Desde la raíz del repositorio del proyecto, compile las imágenes Docker personalizadas e inicie los 14 servicios en modo desacoplado (\textit{detached}):
+
+\begin{lstlisting}[language=bash,caption={Compilación y encendido del stack principal.}]
+# Validar sintaxis y resolucion de variables del Compose
+docker compose config --quiet
+
+# Construir contenedores y levantar la pila completa
+docker compose up -d --build
+
+# Comprobar el estado operativo de los contenedores
+docker compose ps
+\end{lstlisting}
+
+\subsection{Paso 4: Verificación automática de salud (\textit{Healthchecks})}
+El orquestador central y los microservicios disponen de endpoints de diagnóstico que permiten verificar la conectividad de la red:
+
+\begin{lstlisting}[language=bash,caption={Inspección de endpoints de salud.}]
+# Salud del orquestador (debe reportar postgres: ok, redis: ok, rabbitmq: ok, gateway: ok)
+curl -s http://localhost:8002/health | jq .
+
+# Salud de los agentes
+curl -s http://localhost:8000/health
+curl -s http://localhost:8001/health
+
+# Salud del LLM Gateway y los Tool Services
+curl -s http://localhost:8003/health
+curl -s http://localhost:8013/health
+curl -s http://localhost:8016/health
+\end{lstlisting}
+
+\subsection{Paso 5: Aplicación de migraciones de base de datos}
+Si PostgreSQL se inicializa sobre un volumen existente de Docker, aplique en orden las migraciones del esquema relacional y vectorial:
+
+\begin{lstlisting}[language=bash,caption={Aplicación manual de migraciones SQL.}]
+docker compose exec -T postgres psql -U postgres -d ideation_db -f - < migrations/001_multi_tenant_foundation.sql
+docker compose exec -T postgres psql -U postgres -d ideation_db -f - < migrations/002_brand_knowledge_and_channels.sql
+docker compose exec -T postgres psql -U postgres -d ideation_db -f - < migrations/003_publication_platform.sql
+docker compose exec -T postgres psql -U postgres -d ideation_db -f - < migrations/004_idea_generation_batches.sql
+docker compose exec -T postgres psql -U postgres -d ideation_db -f - < migrations/005_brand_scoped_idea_batches.sql
+docker compose exec -T postgres psql -U postgres -d ideation_db -f - < migrations/006_crud_and_lifecycle_states.sql
+\end{lstlisting}
+
+\subsection{Paso 6: Ingesta de datos semilla (\textit{Seed Data})}
+Pueble la base de datos con las identidades de marca sintéticas calibradas para la prueba (\textit{EcoBrand}, \textit{TechStart} y \textit{FitLife}):
+
+\begin{lstlisting}[language=bash,caption={Ejecución del script de poblado de datos iniciales.}]
+python seed_data.py
+\end{lstlisting}
+
+\subsection{Paso 7: Ejecución de la suite de pruebas automatizadas}
+Valide la integridad del código ejecutando las suites unitarias y de integración:
+
+\begin{lstlisting}[language=bash,caption={Ejecución de pruebas automatizadas con pytest.}]
+# Ejecutar pruebas unitarias de los agentes con reporte de cobertura
+pytest tests/unit -v --cov=agente_ideacion --cov=agente_publicacion --cov-report=term-missing
+
+# Ejecutar pruebas de integracion entre microservicios
+pytest tests/integration -v
+
+# Ejecutar validacion de extremo a extremo (E2E)
+python prueba_e2e.py
+\end{lstlisting}
+
+\subsection{Paso 8: Arranque de Studio (Frontend / BFF)}
+Para operar la prueba mediante interfaz gráfica interactiva, ejecute el servidor local de Studio:
+
+\begin{lstlisting}[language=bash,caption={Arranque de Studio en el puerto 3001.}]
+# Instalar dependencias del frontend
+python -m pip install -r frontend/requirements.txt
+
+# Iniciar servidor Uvicorn en el puerto 3001
+python -m uvicorn frontend.server:app --host 127.0.0.1 --port 3001
+\end{lstlisting}
+Acceda desde el navegador web a \code{http://127.0.0.1:3001} para gestionar tareas, visualizar dossiers, aprobar copys y enviar publicaciones.
+
+\subsection{Paso 9: Detención limpia de servicios sin pérdida de datos}
+\begin{lstlisting}[language=bash,caption={Detención segura de los contenedores.}]
+# Detener los contenedores preservando los volumenes de PostgreSQL y Redis
+docker compose stop
+
+# ADVERTENCIA: NUNCA ejecute "docker compose down -v" salvo que desee destruir 
+# permanentemente los registros de simulacion y los embeddings de la base de datos.
+\end{lstlisting}
+
+% ==============================================================================
+% SECCIÓN 4: ESCENARIOS DE SIMULACIÓN
+% ==============================================================================
+\section{Descripción Exhaustiva de los Escenarios de Simulación}
+\label{sec:escenarios_simulacion}
+
+\subsection{Metodología experimental y dataset de prueba}
+La evaluación empírica se estructuró a partir de un corpus curado de 45 briefs de prueba base y se expandió a una campaña estadística de \textbf{60 casos reales completos} (20 casos por cada una de las 3 marcas calibradas: \textit{EcoBrand}, \textit{TechStart} y \textit{FitLife}). La distribución combina formatos de video corto (\textit{Reels}, $n=33$) y formatos estáticos/carrusel (\textit{Posts}, $n=27$).
+
+\subsection{Escenario 1 (E1): Brief incompleto y auto-reparación estructurada}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Propósito y Cuello de Botella Asociado:} Mitigar el cuello de botella \textbf{R1} (retrabajo editorial). Evalúa la capacidad del sistema para detectar omisiones de información en el brief de entrada y autocorregir anomalías sintácticas o semánticas del LLM sin intervención humana ni abortos de proceso.
+    \item \textbf{Mecanismo Técnico:} El \code{agente-ideacion} ejecuta un grafo cíclico en LangGraph. Cuando el LLM omite campos obligatorios del esquema audiovisual (por ejemplo, llamadas a la acción, duración de escenas o descripciones visuales), el validador Pydantic captura la excepción \code{ValidationError}, inyecta el error de validación como retroalimentación en el contexto de la conversación y fuerza una segunda pasada reflexiva (\textit{self-repair loop}).
+    \item \textbf{Resultado Observado:} En el 100\% de los casos con esquemas iniciales degradados, el agente reparó el dossier en una única pasada adicional, retornando un JSON válido que cumplió estrictamente con la especificación de \code{DossierReelOutput} o \code{DossierPostOutput}.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_28_escenario_1_reparacion.png}
+\caption{Secuencia del Escenario 1: Ingesta de brief incompleto y auto-reparación en un ciclo de retroalimentación.}
+\label{fig:escenario_1}
+\end{figure}
+
+\subsection{Escenario 2 (E2): Sobrecarga concurrente de tareas (Carga AMQP)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Propósito y Cuello de Botella Asociado:} Mitigar el cuello de botella \textbf{R2} (lentitud por acumulación de trabajo). Comprobar que una ráfaga masiva de briefs entrantes no degrade la memoria del sistema ni provoque caídas por saturación sincrónica.
+    \item \textbf{Mecanismo Técnico:} Se inyectaron ráfagas simultáneas de 15 peticiones concurrentes mediante llamadas a la API del orquestador con el parámetro \code{wait=false}. El orquestador registra de inmediato cada tarea en el \code{TaskStore} de Redis con estado \code{"queued"} y emite el evento \code{agent.task.triggered} hacia RabbitMQ. Los agentes consumen las colas a su propia tasa de procesamiento regulada (\textit{backpressure}), garantizando aislamiento y consumo ordenado sin pérdida de mensajes.
+    \item \textbf{Resultado Observado:} La totalidad de las 15 tareas concurrentes fueron procesadas sin fallos de conexión, sin desbordamiento de memoria en los microservicios y con una degradación de latencia contenida dentro de los límites de cola esperados.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_29_escenario_2_sobrecarga.png}
+\caption{Secuencia del Escenario 2: Procesamiento desacoplado bajo sobrecarga concurrente de briefs.}
+\label{fig:escenario_2}
+\end{figure}
+
+\subsection{Escenario 3 (E3): Fallo y fallback automático en LLM Gateway}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Propósito y Cuello de Botella Asociado:} Proteger la disponibilidad operativa frente a interrupciones o fallos de respuesta en el proveedor de inferencia principal.
+    \item \textbf{Mecanismo Técnico:} Se inyectó una falla inducida en el modelo primario (\code{gemma3:4b}) mediante la interrupción del servicio o la emulación de respuestas HTTP 500. El \code{llm-gateway} detectó la excepción, ejecutó la política de reintentos configurada y, al agotar el umbral de tolerancia, conmutó de forma automática y transparente hacia el modelo de contingencia \code{mistral-nemo}, preservando el esquema JSON requerido.
+    \item \textbf{Resultado Observado:} El agente completó la generación de la idea sin advertir el fallo de la infraestructura subyacente. El evento quedó registrado en los logs del gateway con nivel \code{WARNING} y etiqueta \code{fallback_triggered=true}.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_30_escenario_3_fallback_llm.png}
+\caption{Diagrama de estados del Escenario 3: Conmutación por contingencia en el LLM Gateway.}
+\label{fig:escenario_3}
+\end{figure}
+
+\subsection{Escenario 4 (E4): Caída forzada de infraestructura y resiliencia del broker}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Propósito:} Demostrar la robustez de la arquitectura stateless con persistencia externa de estado ante fallos catastróficos del bus de eventos.
+    \item \textbf{Mecanismo Técnico:} Durante la ejecución activa de una tarea en LangGraph, se forzó la caída del contenedor de mensajería ejecutando \code{docker stop rabbitmq}. El orquestador y los agentes retuvieron su estado local y los checkpoints en Redis Stack (\code{langgraph-checkpoint-redis}). Al restablecer el contenedor (\code{docker start rabbitmq}), los clientes de mensajería se reconectaron automáticamente, reanudaron el consumo y completaron la tarea pendiente sin reiniciar el flujo creativo desde cero.
+    \item \textbf{Resultado Observado:} Recuperación exitosa del 100\% de las tareas en vuelo tras el reinicio del broker, confirmando el cumplimiento del principio de entrega \textit{at-least-once}.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_31_escenario_4_recuperacion_amqp.png}
+\caption{Secuencia del Escenario 4: Recuperación de tareas ante la caída y restablecimiento de RabbitMQ.}
+\label{fig:escenario_4}
+\end{figure}
+
+\subsection{Escenario 5 (E5): Aislamiento estricto multi-tenant en búsqueda vectorial}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Propósito y Cuello de Botella Asociado:} Mitigar el cuello de botella \textbf{R3} garantizando que ninguna consulta semántica contamine el contexto con información o directrices de otra marca.
+    \item \textbf{Mecanismo Técnico:} Se ejecutaron consultas simultáneas de recuperación aumentada (RAG) en \code{tool-rag} inyectando términos idénticos pero con distintos identificadores de cliente (\code{brand_id=1} para EcoBrand y \code{brand_id=2} para TechStart). La consulta SQL subyacente en PostgreSQL utiliza un filtro explícito:
+    \begin{equation}
+        \text{SELECT } \dots \text{ FROM brand\_knowledge WHERE brand\_id = \$1 ORDER BY embedding } \Leftrightarrow \mathbf{v}_{\text{query}} \text{ LIMIT } k;
+    \end{equation}
+    \item \textbf{Resultado Observado:} Tasa de fuga de información entre marcas igual a \textbf{0.0\%} ($0/60$ casos). La totalidad de los fragmentos recuperados correspondieron exclusivamente a la marca solicitada.
+\end{itemize}
+
+% ==============================================================================
+% SECCIÓN 5: INTERPRETACIÓN Y AUDITORÍA DE LOGS
+% ==============================================================================
+\section{Interpretación y Auditoría de Logs Distribuidos}
+\label{sec:interpretacion_logs}
+
+\subsection{Estructura estándar de logs en JSON}
+Para garantizar la observabilidad y trazabilidad del sistema distribuido, todos los microservicios generan registros en formato JSON estructurado. La Figura \ref{fig:pipeline_metricas} esquematiza la canalización y recolección de estos eventos.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{diagramas/figura_7_32_pipeline_metricas.png}
+\caption{Pipeline de telemetría, extracción y procesamiento analítico de logs estructurados.}
+\label{fig:pipeline_metricas}
+\end{figure}
+
+Cada entrada de log emitida por un agente u orquestador contiene la siguiente anatomía uniforme:
+
+\begin{lstlisting}[language=json,caption={Ejemplo de log estructurado emitido durante la ejecución.}]
+{
+  "timestamp": "2026-10-14T20:15:32.412850Z",
+  "level": "INFO",
+  "service": "agente-ideacion",
+  "task_id": "task_8f3a1b02-4c91-4d7e-9a12-88f1c34a2e5d",
+  "brand_id": 1,
+  "node": "generate_dossier",
+  "state_status": "in_progress",
+  "llm_provider": "ollama",
+  "llm_model": "gemma3:4b",
+  "duration_ms": 14250.4,
+  "event": "dossier_generated_successfully",
+  "details": {
+    "format": "reel",
+    "scenes_count": 4,
+    "self_repair_loops": 0
+  }
+}
+\end{lstlisting}
+
+\subsection{Trazabilidad de estados mediante Correlation ID (\code{task_id})}
+El ciclo de vida de cualquier requerimiento en el sistema multi-agente está gobernado por el supervisor de LangGraph. La Figura \ref{fig:grafo_supervisor} ilustra el grafo maestro de estados, y la Figura \ref{fig:secuencia_completa} detalla la secuencia temporal punta a punta.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_08_grafo_supervisor.png}
+\caption{Grafo de estados del Supervisor (Orquestador): Interrupciones (\textit{interrupt}) y reanudación (\textit{resume}).}
+\label{fig:grafo_supervisor}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_09_secuencia_tarea_completa.png}
+\caption{Secuencia completa de una tarea: Ingesta, ideación, compuerta humana HITL, publicación y entrega.}
+\label{fig:secuencia_completa}
+\end{figure}
+
+Para rastrear una tarea específica a lo largo de todos los contenedores Docker, utilice el identificador \code{task_id}:
+
+\begin{lstlisting}[language=bash,caption={Comandos para rastreo y auditoría de tareas mediante logs.}]
+# Rastrear todos los eventos asociados a una tarea en el orquestador
+docker compose logs orchestrator | grep "task_8f3a1b02"
+
+# Inspeccionar el comportamiento interno del agente de ideacion para dicha tarea
+docker compose logs agente-ideacion | grep "task_8f3a1b02"
+
+# Inspeccionar el comportamiento del agente de publicacion
+docker compose logs agente-publicacion | grep "task_8f3a1b02"
+
+# Consultar el estado persistente de la tarea directamente en el TaskStore de Redis
+curl -s http://localhost:8002/tasks/task_8f3a1b02-4c91-4d7e-9a12-88f1c34a2e5d | jq .
+\end{lstlisting}
+
+\subsection{Patrones de logs anómalos y códigos de diagnóstico}
+La Tabla \ref{tab:patrones_logs} resume las firmas de logs más frecuentes ante incidentes y la acción de diagnóstico inmediata que debe tomar el operador.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Firmas de logs anómalos y procedimientos de resolución.}
+\label{tab:patrones_logs}
+\begin{tabularx}{\textwidth}{lp{5.0cm}X}
+\toprule
+\textbf{Nivel y Servicio} & \textbf{Firma del Mensaje en el Log} & \textbf{Diagnóstico y Acción Correctiva} \\
+\midrule
+\code{ERROR [llm-gateway]} & \code{ConnectError: All connection attempts to 11434 failed} & Ollama no está en ejecución en el host o \code{host.docker.internal} no resuelve. Ejecute \code{ollama serve} en Windows/Linux. \\
+\addlinespace
+\code{WARN [agente-ideacion]} & \code{ValidationError: Field 'hook' missing. Triggering self-repair} & El LLM generó un JSON incompleto. El agente activará automáticamente el bucle de auto-reparación. Si persiste tras 2 intentos, revise la temperatura en el gateway. \\
+\addlinespace
+\code{ERROR [tool-postiz]} & \code{HTTP 401 Unauthorized: Invalid API key} & La clave \code{POSTIZ_API_KEY} en \code{.env} es errónea o caducó. Genere una nueva API key en el panel de Postiz (\code{http://localhost:4007}) y reinicie el contenedor. \\
+\addlinespace
+\code{WARN [tool-postiz]} & \code{Catalog empty: No integrations found} & El workspace de Postiz existe pero no se ha vinculado ningún canal social (LinkedIn/Instagram) con OAuth. Ingrese a Postiz y conecte el canal. \\
+\addlinespace
+\code{ERROR [tool-rag]} & \code{UndefinedColumn: column "platform" does not exist} & El volumen de PostgreSQL carece de las últimas columnas. Aplique la migración \code{003_publication_platform.sql} mediante el comando indicado en la Sección \ref{sec:guia_comandos}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ==============================================================================
+% SECCIÓN 6: EXTRACCIÓN Y EVALUACIÓN DE MÉTRICAS
+% ==============================================================================
+\section{Extracción y Evaluación Formal de Métricas (LaTeX y Scripts)}
+\label{sec:extraccion_metricas}
+
+\subsection{Formulación matemática de indicadores}
+Para evaluar con rigor académico la efectividad del sistema multi-agente frente al proceso manual histórico de ITY SAS, se definen formalmente las siguientes variables y modelos matemáticos:
+
+\subsubsection{1. Tiempo de ciclo de la Fase 1 ($T_{\text{fase1}}$) y tiempo de ciclo total ($T_c$)}
+El tiempo de ciclo total de una pieza de contenido en la PoC multi-agente se modela como la sumatoria discreta de los tiempos de cómputo de cada nodo del grafo más los intervalos de compuerta humana:
+
+\begin{equation}
+    T_c = T_{\text{ingesta}} + T_{\text{ideación}} + T_{\text{espera\_humana}} + T_{\text{publicación}} + T_{\text{entrega}}
+\end{equation}
+
+El tiempo de la \textbf{Fase 1 (Ideación y Dossier)} corresponde a:
+\begin{equation}
+    T_{\text{fase1, PoC}} = T_{\text{ingesta}} + T_{\text{contexto\_RAG}} + T_{\text{generación\_LLM}} + T_{\text{auto\_reparación}}
+\end{equation}
+
+\subsubsection{2. Porcentaje de reducción de tiempo de ciclo ($\Delta T_{\%}$)}
+Representa la ganancia de velocidad de la automatización multi-agente en comparación con la media registrada en la línea base manual de ITY SAS ($T_{\text{manual}}$):
+
+\begin{equation}
+    \Delta T_{\%} = \left( \frac{T_{\text{manual}} - T_{\text{PoC}}}{T_{\text{manual}}} \right) \times 100\%
+\end{equation}
+
+\subsubsection{3. Tasa de éxito en simulación ($S_r$)}
+Proporción de briefs procesados exitosamente de extremo a extremo sin abortos, caídas no controladas ni esquemas JSON corruptos:
+
+\begin{equation}
+    S_r = \left( \frac{1}{N} \sum_{i=1}^{N} \mathbb{I}(\text{estado}_i = \text{``completed''}) \right) \times 100\%
+\end{equation}
+donde $\mathbb{I}(\cdot)$ es la función indicatriz y $N$ es el tamaño total de la muestra de prueba ($N = 60$).
+
+\subsubsection{4. Cobertura de pruebas unitarias ($C_u$)}
+Porcentaje de sentencias ejecutables analizadas por el analizador de cobertura sobre los microservicios de agentes:
+
+\begin{equation}
+    C_u = \left( \frac{S_{\text{ejecutadas}}}{S_{\text{totales}}} \right) \times 100\% = \frac{397}{475} \times 100\% = \mathbf{84.0\%}
+\end{equation}
+
+\subsubsection{5. Índice ponderado de automatización ($I_A$)}
+Mide el grado de sustitución de tareas mecánicas respetando la supervisión humana:
+\begin{equation}
+    I_A = \frac{\sum_{j=1}^{M} w_j \cdot \alpha_j}{\sum_{j=1}^{M} w_j}
+\end{equation}
+donde $\alpha_j \in [0, 1]$ representa la fracción automatizada de cada una de las 5 actividades maestras (Ingesta, Contextualización RAG, Ideación, Redacción Multicanal y Entrega), y $w_j$ su peso relativo. El índice creció de $I_{A,\text{manual}} = 0.12$ (12\%) en el diagnóstico del OE1 a $I_{A,\text{PoC}} = 0.84$ (84\%) tras la implementación.
+
+\subsection{Resultados consolidados de la campaña de simulación ($N=60$)}
+La Tabla \ref{tab:resultados_marcas} sintetiza los resultados empíricos extraídos de la campaña real de 60 casos ejecutados sobre la base de datos de la PoC (\code{docs/resultado_pruebas/dataset_60_casos_reales.json}).
+
+\begin{table}[htbp]
+\centering\small
+\caption{Resumen estadístico de simulación empírica por marca (20 casos por marca, $N=60$).}
+\label{tab:resultados_marcas}
+\begin{tabularx}{\textwidth}{lcccccX}
+\toprule
+\textbf{Marca Evaluada} & \textbf{Casos} & \textbf{Tasa Éxito} & \textbf{Media Ideación} & \textbf{Media Publicación} & \textbf{Tiempo Ciclo PoC} & \textbf{Canal Social} \\
+\midrule
+\textbf{EcoBrand (ID 1)} & 20 & 100.0\% & $27.05\text{ s}$ & $7.67\text{ s}$ & $34.72\text{ s}$ ($0.58\text{ min}$) & LinkedIn \\
+\textbf{TechStart (ID 2)} & 20 & 100.0\% & $19.48\text{ s}$ & $4.41\text{ s}$ & $23.89\text{ s}$ ($0.40\text{ min}$) & LinkedIn \\
+\textbf{FitLife (ID 3)} & 20 & 100.0\% & $21.20\text{ s}$ & $4.94\text{ s}$ & $26.14\text{ s}$ ($0.44\text{ min}$) & Instagram \\
+\midrule
+\textbf{CONSOLIDADO} & \textbf{60} & \textbf{100.0\%} & \textbf{21.44 s} & \textbf{5.46 s} & \textbf{26.90 s} ($0.45\text{ min}$) & Multicanal \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_34_comparacion_tiempo_ciclo.png}
+\caption{Comparación empírica de tiempo de ciclo en escala logarítmica: Proceso manual vs. PoC Multi-Agente.}
+\label{fig:comparacion_ciclo}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{diagramas/figura_7_35_tasa_exito_escenarios.png}
+\caption{Tasa de éxito registrada a través de los diferentes escenarios de estrés de la PoC.}
+\label{fig:tasa_exito_escenarios}
+\end{figure}
+
+\subsection{Procedimiento para reproducir la extracción de métricas}
+Para replicar de forma automatizada las mediciones de rendimiento y regenerar los gráficos vectoriales y de mapa de bits, ejecute los siguientes scripts disponibles en el repositorio:
+
+\begin{lstlisting}[language=bash,caption={Scripts de extracción y generación de métricas.}]
+# 1. Ejecutar la campana completa de simulacion sobre los 60 casos
+python docs/resultado_pruebas/ejecutar_campana_60.py
+
+# 2. Enriquecer los registros con marcas temporales y latencias reales
+python docs/resultado_pruebas/enriquecer_tiempos_60.py
+
+# 3. Regenerar graficas estadisticas de KPIs (PDF y PNG de alta resolucion)
+python docs/resultado_pruebas/generar_graficas_kpis.py
+\end{lstlisting}
+
+Alternativamente, el operador puede consultar los tiempos directamente en PostgreSQL mediante SQL:
+\begin{lstlisting}[language=sql,caption={Consulta SQL directa para extracción de métricas de rendimiento.}]
+SELECT 
+    b.name AS marca,
+    i.content_format AS formato,
+    COUNT(*) AS total_piezas,
+    ROUND(AVG(i.duration_seconds)::numeric, 2) AS media_segundos_ideacion,
+    ROUND(MIN(i.duration_seconds)::numeric, 2) AS min_segundos,
+    ROUND(MAX(i.duration_seconds)::numeric, 2) AS max_segundos
+FROM ideas_generadas i
+JOIN brands b ON i.brand_id = b.id
+GROUP BY b.name, i.content_format
+ORDER BY b.name, i.content_format;
+\end{lstlisting}
+
+% ==============================================================================
+% SECCIÓN 7: DIAGNÓSTICO Y RESOLUCIÓN DE PROBLEMAS
+% ==============================================================================
+\section{Árbol de Decisión y Diagnóstico de Incidencias}
+\label{sec:troubleshooting}
+
+Ante cualquier comportamiento imprevisto durante el levantamiento del entorno o la ejecución de las simulaciones, el operador técnico debe consultar el árbol sistemático de decisión provisto en la Figura \ref{fig:arbol_diagnostico}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_45_arbol_diagnostico.png}
+\caption{Árbol de decisión para diagnóstico y resolución sistemática de problemas en la PoC.}
+\label{fig:arbol_diagnostico}
+\end{figure}
+
+\subsection{Procedimiento de recuperación rápida de la infraestructura}
+Si se presentan bloqueos por colas desbordadas o corrupción temporal de memoria:
+
+\begin{lstlisting}[language=bash,caption={Comandos de restablecimiento selectivo de contenedores.}]
+# Reiniciar exclusivamente el broker de mensajeria y el TaskStore
+docker compose restart rabbitmq redis
+
+# Recrear un microservicio especifico sin tocar los volumenes persistentes
+docker compose up -d --no-deps --force-recreate orchestrator
+docker compose up -d --no-deps --force-recreate agente-ideacion
+docker compose up -d --no-deps --force-recreate tool-postiz
+
+# Purgar colas de RabbitMQ sin reiniciar el broker (desde CLI de RabbitMQ)
+docker compose exec rabbitmq rabbitmqctl purge_queue ideation_queue
+docker compose exec rabbitmq rabbitmqctl purge_queue publication_queue
+\end{lstlisting}
+
+% ==============================================================================
+% SECCIÓN 8: CONCLUSIONES Y RECOMENDACIONES
+% ==============================================================================
+\section{Conclusiones y Recomendaciones para Futuros Desarrolladores}
+\label{sec:conclusiones}
+
+\subsection{Síntesis de hallazgos del OE4}
+La ejecución integral de la Prueba de Concepto en contenedores permitió validar de manera rigurosa y reproducible las hipótesis de investigación fijadas para el proyecto:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Viabilidad Técnica Demostrada:} La arquitectura basada en microservicios desacoplados y grafos LangGraph stateless con persistencia externa de estado (Redis y PostgreSQL) demostró una estabilidad absoluta ($S_r = 100.0\%$), tolerando fallos transitorios en brokers y modelos mediante mecanismos deterministas de reintento y fallback.
+    \item \textbf{Eliminación Radical de Cuellos de Botella:} El tiempo requerido para estructurar una propuesta creativa y redactar los copys multicanal se redujo de una media manual de \textbf{18.83 horas a menos de 35 segundos} ($\Delta T = 99.97\%$), superando ampliamente la meta del 20\% fijada en el KPI 2 y liberando al equipo humano de ITY SAS de tareas mecánicas repetitivas.
+    \item \textbf{Aseguramiento de Calidad con Control Humano (HITL):} La compuerta humana implementada en el orquestador garantiza que ninguna pieza se publique desatendidamente, permitiendo a los directores de cuenta auditar, ajustar o rechazar copys antes del despacho hacia las redes sociales.
+\end{enumerate}
+
+\subsection{Recomendaciones para la transición a producción en ITY SAS}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Orquestación en Kubernetes:} Migrar los manifiestos de Docker Compose hacia clústeres gestionados (EKS, GKE o AKS) para habilitar escalado horizontal automático (\textit{Horizontal Pod Autoscaler}) de los workers de ideación y publicación según el tamaño de las colas AMQP.
+    \item \textbf{Inferencia Acelerada por GPU:} En despliegues de producción con alto volumen, alojar Ollama o vLLM sobre instancias con aceleración por hardware (NVIDIA L4 o A10G) para reducir la latencia de inferencia de 20 segundos a menos de 5 segundos por dossier.
+    \item \textbf{Integración Continua de Embeddings:} Programar un proceso por lotes (\textit{cronjob}) nocturno que ejecute \code{backfill_embeddings.py} para indexar de forma incremental las nuevas publicaciones aprobadas, enriqueciendo la base de conocimiento vectorial de cada marca de forma continua.
+\end{itemize}
+
+\end{document}

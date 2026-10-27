@@ -1,0 +1,6 @@
+flowchart LR
+    current["PoC actual<br/>2 agentes + supervisor<br/>7 tools + gateway + estado externo"] --> mature["Maduración del pipeline<br/>comparativas de calidad y latencia<br/>pruebas E2E y recuperación"]
+    mature --> editorial["Opcional: rol Editor<br/>rúbrica, severidad, revisión humana<br/>solo si el requisito lo justifica"]
+    mature --> observability["Opcional: LLMOps<br/>trazas distribuidas y evaluación<br/>redacción de datos sensibles"]
+    mature --> security["Producción<br/>identidad, autorización por marca<br/>RLS/TLS/gestión de secretos/HA"]
+    mature --> publisher["Publicación avanzada<br/>pruebas Postiz por plataforma<br/>auditoría del aprobador, medios adjuntos"]

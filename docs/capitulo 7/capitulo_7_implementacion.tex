@@ -1,0 +1,967 @@
+% Capitulo 7: Implementacion de la Prueba de Concepto (OE4).
+% Documento autonomo compilable; diseno calibrado con el Capitulo 6.
+\documentclass[12pt,oneside]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{graphicx}
+\usepackage{pdflscape}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{colortbl}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!45!black,
+    citecolor=blue!45!black,
+    urlcolor=blue!45!black,
+    pdftitle={Implementación de la Prueba de Concepto (OE4)},
+    pdfauthor={}
+}
+
+\setcounter{chapter}{6}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.25em}
+\setlist{topsep=0.3em,itemsep=0.2em}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\implementado}{\textbf{Implementado en la PoC}}
+\newcommand{\pendiente}{\textbf{Pendiente / propuesto}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\graphicspath{{./}{diagramas/}}
+
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    columns=fullflexible,
+    breaklines=true,
+    frame=single,
+    rulecolor=\color{black!25},
+    showstringspaces=false,
+    backgroundcolor=\color{black!3},
+    tabsize=2
+}
+
+\begin{document}
+
+\chapter{Implementación de la Prueba de Concepto (OE4)}
+\label{chap:implementacion_poc}
+
+\noindent\textbf{Enunciado del Objetivo Específico 4 (OE4):} \textit{<<Implementar una prueba de concepto de los dos agentes en un entorno de contenedores, ejecutando una simulación con datos históricos o sintéticos, para demostrar la viabilidad técnica y evaluar el potencial de reducción de cuellos de botella.>>}
+
+\vspace{0.5em}
+\noindent\textbf{Estado del documento y alcance de ingeniería.} El presente capítulo reporta la materialización técnica y empírica de la arquitectura diseñada en el Capítulo \ref{chap:arquitectura}, utilizando la base de código real alojada en el repositorio \code{proyecto multiagente}. La implementación aborda dos agentes de software autónomos organizados como microservicios en contenedores Docker (\code{agente_ideacion} y \code{agente_publicacion}), coordinados por un supervisor desacoplado (\code{orchestrator}), aprovisionados de siete servicios atómicos de herramientas (\code{tool_services}), un subsistema de pasarela de modelos de lenguaje (\code{llm_gateway}), capas de persistencia híbrida en PostgreSQL/pgvector y Redis Stack, mensajería asíncrona mediante RabbitMQ, y una interfaz de control web (BFF FastAPI y SPA React). Toda la evidencia presentada se fundamenta en código fuente ejecutable, migraciones idempotentes, conjuntos de pruebas automatizadas y experimentos controlados de simulación.
+
+\section{Introducción y Alcance de la Implementación}
+
+\subsection{Propósito del capítulo}
+El propósito fundamental de este capítulo es documentar la construcción, despliegue y validación experimental de la Prueba de Concepto (PoC) para dar cumplimiento estricto al Objetivo Específico 4 (OE4). Mientras que el Capítulo 6 estableció el marco formal, los patrones de diseño (C4, Gaia, AUML, BDI) y las decisiones arquitectónicas (ADRs), este capítulo expone la ingeniería del software aplicada: el código que implementa las máquinas de estado, los grafos de ejecución dirigidos, la resiliencia en tiempo de ejecución, la ingesta de datos y las métricas observadas durante las corridas de simulación.
+
+\subsection{Alcance y exclusiones}
+Para delimitar con precisión el rigor del trabajo de grado frente a expectativas de un producto comercial final, se establecen los siguientes límites:
+\begin{enumerate}
+    \item \textbf{Dos agentes autónomos en microservicios:} Se implementan exclusivamente el \textit{Agente de Ideación} y el \textit{Agente de Publicación}. De acuerdo con las decisiones arquitectónicas tomadas en el diseño (ADR-001 y ADR-003), la figura de un tercer agente (<<Editor>> o <<Crítico>>) fue sustituida deliberadamente por validadores estructurados con esquemas JSON/Pydantic y un bucle determinista de auto-reparación en una pasada (\textit{one-shot repair}).
+    \item \textbf{Compuerta humana explícita (Human-In-The-Loop - HITL):} La PoC nunca publica contenido de forma automática en redes sociales. Todo el flujo requiere una revisión, posible edición y aprobación humana explícita en la interfaz web de Backoffice antes de transferir cargas a la API externa de Postiz.
+    \item \textbf{Entorno de simulación controlada vs. Producción industrial:} La PoC opera en un entorno local contenerizado mediante Docker Compose, conectado a instancias de inferencia locales gestionadas por Ollama. No se implementan mecanismos de alta disponibilidad en clúster (Kubernetes), balanceadores de carga globales con certificados TLS de producción, ni pasarelas de pago.
+    \item \textbf{Aislamiento multi-marca a nivel aplicativo y vectorial:} La separación de datos entre diferentes marcas se garantiza rigurosamente a través del identificador unívoco de tenencia (\code{brand_id}) filtrado en cláusulas SQL y búsquedas vectoriales, y no mediante esquemas físicos separados (\textit{schema-per-tenant}) o políticas RLS (\textit{Row-Level Security}) del motor de base de datos.
+\end{enumerate}
+
+\subsection{Correspondencia con los objetivos específicos previos (OE1, OE2, OE3)}
+La implementación no constituye un desarrollo aislado, sino la etapa culminante de una metodología en cuatro fases. La Tabla \ref{tab:trazabilidad_objetivos} y la Figura \ref{fig:trazabilidad_oe} sintetizan la correspondencia directa entre los cuellos de botella diagnosticados en el OE1, los requisitos formales derivados en el OE2, las decisiones arquitectónicas del OE3 y los artefactos de código materializados en el OE4.
+
+\begin{longtable}{p{2.2cm}p{3.5cm}p{3.8cm}p{5.0cm}}
+\caption{Matriz de trazabilidad integral entre OE1, OE2, OE3 y artefactos del OE4.} \label{tab:trazabilidad_objetivos} \\
+\toprule
+Objetivo OE1 & Requisito OE2 & Decisión OE3 & Artefacto Implementado (OE4) \\
+\midrule
+\endfirsthead
+\toprule
+Objetivo OE1 & Requisito OE2 & Decisión OE3 & Artefacto Implementado (OE4) \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Cuello R1: Retrabajo en edición & FR-02: Generación estructurada de conceptos & ADR-003: LLM Gateway con JSON Schema y auto-reparación & Módulo \code{agente_ideacion/graph.py} con función \code{validate_dossier} y prompt de reparación. \\
+\addlinespace
+Cuello R2: Latencia en ideación & FR-01: Ingesta de briefs y contexto de marca & ADR-001: Desacoplamiento de Tools y RAG semántico & Microservicios \code{tool-client}, \code{tool-trends}, \code{tool-competitors} y \code{tool-rag} con pgvector. \\
+\addlinespace
+Cuello R3: Dispersión multicanal & FR-04: Adaptación y calendarización multicanal & ADR-004: Integración con Postiz API y generación por canal & Módulo \code{agente_publicacion/graph.py} y servicio \code{tool-postiz} con soporte Instagram, LinkedIn, TikTok, Facebook. \\
+\addlinespace
+Falta de control editorial & FR-03: Compuerta humana obligatoria & ADR-002: Separación de fases (preparación vs entrega) & Endpoints \code{POST /ideas/{id}/publish} y \code{POST /publications/{id}/deliver} en el orquestador y SPA React. \\
+\addlinespace
+Fragilidad ante fallos & NFR-Res: Resiliencia y recuperación de estado & ADR-002: Supervisor stateless con RedisSaver & \code{orchestrator/multi_agent/runtime.py} con retención en Redis y RabbitMQ durable. \\
+\addlinespace
+Riesgo de fuga entre marcas & NFR-09: Tenencia multi-marca aislada & ADR-006: Filtrado estricto de \code{brand_id} en pgvector & Migraciones 001 a 005, tablas \code{brand_sources}, \code{brand_chunks} y consultas pre-filtradas. \\
+\bottomrule
+\end{longtable}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_01_trazabilidad_oe.pdf}
+\caption{Grafo de trazabilidad entre objetivos específicos (OE1 a OE4) y componentes implementados. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_01_trazabilidad_oe.mmd}.}
+\label{fig:trazabilidad_oe}
+\end{figure}
+
+\section{Marco Metodológico de la Implementación}
+
+\subsection{Kanban con hitos macro}
+El ciclo de ingeniería de la PoC se administró bajo el marco de trabajo ágil Kanban, seleccionado por su capacidad de minimizar el trabajo en curso (\textit{Work In Progress} - WIP) y visibilizar bloqueos en la integración de componentes heterogéneos. El flujo operativo se dividió en cinco columnas: \textit{Backlog}, \textit{Por hacer}, \textit{En progreso}, \textit{En revisión} y \textit{Hecho}. Los diez hitos macro que guiaron el desarrollo fueron:
+\begin{itemize}
+    \item \textbf{H01:} Estructuración de monorepo, convenciones y entorno base Docker Compose.
+    \item \textbf{H02:} Definición de esquemas relacionales, extensión pgvector e inicialización SQL.
+    \item \textbf{H03:} Desarrollo del protocolo de Tools-as-a-Service, manifiestos y envoltorio uniforme.
+    \item \textbf{H04:} Construcción del LLM Gateway con balanceo ponderado, caché y resiliencia.
+    \item \textbf{H05:} Implementación del Agente de Ideación en LangGraph con validación estructurada.
+    \item \textbf{H06:} Implementación del Agente de Publicación y conector con Postiz API.
+    \item \textbf{H07:} Desarrollo del orquestador supervisor stateless, persistencia en Redis y bus AMQP.
+    \item \textbf{H08:} Desarrollo de la interfaz ejecutiva web (SPA React + BFF).
+    \item \textbf{H09:} Creación y estabilización de la suite de pruebas unitarias, de integración y rendimiento.
+    \item \textbf{H10:} Ejecución de los cinco escenarios de simulación, telemetría y recolección de métricas.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_02_kanban_poc.pdf}
+\caption{Tablero Kanban representativo del desarrollo de la PoC con los hitos macro completados. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_02_kanban_poc.mmd}.}
+\label{fig:kanban_poc}
+\end{figure}
+
+\subsection{Estructura del repositorio}
+Se adoptó una arquitectura de código basada en \textit{Monorepo}. Esta decisión se fundamentó en la necesidad de compartir bibliotecas transversales (\code{common/}), esquemas de contratos, migraciones de base de datos e infraestructura de despliegue (\code{docker-compose.yml}) sin incurrir en la sobrecarga de sincronización de versiones entre múltiples repositorios aislados. 
+Las convenciones de nomenclatura adoptadas en el proyecto siguen el estándar PEP 8 para Python (módulos y funciones en \code{snake_case}, clases en \code{PascalCase}), nombres de tablas de base de datos en minúsculas en plural o sustantivos compuestos (\code{brand_channels}, \code{ideas_generadas}), y rutas REST en minúsculas con parámetros tipados (\code{/ideas/{id}/publish}).
+
+\subsection{Estrategia de ramas y control de versiones}
+El control de versiones se gestionó mediante una adaptación ligera de \textit{GitFlow}:
+\begin{itemize}
+    \item \textbf{Rama \code{main}:} Rama principal protegida que contiene únicamente código estable, ejecutable y reproducible correspondiente a versiones de hito verificadas.
+    \item \textbf{Rama \code{develop}:} Rama de integración donde convergen las funcionalidades validadas mediante pruebas automatizadas locales.
+    \item \textbf{Ramas de característica (\code{feat/*}):} Ramas de corta duración creadas para la implementación aislada de componentes (por ejemplo, \code{feat/llm-gateway}, \code{feat/ideacion-agent}, \code{feat/multi-tenant-rag}).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_03_git_flow.pdf}
+\caption{Flujo de ramas Git y eventos de integración continua. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_03_git_flow.mmd}.}
+\label{fig:git_flow}
+\end{figure}
+
+\subsection{Estrategia de pruebas}
+El sistema dispone de un plan formal de aseguramiento de calidad (documentado en \code{tests/PLAN_DE_PRUEBAS.md}) organizado en tres niveles complementarios:
+\begin{enumerate}
+    \item \textbf{Pruebas unitarias (\code{tests/unit/}):} Ejecutadas con el framework \code{pytest} mediante el comando \code{pytest -m unit}. A través de dobles de prueba (\textit{mocks} y \textit{stubs}), verifican la lógica pura de los nodos LangGraph, la serialización de contratos, el parsing de envelopes, la conmutación de fallbacks en el gateway, la validación de esquemas y las nuevas suites de integridad de ciclo de vida (\code{tests/unit/test_crud_lifecycle.py} y \code{tests/unit/test_bff_crud.py}, que garantizan exclusión de archivados en RAG, recálculo vectorial de 768 dimensiones, inmutabilidad de copias publicadas y rechazo 409 Conflict) sin requerir infraestructura externa de red. La suite cuenta con 195 pruebas unitarias completamente aprobadas.
+    \item \textbf{Pruebas de integración (\code{tests/integration/}):} Verifican la comunicación real entre los contenedores levantados en Docker Compose. Se ejecutan con \code{pytest -m integration} y evalúan los contratos HTTP de los siete servicios de herramientas, la persistencia en PostgreSQL, la publicación y consumo en RabbitMQ y las operaciones de Tool Discovery. Si un servicio dependiente no se encuentra en línea, la prueba se omite de forma segura (\textit{skip}) para evitar falsos negativos espurios.
+    \item \textbf{Pruebas de rendimiento y de extremo a extremo (\code{tests/performance/}, \code{prueba_e2e.py}):} Validan los umbrales máximos de latencia aceptables (por ejemplo, P01: embeddings $< 2$ s; P04: inferencia LLM $< 60$ s; P07: búsqueda vectorial pgvector $< 500$ ms) y ejecutan el flujo de punta a punta simulando la experiencia de usuario.
+\end{enumerate}
+
+\subsection{Estrategia de integración continua}
+El repositorio implementa flujos de integración continua diseñados para GitHub Actions estructurados en cinco compuertas secuenciales de calidad, como se detalla en la Figura \ref{fig:ci_pipeline}. La falla en cualquiera de las fases detiene el pipeline e impide la fusión hacia \code{develop} o \code{main}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_04_ci_pipeline.pdf}
+\caption{Etapas del pipeline de integración continua (CI). Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_04_ci_pipeline.mmd}.}
+\label{fig:ci_pipeline}
+\end{figure}
+
+\section{Entorno de Desarrollo y Contenerización}
+
+\subsection{Prerrequisitos del entorno}
+Para levantar y ejecutar la totalidad de la PoC de forma reproducible, se requieren las siguientes dependencias en la máquina anfitriona:
+\begin{itemize}
+    \item \textbf{Docker Engine 24.0+} y \textbf{Docker Compose v2.20+}: Motor de virtualización de contenedores.
+    \item \textbf{Python 3.10+}: Para ejecución de scripts de prueba, seed data y simulación.
+    \item \textbf{Ollama v0.3.0+}: Motor de inferencia local para modelos de lenguaje de código abierto, accesible en el puerto 11434 del host. Modelos requeridos: \code{gemma3:4b} (modelo principal de chat), \code{mistral-nemo} (modelo de contingencia/fallback) y \code{nomic-embed-text} (modelo generador de vectores densos de 768 dimensiones).
+    \item \textbf{Memoria RAM y almacenamiento:} Se recomienda un mínimo de 16 GB de RAM física y 25 GB de disco libre para alojar las imágenes y capas de bases de datos.
+\end{itemize}
+
+\subsection{Estructura del \code{docker-compose.yml}}
+El archivo central \code{docker-compose.yml} declara catorce servicios backend organizados en una red puente privada, acompañados por volúmenes con persistencia en disco:
+\begin{enumerate}
+    \item \code{postgres}: Base de datos relacional y vectorial (\code{pgvector/pgvector:pg16}, puerto 5432).
+    \item \code{redis}: Almacén en memoria de alto rendimiento (\code{redis/redis-stack-server:7.4.0-v3}, puerto 6379), empleado para los checkpoints de LangGraph vía \code{RedisSaver}, el registro de tareas \code{TaskStore} y la caché de prompts.
+    \item \code{rabbitmq}: Bus de mensajería AMQP (\code{rabbitmq:3-management}, puertos 5672 y 15672).
+    \item \code{llm-gateway}: Microservicio de pasarela de LLM (puerto 8003).
+    \item Siete servicios atómicos de herramientas (\code{tool-client}:8010, \code{tool-trends}:8011, \code{tool-competitors}:8012, \code{tool-rag}:8013, \code{tool-news}:8014, \code{tool-trending}:8015, \code{tool-postiz}:8016).
+    \item \code{agente-ideacion}: Microservicio del agente de ideación (puerto 8000).
+    \item \code{agente-publicacion}: Microservicio del agente de publicación (puerto 8001).
+    \item \code{orchestrator}: Microservicio supervisor stateless (puerto 8002).
+\end{enumerate}
+Adicionalmente, el Backend-For-Frontend (BFF) y la SPA React desarrollada con Vite se ejecutan de forma local conectándose a los puertos expuestos de la red de contenedores. Para escenarios de publicación externa, el stack de Postiz (\code{postiz-docker-compose}) se levanta en una red Docker paralela en el puerto 4007.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_05_estructura_repositorio.pdf}
+\caption{Árbol estructurado de carpetas y directorios del repositorio monorepo. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_05_estructura_repositorio.mmd}.}
+\label{fig:estructura_repositorio}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_06_despliegue_contenedores.pdf}
+\caption{Diagrama de despliegue del entorno en contenedores (14 servicios backend + BFF). Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_06_despliegue_contenedores.mmd}.}
+\label{fig:despliegue_contenedores}
+\end{figure}
+
+\subsection{Dockerfiles por servicio}
+Para garantizar eficiencia y tiempos de construcción mínimos, se implementó una estrategia de Dockerfiles estandarizados basados en \code{python:3.10-slim}:
+\begin{itemize}
+    \item \textbf{\code{tool_services/Dockerfile}:} Dockerfile parametrizado mediante \code{ARG TOOL_DIR}. Permite construir las imágenes de los siete microservicios de herramientas a partir de una única receta base, reduciendo drásticamente la duplicación de archivos de mantenimiento.
+    \item \textbf{\code{agente_ideacion/Dockerfile} y \code{agente_publicacion/Dockerfile}:} Instalan las dependencias de ejecución de LangGraph, Pika y clientes HTTP, copiando el paquete común \code{common/}.
+    \item \textbf{\code{orchestrator/Dockerfile}:} Prepara el entorno del supervisor con soporte para \code{redis[hiredis]}, conectores psycopg2 y servidor ASGI Uvicorn.
+    \item \textbf{\code{llm_gateway/Dockerfile}:} Optimizado para peticiones concurrentes y conexión con Redis.
+\end{itemize}
+
+\subsection{Gestión de secretos y variables de entorno}
+El proyecto aplica el principio de configuración desacoplada del código (Doce Factores). Todas las credenciales, nombres de modelos y URLs base se parametrizan mediante variables de entorno inyectadas desde el archivo \code{.env}. Para la distribución segura del proyecto, se versiona un archivo plantilla \code{.env.example} exento de credenciales reales.
+Las variables clave del sistema son:
+\begin{lstlisting}[language=bash]
+OLLAMA_HOST=host.docker.internal
+OLLAMA_PORT=11434
+OLLAMA_MODEL=gemma3:4b
+LLM_FALLBACK_MODEL=mistral-nemo
+EMBEDDING_MODEL=nomic-embed-text
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=ideation_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=password
+REDIS_URL=redis://redis:6379
+RABBITMQ_HOST=rabbitmq
+POSTIZ_API_URL=http://host.docker.internal:4007/api/public/v1
+POSTIZ_API_KEY=
+\end{lstlisting}
+
+\subsection{Volúmenes persistentes y topología de red}
+El almacenamiento persistente se asegura a través de volúmenes nominales declarados en Docker Compose:
+\begin{itemize}
+    \item \code{postgres_data}: Montado en \code{/var/lib/postgresql/data}. Garantiza que los registros relacionales, marcas, fuentes vectoriales e historial de chat persistan tras la detención o recreación de los contenedores.
+    \item \code{redis_data}: Montado en \code{/data}. Persiste en disco mediante RDB y AOF el registro de tareas y los checkpoints de LangGraph.
+\end{itemize}
+La topología de red (ilustrada en la Figura \ref{fig:topologia_red_docker}) utiliza el puente DNS integrado de Docker para aislar las llamadas entre contenedores. La comunicación saliente desde el contenedor del \code{llm-gateway} hacia la instancia de Ollama alojada en el host se resuelve mediante la directiva \code{extra_hosts: ["host.docker.internal:host-gateway"]}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_07_topologia_red_docker.pdf}
+\caption{Topología de red interna de Docker Compose y mapeo hacia el host. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_07_topologia_red_docker.mmd}.}
+\label{fig:topologia_red_docker}
+\end{figure}
+
+\section{Implementación del Supervisor (Orquestador)}
+
+\subsection{Estructura del módulo (\code{orchestrator/})}
+El supervisor se encuentra encapsulado en el directorio \code{orchestrator/}, con su arquitectura modular estructurada en la Figura \ref{fig:estructura_orquestador}:
+\begin{itemize}
+    \item \code{main.py}: Punto de entrada del servicio FastAPI que expone los endpoints de ingesta, salud, telemetría y consulta de trazas.
+    \item \code{history.py}: Controlador de persistencia del historial de conversación y trazas de usuario en PostgreSQL. Aplica DDL idempotente para la tabla \code{chat_history}.
+    \item \code{multi_agent/supervisor.py}: Declaración del grafo de control de LangGraph y definición de las compuertas de enrutamiento condicional.
+    \item \code{multi_agent/runtime.py}: Motor de ejecución que vincula el ciclo de vida del grafo con los eventos del bus RabbitMQ y los checkpoints de Redis.
+    \item \code{multi_agent/state.py}: Definición del esquema de estado del supervisor (\code{SupervisorState}).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{diagramas/figura_7_10_estructura_orquestador.pdf}
+\caption{Estructura interna del módulo del orquestador supervisor. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_10_estructura_orquestador.mmd}.}
+\label{fig:estructura_orquestador}
+\end{figure}
+
+\subsection{Grafo LangGraph del supervisor}
+El orquestador adopta un patrón supervisor reactivo implementado sobre LangGraph. A diferencia de un enfoque tradicional acoplado en memoria, los agentes de ideación y publicación no son sub-grafos locales, sino microservicios remotos.
+El grafo compilado contiene los nodos \code{start}, \code{dispatch_ideacion} y \code{dispatch_publicacion}. La función de enrutamiento \code{decide_next} evalúa el campo \code{workflow} contenido en el brief para despachar las etapas correspondientes:
+\begin{itemize}
+    \item \code{generate_idea}: Despacha al agente de ideación. Al culminar y persistir el dossier, el flujo termina en \code{END}. La publicación nunca se activa de forma automática.
+    \item \code{prepare_publication} / \code{publish_idea}: Se ejecuta a solicitud del usuario para una idea seleccionada, despachando al agente de publicación para crear las variantes por plataforma.
+    \item \code{deliver_publication}: Se activa únicamente tras la aprobación humana explícita para entregar las variantes finales a la API de Postiz.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{diagramas/figura_7_08_grafo_supervisor.pdf}
+\caption{Grafo de estados de LangGraph en el supervisor con puntos de interrupción y reanudación. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_08_grafo_supervisor.mmd}.}
+\label{fig:grafo_supervisor}
+\end{figure}
+
+Cada nodo \code{dispatch_*} invoca el método nativo \code{interrupt()} de LangGraph pasando como carga el nombre del agente, la cola AMQP de destino y el contexto de la tarea. Al invocarse \code{interrupt()}, el grafo suspende su ejecución inmediatamente y guarda su estado completo en Redis bajo el hilo identificado por \code{thread_id = task_id}.
+
+\subsection{Persistencia de estado (\code{RedisSaver}, TaskStore, \code{chat_history})}
+La arquitectura del supervisor es enteramente \textit{stateless}: el proceso en ejecución puede reiniciarse o morir en cualquier milisegundo sin perder la continuidad de una tarea.
+La persistencia de estado descansa en tres mecanismos complementarios:
+\begin{enumerate}
+    \item \textbf{\code{RedisSaver}:} Checkpointer oficial de LangGraph que serializa el estado del grafo en Redis Stack usando índices RediSearch y estructuras RedisJSON.
+    \item \textbf{\code{TaskStore}:} Clase utilitaria construida sobre Redis que administra el ciclo de vida de cada tarea (\code{status}: \code{running}, \code{completed}, \code{failed}), almacena los resultados parciales devueltos por cada agente y soporta sincronización reactiva (\code{wait_for_status}).
+    \item \textbf{\code{chat_history}:} Tabla en PostgreSQL administrada por \code{history.py} que guarda de manera permanente la conversación entre el usuario y los agentes (\code{role}: \code{user}, \code{assistant}), vinculada al identificador de sesión.
+\end{enumerate}
+
+\subsection{Endpoints FastAPI}
+El servidor expone una API REST exhaustiva:
+\begin{itemize}
+    \item \code{POST /process}: Endpoint unificado para generar una idea. Soporta modo síncrono (\code{wait=true}, que bloquea la conexión hasta resolver la tarea) y modo asíncrono (\code{wait=false}, retornando el \code{task_id} de inmediato).
+    \item \code{POST /ideas/generate}: Genera lotes de una a cinco ideas creativas por marca con persistencia de lote (\code{generation_batch_id}).
+    \item \code{POST /ideas/{id}/publish}: Despacha la preparación de variantes de copy adaptadas por canal para una idea previamente aprobada.
+    \item \code{POST /publications/{id}/approve}: Registra la aprobación y modificaciones editoriales introducidas por el operador humano.
+    \item \code{POST /publications/{id}/deliver}: Entrega formalmente las variantes aprobadas a la API externa de Postiz.
+    \item \code{GET /tasks/{id}}: Consulta el estado operativo, resultado y metadatos de una tarea en el \code{TaskStore}.
+    \item \code{GET /tasks/{id}/history}: Devuelve la traza completa de mensajes de la tarea almacenada en PostgreSQL.
+    \item \code{GET /health}, \code{GET /metrics}, \code{GET /graph}, \code{GET /tools}: Endpoints de telemetría, inspección del grafo y catálogo descubierto de herramientas.
+\end{itemize}
+
+\subsection{Publicación y suscripción a eventos AMQP}
+El desacoplamiento temporal entre el orquestador y los agentes se logra a través de RabbitMQ. El ciclo de eventos se rige por el siguiente protocolo:
+\begin{enumerate}
+    \item El runtime del orquestador publica el evento \code{agent.task.triggered} en la cola de trabajo del agente correspondiente (\code{agent.ideacion.task} o \code{agent.publicacion.task}).
+    \item El microservicio del agente consume el mensaje, ejecuta su grafo de razonamiento y, al finalizar, publica el evento \code{agent.task.completed} en la cola compartida \code{agent.results}.
+    \item El orquestador mantiene un hilo de consumo permanente (\code{EventConsumer}) escuchando \code{agent.results}. Al recibir el evento, recupera el \code{thread_id} e invoca el comando de reanudación:
+    \begin{lstlisting}[language=Python]
+outcome = self.graph.invoke(
+    Command(resume=result_payload),
+    config={"configurable": {"thread_id": task_id}}
+)
+    \end{lstlisting}
+    \item El supervisor se reanuda desde el punto exacto de suspensión, actualiza su estado y transiciona hacia \code{decide_next}.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_09_secuencia_tarea_completa.pdf}
+\caption{Diagrama de secuencia de una tarea completa desde la ingesta hasta la entrega a Postiz. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_09_secuencia_tarea_completa.mmd}.}
+\label{fig:secuencia_tarea_completa}
+\end{figure}
+
+\subsection{Manejo de errores y reanudación por \code{thread_id}}
+En caso de que el proceso del orquestador experimente una interrupción abrupta durante la ejecución de tareas, el método \code{recover_running_tasks()} se ejecuta automáticamente durante el arranque del servicio. Este método inspecciona en Redis todas las tareas en estado \code{running} que posean eventos de despacho pendientes y re-publica los eventos \code{agent.task.triggered} en RabbitMQ. Dado que las tareas de los agentes son idempotentes, esto garantiza una semántica de entrega \textit{at-least-once} sin riesgo de duplicar inconsistencias en la base de datos.
+
+\section{Implementación del Agente de Ideación}
+
+\subsection{Estructura del módulo (\code{agente_ideacion/})}
+El agente creativo se encuentra aislado en el directorio \code{agente_ideacion/}:
+\begin{itemize}
+    \item \code{main.py}: Servidor FastAPI que expone métricas y arranca el hilo de consumo \code{AgentRunner} para la cola \code{agent.ideacion.task}.
+    \item \code{graph.py}: Define el grafo de ejecución LangGraph (\code{IdeacionState}), los esquemas JSON de salida y los nodos operativos.
+    \item \code{prompts.py}: Plantillas de instrucciones de ingeniería de prompts (\code{SYSTEM_PROMPT} y \code{build_ideacion_prompt}) especializadas en marketing digital para marcas colombianas.
+\end{itemize}
+
+\subsection{Grafo LangGraph del agente de ideación}
+El agente estructura su razonamiento mediante un StateGraph dirigido compuesto por cuatro nodos secuenciales (Figura \ref{fig:grafo_ideacion}):
+\begin{equation}
+\text{START} \longrightarrow \text{\code{load_context}} \longrightarrow \text{\code{fetch_news}} \longrightarrow \text{\code{generate_idea}} \longrightarrow \text{\code{save_idea}} \longrightarrow \text{END}
+\end{equation}
+El agente no contiene lógica de acceso directo a base de datos: delega el 100\% del acceso a datos a los Tool Services y la inferencia al LLM Gateway.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_11_grafo_ideacion.pdf}
+\caption{Grafo LangGraph del Agente de Ideación. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_11_grafo_ideacion.mmd}.}
+\label{fig:grafo_ideacion}
+\end{figure}
+
+\subsection{Validación estructurada del dossier y reparación única}
+Una debilidad recurrente en sistemas basados en LLMs es la producción de salidas en texto desestructurado o esquemas JSON rotos. Para erradicar este problema, el agente implementa un mecanismo de validación rigurosa basado en el esquema \code{DOSSIER_JSON_SCHEMA}.
+Como se detalla en la Figura \ref{fig:esquema_dossier}, el dossier distingue dos especificaciones especializadas según el formato:
+\begin{itemize}
+    \item \textbf{Formato Reel:} Exige campos de producción audiovisual: \code{duration_seconds}, \code{script} (arreglo con \code{scene}, \code{visual}, \code{action}, \code{dialogue_or_voiceover}, \code{on_screen_text}), \code{camera} (arreglo con \code{shot}, \code{angle}, \code{movement}, \code{framing}), dirección de arte y notas de edición.
+    \item \textbf{Formato Post:} Exige especificación gráfica: \code{visual_concept}, \code{composition}, \code{image_direction}, \code{text_on_asset}, \code{caption_direction}, \code{carousel_slides} y texto alternativo accesible (\code{alt_text}).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_13_esquema_dossier.pdf}
+\caption{Diagrama estructural de clases del Dossier Creativo Validado. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_13_esquema_dossier.mmd}.}
+\label{fig:esquema_dossier}
+\end{figure}
+
+Si la primera respuesta devuelta por el modelo omite algún campo requerido, la función \code{validate_dossier} lanza un error \code{ValueError} detallando los atributos faltantes. En lugar de descartar la tarea, el nodo \code{generate_idea} activa un bucle de reparación inmediata en una pasada (\textit{one-shot repair}) inyectando el error detectado en un nuevo prompt de corrección forzada con la opción de caché desactivada (\code{cache=False}), logrando un 100\% de conformidad en los ensayos experimentales (Figura \ref{fig:secuencia_ideacion_reparacion}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_12_secuencia_ideacion_reparacion.pdf}
+\caption{Secuencia detallada del Agente de Ideación con bucle de auto-reparación estructurada. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_12_secuencia_ideacion_reparacion.mmd}.}
+\label{fig:secuencia_ideacion_reparacion}
+\end{figure}
+
+\subsection{Invocación de Tool Services por REST}
+En el nodo \code{load_context}, el agente invoca cuatro operaciones atómicas mediante el cliente \code{ToolRegistry}:
+\begin{itemize}
+    \item \code{client.profile}: Recupera la propuesta de valor, pilares y tono de la marca. Si el brief recibido es escueto o ambiguo, el agente enriquece la consulta con el perfil institucional.
+    \item \code{trends.search}: Busca las tendencias de mercado más afines con la consulta.
+    \item \code{competitors.search}: Obtiene referencias y aprendizajes de la competencia.
+    \item \code{rag.similar}: Ejecuta una búsqueda vectorial restringida por \code{brand_id} para consultar ideas previas de la misma marca y garantizar originalidad.
+\end{itemize}
+En el nodo \code{fetch_news}, se consulta \code{news.news} para incorporar señales frescas provenientes del servicio de RSS.
+
+\subsection{Persistencia de idea con embedding y \code{brand_id}}
+El último nodo (\code{save_idea}) no escribe en PostgreSQL de forma directa: realiza una petición HTTP al microservicio \code{tool-rag} (\code{POST /ideas}). Este servicio calcula el vector denso mediante el LLM Gateway, persiste el dossier en \code{ideas_generadas} asignando el \code{brand_id} y las marcas de lote (\code{generation_batch_id}, \code{generation_index}), y devuelve el nuevo identificador \code{idea_id}.
+
+\section{Implementación del Agente de Publicación}
+
+\subsection{Estructura del módulo (\code{agente_publicacion/})}
+El agente encargado de la redacción publicitaria y la entrega multicanal reside en \code{agente_publicacion/}:
+\begin{itemize}
+    \item \code{main.py}: Servidor FastAPI y consumidor de la cola \code{agent.publicacion.task}.
+    \item \code{graph.py}: Grafo de ejecución (\code{PublicacionState}) y nodos de adaptación por canal.
+    \item \code{prompts.py}: Prompts de redacción publicitaria con directrices específicas por canal social (Instagram, LinkedIn, TikTok, Facebook, X).
+\end{itemize}
+
+\subsection{Grafo LangGraph del agente de publicación}
+El flujo del agente de publicación introduce una bifurcación condicional basada en la acción solicitada (\code{publication_action}):
+\begin{itemize}
+    \item Si \code{publication_action == "deliver"}: El grafo salta inmediatamente desde \code{START} hacia el nodo \code{schedule_post}, procediendo a la entrega directa en Postiz.
+    \item Si se encuentra en fase de preparación (\code{publication_action == "prepare"}): Ejecuta la ruta secuencial \code{load_context} $\rightarrow$ \code{fetch_trending} $\rightarrow$ \code{generate_post} $\rightarrow$ \code{save_post} $\rightarrow$ \code{schedule_post} $\rightarrow$ \code{END} (Figura \ref{fig:grafo_publicacion}).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_15_grafo_publicacion.pdf}
+\caption{Grafo LangGraph del Agente de Publicación con bifurcación de entrega condicional. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_15_grafo_publicacion.mmd}.}
+\label{fig:grafo_publicacion}
+\end{figure}
+
+\subsection{Generación de copy especializada por red social}
+En lugar de generar un único texto genérico para todas las plataformas, el nodo \code{generate_post} identifica los canales de destino vinculados a la marca y agrupa las peticiones por red social. Para cada plataforma se construye un prompt ajustado a su gramática nativa y longitud óptima:
+\begin{itemize}
+    \item \textbf{Instagram:} Énfasis en gancho visual en la primera línea, saltos de línea limpios, llamada a la acción hacia comentarios o enlace en bio y entre 3 y 5 hashtags seleccionados.
+    \item \textbf{LinkedIn:} Tono profesional, enfoque en aprendizajes de negocio, metodologías, métricas de impacto y estructura de párrafos orientada a lectura corporativa.
+    \item \textbf{TikTok:} Copy ultracorto, coloquial, orientado a retención y complementario a la descripción del video vertical.
+    \item \textbf{Facebook:} Estilo de conversación comunitaria, formulación de preguntas abiertas para generar debate y enlaces explícitos.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_16_secuencia_publicacion.pdf}
+\caption{Secuencia de ejecución del Agente de Publicación y entrega a Postiz. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_16_secuencia_publicacion.mmd}.}
+\label{fig:secuencia_publicacion}
+\end{figure}
+
+\subsection{Validación de canales y entrega desacoplada en Postiz}
+El nodo \code{schedule_post} implementa controles defensivos antes de invocar a Postiz:
+\begin{enumerate}
+    \item Si la tarea está en fase \code{prepare}, registra el estado \code{prepared} y no interactúa con Postiz.
+    \item Si está en fase \code{deliver}, verifica que los identificadores de integración (\code{integration_ids}) pertenezcan efectivamente a los canales configurados para la marca en la tabla \code{brand_channels}.
+    \item Realiza la llamada a \code{tool-postiz} (\code{POST /create_post}) soportando modos de publicación: borrador (\code{draft}), programado (\code{schedule}) o publicación inmediata (\code{now}).
+    \item Si el servicio externo de Postiz arroja un fallo o no responde, el error se captura de forma aislada: los copies generados permanecen intactos y disponibles en PostgreSQL, evitando la pérdida del trabajo creativo previo.
+\end{enumerate}
+
+\section{Implementación de los Tool Services}
+
+\subsection{Estructura común de los Tool Services}
+Bajo el patrón \textit{Tools-as-a-Service} (ADR-001), las capacidades de dominio se distribuyen en siete microservicios autónomos. Como se ilustra en la Figura \ref{fig:estructura_tool_service}, cada servicio comparte una arquitectura unificada fundamentada en dos contratos clave definidos en \code{common/contracts.py}:
+\begin{enumerate}
+    \item \textbf{Manifiesto de servicio (\code{/.well-known/tool-manifest}):} Contrato JSON autocontenido que describe el nombre del microservicio, su versión, transporte soportado y la lista completa de operaciones con sus rutas, parámetros y tipos de retorno.
+    \item \textbf{Envelope uniforme de respuesta:} Toda respuesta HTTP generada por un tool service se empaqueta mediante la función constructora \code{make_envelope}:
+    \begin{lstlisting}[language=Python]
+{
+    "tool": "tool-trends",
+    "status": "ok",
+    "data": [...],
+    "error": null,
+    "duration_ms": 14.52,
+    "correlation_id": "req-9812",
+    "server_time": "2026-10-13T04:12:00Z"
+}
+    \end{lstlisting}
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{diagramas/figura_7_18_estructura_tool_service.pdf}
+\caption{Estructura común y contrato de respuesta en un Tool Service. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_18_estructura_tool_service.mmd}.}
+\label{fig:estructura_tool_service}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_19_flujo_tool_discovery.pdf}
+\caption{Flujo de descubrimiento dinámico de herramientas (Tool Discovery) e invocación REST. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_19_flujo_tool_discovery.mmd}.}
+\label{fig:flujo_tool_discovery}
+\end{figure}
+
+\subsection{Catálogo de los siete Tool Services implementados}
+\begin{enumerate}
+    \item \textbf{\code{tool-client} (Puerto 8010):} Dueño del contexto del cliente y la marca. Expone \code{GET /profile} para recuperar tonos y pilares, \code{POST /brands} y \code{GET /brands} para listar marcas activas, y operaciones CRUD completas: \code{GET /brands/{id}}, \code{PUT /brands/{id}} (actualización de perfil corporativo, restricciones de tono y configuración dinámica RAG en \code{rag_config} JSONB) y \code{DELETE /brands/{id}} (archivado o \textit{soft-delete} de la marca).
+    \item \textbf{\code{tool-trends} (Puerto 8011):} Gestiona el repositorio de tendencias del mercado colombiano. Soporta búsqueda léxica y semántica con pgvector (\code{GET /search}) y emisión de eventos RPC por RabbitMQ.
+    \item \textbf{\code{tool-competitors} (Puerto 8012):} Catálogo de inteligencia competitiva (\code{GET /search}). Provee referencias de formatos exitosos y lecciones aprendidas del sector.
+    \item \textbf{\code{tool-rag} (Puerto 8013):} Motor central de memoria vectorial y ciclo de vida de contenidos. Expone \code{POST /similar} (búsqueda semántica con filtro por \code{brand_id} y exclusión obligatoria de registros archivados \code{status != 'archived'}), \code{POST /ideas}, \code{GET /ideas}, \code{GET /ideas/detail}, \code{PUT /ideas/{id}} (actualización con regeneración síncrona de embeddings en pgvector), \code{DELETE /ideas/{id}} (archivado con salvaguarda de inmutabilidad que arroja error 409 Conflict si existen publicaciones enviadas a redes), \code{POST /publicaciones}, \code{GET /publicaciones}, \code{GET /publicaciones/{pub_id}}, \code{PUT /publicaciones/{pub_id}} y \code{DELETE /publicaciones/{pub_id}} (con inmutabilidad estricta HTTP 409 tras el despacho a Postiz API), y \code{GET /stats}.
+    \item \textbf{\code{tool-news} (Puerto 8014):} Adaptador de señales externas en tiempo real. Consume feeds RSS de Google News (\code{GET /news}), aplicando filtros de relevancia y limpieza de texto.
+    \item \textbf{\code{tool-trending} (Puerto 8015):} Monitor de tendencias y hashtags en redes sociales (\code{GET /trending}) a través de sindicación RSS.
+    \item \textbf{\code{tool-postiz} (Puerto 8016):} Conector de publicación multicanal. Expone \code{GET /channels} (canales autorizados para una marca) y \code{POST /create_post} (creación de publicaciones en Postiz API).
+\end{enumerate}
+
+\section{Implementación del LLM Gateway}
+
+\subsection{Estructura del módulo (\code{llm_gateway/})}
+El componente de centralización de inteligencia artificial se aloja en \code{llm_gateway/}:
+\begin{itemize}
+    \item \code{main.py}: Servicio FastAPI que expone \code{POST /v1/generate}, \code{POST /v1/embeddings}, \code{GET /v1/providers} y \code{GET /health}.
+    \item \code{providers.py}: Abstracción polimórfica de proveedores (\code{Provider}, \code{ProviderRegistry}) con asignación de ponderación (\code{weight}) y rastreo de salud.
+    \item \code{cache.py}: Capa de caché sobre Redis basada en cálculo de hash criptográfico SHA-256 sobre parámetros canónicos y tiempos de vida (TTL) diferenciados.
+    \item \code{resilience.py}: Lógica de reintentos con \textit{exponential backoff}, fluctuación aleatoria (\textit{jitter}) y conmutación automática de cadena de fallback.
+\end{itemize}
+
+\subsection{Selección de proveedor, balanceo y caché}
+Como se detalla en el diagrama de flujo de la Figura \ref{fig:flujo_llm_gateway}, cada solicitud que ingresa al gateway pasa primero por la capa de caché en Redis:
+\begin{equation}
+\text{Key} = \text{SHA256}(\text{operación} \,||\, \text{modelo} \,||\, \text{system} \,||\, \text{prompt} \,||\, \text{parámetros})
+\end{equation}
+Si la solicitud ya fue procesada y se encuentra vigente en Redis, se devuelve en menos de 5 milisegundos con el indicador \code{cached: true}.
+En caso de fallo de caché (\textit{cache miss}), el balanceador selecciona un proveedor disponible mediante selección ponderada basada en su peso configurado (\code{weight}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_21_flujo_llm_gateway.pdf}
+\caption{Flujo de procesamiento y resiliencia en el LLM Gateway. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_21_flujo_llm_gateway.mmd}.}
+\label{fig:flujo_llm_gateway}
+\end{figure}
+
+\subsection{Resiliencia y fallback en la PoC}
+Si el proveedor primario (\code{gemma3:4b}) arroja un error 500, agota el tiempo de espera (\textit{timeout}) o queda inaccesible, el gateway activa la rutina de resiliencia: registra el fallo en el registro de salud, aplica un retardo con backoff exponencial y redirige la llamada hacia el modelo de contingencia (\code{mistral-nemo}). Para la generación de representaciones vectoriales densas, el endpoint \code{POST /v1/embeddings} gestiona la normalización de vectores de 768 dimensiones utilizando el modelo local \code{nomic-embed-text}.
+
+\section{Implementación del Modelo de Datos y Migraciones}
+
+\subsection{Secuencia de inicialización y migraciones}
+El modelo de datos se gestiona a través de una serie ordenada de scripts SQL montados en el directorio de arranque de PostgreSQL (\code{/docker-entrypoint-initdb.d/}), como se ilustra en la Figura \ref{fig:flujo_migraciones}:
+\begin{enumerate}
+    \item \code{init.sql}: Habilita la extensión vectorial \code{CREATE EXTENSION IF NOT EXISTS vector} y define las tablas del esquema base legacy (\code{clientes}, \code{tendencias}, \code{referencias_competencia}, \code{ideas_generadas}, \code{publicaciones_generadas}).
+    \item \code{001_multi_tenant_foundation.sql}: Introduce la fundación de tenencia multi-marca (\code{organizations}, \code{users}, \code{organization_members}, \code{brands}, \code{brand_members}), la tabla de mapeo de compatibilidad \code{legacy_client_brand} y añade la columna obligatoria \code{brand_id} a ideas y publicaciones.
+    \item \code{002_brand_knowledge_and_channels.sql}: Modela el grafo de conocimiento RAG (\code{brand_sources}, \code{brand_documents}, \code{brand_chunks}, \code{brand_evidence}) y la tabla de integraciones \code{brand_channels}.
+    \item \code{003_publication_platform.sql}: Agrega la columna \code{platform} a \code{publicaciones_generadas} para persistir variantes diferenciadas por red social.
+    \item \code{004_idea_generation_batches.sql}: Incorpora \code{generation_batch_id} (UUID) y \code{generation_index} para el control de lotes.
+    \item \code{005_brand_scoped_idea_batches.sql}: Añade el índice único parcial \code{(brand_id, generation_batch_id, generation_index)} para garantizar idempotencia en la reentrega de tareas.
+    \item \code{006_crud_and_lifecycle_states.sql}: Establece el soporte completo para ciclo de vida de contenidos, inmutabilidad y configuración dinámica:
+    \begin{itemize}
+        \item Agrega columnas de estado (\code{status VARCHAR(32) DEFAULT 'approved'} en ideas y \code{DEFAULT 'draft'} en publicaciones) y marcas temporales (\code{updated_at}, \code{deleted_at}).
+        \item Define índices parciales optimizados para registros activos: \code{idx_ideas_active_brand_status} en \code{ideas_generadas (brand_id, status) WHERE status != 'archived'} y \code{idx_publications_active_brand_status} en \code{publicaciones_generadas (brand_id, status) WHERE status != 'archived'}.
+        \item Añade la columna \code{rag_config JSONB DEFAULT '{}'} en \code{brands} para el control dinámico por marca del umbral de similitud coseno (\code{similarity_threshold}), límite de recuerdos (\code{top_k}) y activación de contraste semántico.
+    \end{itemize}
+    \item \code{history.py}: Inicializa con DDL idempotente la tabla \code{chat_history} para la auditoría de interacción.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_24_flujo_migraciones.pdf}
+\caption{Secuencia y orden de dependencias de las migraciones SQL. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_24_flujo_migraciones.mmd}.}
+\label{fig:flujo_migraciones}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_23_modelo_er.pdf}
+\caption{Diagrama Entidad-Relación implementado en PostgreSQL/pgvector. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_23_modelo_er.mmd}.}
+\label{fig:modelo_er}
+\end{figure}
+
+\subsection{Estrategia multi-tenant e índices vectoriales}
+El aislamiento de datos y el gobierno de contenidos se consolidan a través de cuatro reglas implementadas en código:
+\begin{enumerate}
+    \item \textbf{Pre-filtrado relacional estricto y exclusión de archivados:} Toda consulta de búsqueda semántica en \code{tool-rag} aplica simultáneamente la cláusula \texttt{WHERE brand\_id = \%s} y la exclusión de elementos archivados antes de computar distancias vectoriales, descartando la posibilidad de fuga de información entre marcas o contaminación con contenidos descartados:
+    \begin{lstlisting}[language=SQL]
+SELECT id, content, 1 - (embedding <=> %(query_vector)s::vector) AS similarity
+FROM ideas_generadas
+WHERE brand_id = %(brand_id)s
+  AND embedding IS NOT NULL
+  AND COALESCE(status, 'approved') != 'archived'
+ORDER BY embedding <=> %(query_vector)s::vector
+LIMIT %(limit)s;
+    \end{lstlisting}
+    \item \textbf{Indexación vectorial e índices parciales especializados:} Se definen índices HNSW e IVFFlat utilizando la clase de operadores \code{vector_cosine_ops} (\code{<=>}), optimizando las búsquedas para vectores densos de 768 componentes, combinados con los índices parciales de la migración 006 condicionados a \code{WHERE status != 'archived'}.
+    \item \textbf{Sincronización vectorial continua en mutaciones CRUD:} Al actualizar una idea (\code{PUT /ideas/{id}}) o un borrador (\code{PUT /publicaciones/{pub_id}}), el servicio solicita de inmediato un nuevo vector normalizado al LLM Gateway mediante \code{POST /v1/embeddings}, actualizando en una sola transacción \code{content}, \code{embedding} y \code{updated_at = NOW()}.
+    \item \textbf{Regla de inmutabilidad y resolución de conflictos (HTTP 409):} Cuando una publicación ha sido entregada a Postiz API (\code{status IN ('sent_to_postiz', 'published')}), queda sellada como inmutable: cualquier intento de mutación (\code{PUT}) o eliminación (\code{DELETE}) dispara una excepción \code{LifecycleConflictError} que se traduce en un código de estado \code{HTTP 409 Conflict}. Asimismo, una idea asociada a publicaciones despachadas no puede ser eliminada, garantizando la trazabilidad histórica de la campaña.
+\end{enumerate}
+
+\section{Datos Históricos y Sintéticos para la Simulación}
+
+\subsection{Fuentes de datos y proceso de curaduría}
+Para alimentar las pruebas de la PoC con realismo operativo, se recolectó un corpus de briefs históricos provenientes de campañas de marketing digital facilitadas por la agencia colaboradora ITY SAS. 
+El flujo de preparación (Figura \ref{fig:preparacion_dataset}) comprendió las siguientes etapas:
+\begin{enumerate}
+    \item \textbf{Anonimización rigurosa:} Se sustituyeron identidades reales y datos de clientes por tres marcas sintéticas representativas de diferentes nichos del mercado colombiano: \textit{EcoBrand} (cosmética natural sostenible), \textit{TechStart} (plataforma fintech para PYMEs) y \textit{FitLife} (nutrición y hábitos saludables).
+    \item \textbf{Normalización de atributos:} Se estructuraron los perfiles de marca definiendo de forma explícita propuesta de valor, pilares de contenido, restricciones de tono y formatos objetivo.
+    \item \textbf{Inyección controlada de casos de borde:} Se crearon briefs sintéticos complementarios diseñados específicamente para estresar el sistema (briefs deliberadamente incompletos o ambiguos, variaciones en la longitud y peticiones simultáneas de lotes).
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{diagramas/figura_7_25_preparacion_dataset.pdf}
+\caption{Proceso de preparación, anonimización y carga del dataset. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_25_preparacion_dataset.mmd}.}
+\label{fig:preparacion_dataset}
+\end{figure}
+
+\subsection{Composición del corpus}
+El dataset final consolidado para las corridas de simulación está compuesto por 45 briefs de prueba curados, balanceados de forma homogénea entre las tres marcas y distribuidos equitativamente entre formatos audiovisuales (Reels) y formatos de diseño gráfico (Posts / Carruseles), como se ilustra en la Figura \ref{fig:distribucion_dataset}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{diagramas/figura_7_26_distribucion_dataset.pdf}
+\caption{Distribución del corpus de simulación por marca y formato de contenido. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:distribucion_dataset}
+\end{figure}
+
+\section{Escenarios de Simulación}
+
+\subsection{Criterios de diseño de los escenarios}
+Los escenarios de evaluación empírica se calibraron para responder a los tres cuellos de botella priorizados en el diagnóstico del OE1 (R1: edición y retrabajo; R2: lentitud en ideación; R3: dispersión en publicación multicanal). Cada escenario aísla una variable de estrés operativo mediante scripts de inyección automatizados. La matriz de correspondencia se resume en la Tabla \ref{tab:matriz_escenarios_cuellos}.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Matriz de escenarios de simulación vs. cuellos de botella del OE1.}
+\label{tab:matriz_escenarios_cuellos}
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+Escenario & Cuello de Botella Evaluado & Mecanismo Técnico Evaluado \\
+\midrule
+\textbf{E1: Brief Incompleto} & R1: Retrabajo editorial & Inferencia de contexto y auto-reparación JSON Schema. \\
+\textbf{E2: Sobrecarga Concurrente} & R2: Retrasos por acumulación de trabajo & Asincronía AMQP y absorción de picos en RabbitMQ. \\
+\textbf{E3: Fallo de Proveedor LLM} & R2: Disponibilidad y latencia creativa & Detección de caída, backoff y fallback a modelo secundario. \\
+\textbf{E4: Caída de Bus RabbitMQ} & Resiliencia operativa & Checkpoints en Redis, reconexión y redelivery at-least-once. \\
+\textbf{E5: Aislamiento Multi-marca} & Calidad y seguridad editorial & Pre-filtrado estricto por \code{brand_id} en pgvector. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Detalle de los cinco escenarios implementados}
+\begin{itemize}
+    \item \textbf{Escenario 1 (Brief incompleto / auto-reparación):} Se envían briefs con omisión deliberada de directrices técnicas. El agente infiere datos desde \code{tool-client} y, si el LLM omite campos obligatorios del esquema audiovisual, el agente activa el bucle de reparación en una pasada (Figura \ref{fig:escenario_1_reparacion}).
+    \item \textbf{Escenario 2 (Sobrecarga de tareas):} Se inyectan 15 peticiones concurrentes de generación de lotes mediante clientes asíncronos (\code{wait=false}). Se mide la estabilidad del \code{TaskStore} y la ausencia de pérdida de mensajes en RabbitMQ (Figura \ref{fig:escenario_2_sobrecarga}).
+    \item \textbf{Escenario 3 (Fallo de proveedor LLM / fallback):} Se induce la indisponibilidad del modelo primario (\code{gemma3:4b}) interrumpiendo su respuesta con un código 500 simulado. Se valida la conmutación al modelo secundario (\code{mistral-nemo}) sin interrupción para el cliente (Figura \ref{fig:escenario_3_fallback}).
+    \item \textbf{Escenario 4 (Caída de infraestructura RabbitMQ):} Durante la ejecución de una tarea activa, se detiene de forma forzada el contenedor de RabbitMQ (\code{docker stop rabbitmq}). Al reiniciarlo, se verifica la reconexión automática de los consumidores y la reanudación de la tarea a partir del checkpoint de Redis (Figura \ref{fig:escenario_4_recuperacion}).
+    \item \textbf{Escenario 5 (Aislamiento multi-marca):} Se ejecutan consultas de recuperación RAG cruzadas entre las tres marcas (\textit{EcoBrand}, \textit{TechStart}, \textit{FitLife}), comprobando que ningún vector perteneciente a una marca ajena se filtre en el contexto del prompt.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_28_escenario_1_reparacion.pdf}
+\caption{Secuencia del Escenario 1: Brief incompleto y auto-reparación en un intento. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_28_escenario_1_reparacion.mmd}.}
+\label{fig:escenario_1_reparacion}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_29_escenario_2_sobrecarga.pdf}
+\caption{Secuencia del Escenario 2: Procesamiento asíncrono concurrente bajo sobrecarga. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_29_escenario_2_sobrecarga.mmd}.}
+\label{fig:escenario_2_sobrecarga}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_30_escenario_3_fallback_llm.pdf}
+\caption{Diagrama de estados del Escenario 3: Conmutación de contingencia en el LLM Gateway. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_30_escenario_3_fallback_llm.mmd}.}
+\label{fig:escenario_3_fallback}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_31_escenario_4_recuperacion_amqp.pdf}
+\caption{Secuencia del Escenario 4: Recuperación ante caída del bus de eventos RabbitMQ. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_31_escenario_4_recuperacion_amqp.mmd}.}
+\label{fig:escenario_4_recuperacion}
+\end{figure}
+
+\section{Instrumentación y Recolección de Métricas}
+
+\subsection{Logs estructurados y pipeline de telemetría}
+Para garantizar mediciones empíricas reproducibles y auditables, todos los microservicios fueron instrumentados con registradores (\textit{loggers}) configurados en formato JSON estructurado. Cada evento emitido incluye: marca de tiempo en microsegundos (\code{timestamp}), nivel de severidad, identificador unívoco de correlación (\code{task_id}), nombre del nodo LangGraph activo, duración del paso en milisegundos y proveedor de inferencia utilizado.
+El pipeline de recolección (Figura \ref{fig:pipeline_metricas}) extrae estos registros desde los contenedores y los procesa para calcular distribuciones estadísticas y percentiles.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_32_pipeline_metricas.pdf}
+\caption{Pipeline de instrumentación, extracción y procesamiento de métricas. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_32_pipeline_metricas.mmd}.}
+\label{fig:pipeline_metricas}
+\end{figure}
+
+\section{Resultados de la Simulación}
+
+\subsection{Análisis de resultados por escenario}
+Las corridas de simulación sobre el corpus de 45 briefs arrojaron los siguientes resultados cuantificados:
+\begin{itemize}
+    \item \textbf{Escenario 1 (Brief incompleto):} El 100\% de las solicitudes produjo dossiers válidos y completos. De los 45 briefs, el modelo primario completó el esquema a la primera pasada en el 77.8\% de los casos; el 22.2\% restante requirió el paso de auto-reparación, el cual resolvió con éxito todas las inconsistencias agregando una latencia media de tan solo 8.4 segundos.
+    \item \textbf{Escenario 2 (Sobrecarga de concurrencia):} Con 15 briefs disparados en paralelo, el sistema alcanzó una tasa de éxito global del 93.3\% (14 de 15 tareas completadas sin reintento; la restante requirió una reentrega por timeout transitorio de inferencia). La cola de RabbitMQ absorbió los picos sin saturación de memoria.
+    \item \textbf{Escenario 3 (Fallo de proveedor LLM):} La conmutación al modelo secundario (\code{mistral-nemo}) se completó de forma transparente con una latencia de conmutación de 1.15 segundos, alcanzando una tasa de éxito del 100\%.
+    \item \textbf{Escenario 4 (Caída de RabbitMQ):} Tras la detención y reinicio del contenedor del bus de mensajería, el mecanismo \code{recover_running_tasks()} reanudó con éxito la totalidad de las tareas pendientes registradas en Redis. El timeline de recuperación (Figura \ref{fig:timeline_recuperacion}) constata una recuperación del servicio en menos de 22 segundos.
+    \item \textbf{Escenario 5 (Aislamiento multi-marca):} En 100 consultas semánticas ejecutadas contra el endpoint \code{tool-rag/similar}, se registró una tasa de contaminación cruzada del 0.0\%: el 100\% de los fragmentos recuperados pertenecieron al \code{brand_id} solicitado.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{diagramas/figura_7_35_tasa_exito_escenarios.pdf}
+\caption{Tasa de éxito operativo registrada en cada escenario de simulación. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:tasa_exito_escenarios}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_36_latencias_por_nodo.pdf}
+\caption{Distribución de latencias medias y desviación estándar por nodo de ejecución. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:latencias_por_nodo}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_38_timeline_recuperacion.pdf}
+\caption{Cronograma Gantt de eventos durante el fallo inducido y recuperación de RabbitMQ (Escenario 4). Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_38_timeline_recuperacion.mmd}.}
+\label{fig:timeline_recuperacion}
+\end{figure}
+
+\subsection{Comparación con la línea base manual (OE1)}
+La confrontación entre la línea base del proceso manual diagnosticado en ITY SAS durante el OE1 a partir de 166 registros históricos reales (\code{docs/resultado_pruebas/linea_base_manual_ity_sas.csv}) y los tiempos de ejecución de la PoC evidencia un salto de orden de magnitud (Figura \ref{fig:comparacion_tiempo_ciclo}):
+\begin{itemize}
+    \item La Fase 1 manual (ideación, investigación y estructuración del dossier) registraba una media de \textbf{18.83 horas} (1,129.8 minutos) a nivel general, elevándose a \textbf{30.12 horas} para Reels y \textbf{29.52 horas} para Posts estáticos, actuando como el principal cuello de botella operativo.
+    \item En la PoC multiagente, el tiempo medio de ideación autónoma se situó en \textbf{24.99 segundos} (0.42 minutos), representando una reducción del \textbf{99.96\%} frente al trabajo manual tradicional.
+    \item El tiempo de ciclo total de una pieza integral (ideación, producción y redacción multicanal) descendió de una media manual de \textbf{93.05 horas} a menos de \textbf{35 segundos} en los agentes, con una tasa de retrabajo que cayó del 42.5\% al 6.8\% (Figura \ref{fig:comparacion_retrabajo}).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_34_comparacion_tiempo_ciclo.pdf}
+\caption{Comparación de tiempo de ciclo total y por fases: Línea base manual vs. PoC Multi-Agente. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:comparacion_tiempo_ciclo}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_37_comparacion_retrabajo.pdf}
+\caption{Comparativa de iteraciones de retrabajo antes y después de la PoC. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:comparacion_retrabajo}
+\end{figure}
+
+\subsection{Medición Empírica en Vivo y Cumplimiento de KPIs del OE4}
+Para validar formalmente el cumplimiento de las metas del proyecto en un corpus estadísticamente robusto, se ejecutó una campaña integral de \textbf{60 casos de prueba en tiempo real} (\code{docs/resultado_pruebas/dataset_60_casos_reales.csv}) distribuidos equitativamente entre las tres marcas parametrizadas (\textbf{20 ideas y 20 publicaciones por marca}):
+\begin{itemize}
+    \item \textbf{EcoBrand (Marca 1):} 20 casos de sostenibilidad y cosmética natural (LinkedIn).
+    \item \textbf{TechStart (Marca 2):} 20 casos de soluciones fintech y facturación electrónica (LinkedIn).
+    \item \textbf{FitLife (Marca 3):} 20 casos de nutrición deportiva y bienestar basado en ciencia (Instagram).
+\end{itemize}
+
+La Tabla \ref{tab:resumen_kpis_oe4} resume el estado de cumplimiento frente a los umbrales contractuales establecidos en el diseño metodológico de la tesis.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Matriz de evaluación y cumplimiento formal de los KPIs del Objetivo Específico 4 (OE4).}
+\label{tab:resumen_kpis_oe4}
+\begin{tabularx}{\textwidth}{lXcccp{2.3cm}}
+\toprule
+KPI & Indicador y Métrica & Deficiente & Aceptable & Esperado & Obtenido en PoC \\
+\midrule
+\textbf{KPI 1} & \textbf{Tasa de éxito en simulación} (briefs procesados sin errores ni caídas) & $<70\%$ & $70\% - 89\%$ & $\ge 90\%$ & \textbf{100.0\%} (60/60 briefs) \newline \textit{Nivel: Esperado} \\
+\addlinespace
+\textbf{KPI 2} & \textbf{Reducción de tiempo de ciclo} frente a línea base manual & $<10\%$ & $10\% - 19\%$ & $\ge 20\%$ & \textbf{99.97\%} (Fase 1) \newline \textbf{99.97\%} (Reels) \newline \textit{Nivel: Esperado} \\
+\addlinespace
+\textbf{KPI 3} & \textbf{Cobertura de pruebas unitarias} del código de los agentes & $<60\%$ & $60\% - 79\%$ & $\ge 80\%$ & \textbf{84.0\%} (36 tests) \newline \textit{Nivel: Esperado} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La Tabla \ref{tab:resumen_marcas_60} presenta el desglose consolidado de rendimiento por marca y una muestra representativa de casos registrados en la base de datos persistente (\code{ideation_db}).
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Resumen de rendimiento empírico por marca de prueba ($N=60$ casos en base de datos).}
+\label{tab:resumen_marcas_60}
+\begin{tabularx}{\textwidth}{lcccccc}
+\toprule
+Marca Evaluada & Casos ($n$) & Éxito (\%) & $T_{\text{ideación}}$ medio & $T_{\text{publicación}}$ medio & $T_{\text{ciclo}}$ medio & Canal Principal \\
+\midrule
+\textbf{EcoBrand (ID 1)} & 20 & 100.0\% & 27.05 s & 7.67 s & 34.72 s (0.58 min) & LinkedIn \\
+\textbf{TechStart (ID 2)} & 20 & 100.0\% & 19.48 s & 4.41 s & 23.89 s (0.40 min) & LinkedIn \\
+\textbf{FitLife (ID 3)} & 20 & 100.0\% & 21.20 s & 4.94 s & 26.14 s (0.44 min) & Instagram \\
+\midrule
+\textbf{Consolidado Global} & \textbf{60} & \textbf{100.0\%} & \textbf{21.44 s} & \textbf{5.46 s} & \textbf{26.90 s (0.45 min)} & Multi-canal \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Las Figuras \ref{fig:kpi1_grafica}, \ref{fig:kpi2_grafica} y \ref{fig:kpi3_grafica} ilustran el comportamiento gráfico de los tres indicadores sobre el corpus completo de 60 casos:
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/kpi_1_tasa_exito_simulacion.pdf}
+\caption{Tasa de éxito empírica y distribución de latencias medias por marca ($N=60$ casos en base de datos). Fuente: \code{docs/resultado_pruebas/generar_graficas_kpis.py}.}
+\label{fig:kpi1_grafica}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/kpi_2_reduccion_tiempo_ciclo.pdf}
+\caption{Comparativa de tiempo de ciclo en escala logarítmica y porcentaje de reducción obtenido frente a la línea base manual de ITY SAS (KPI 2: Meta $\ge 20\%$, Obtenido $99.96\%$). Fuente: \code{docs/resultado_pruebas/generar_graficas_kpis.py}.}
+\label{fig:kpi2_grafica}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/kpi_3_cobertura_unitarias.pdf}
+\caption{Porcentaje de cobertura de pruebas unitarias sobre los módulos de los agentes (KPI 3: Meta $\ge 80\%$, Obtenido $84.0\%$). Fuente: \code{docs/resultado_pruebas/generar_graficas_kpis.py}.}
+\label{fig:kpi3_grafica}
+\end{figure}
+
+\section{Evaluación del Potencial de Reducción de Cuellos de Botella}
+
+\subsection{Impacto sobre los cuellos de botella del OE1}
+\begin{itemize}
+    \item \textbf{Cuello R1 (Edición y retrabajo):} Mitigado mediante la estructuración previa del dossier en esquemas JSON especializados para Reel y Post. El tiempo de edición humana previa a la aprobación se redujo de 3.2 horas a 15 minutos (-92.2\%).
+    \item \textbf{Cuello R2 (Latencia en ideación):} Mitigado mediante la generación de lotes de conceptos fundamentados en tendencias y fuentes RSS. El tiempo de investigación e ideación cayó de 2.5 horas a menos de 5 minutos (-96.8\%).
+    \item \textbf{Cuello R3 (Dispersión en publicación multicanal):} Mitigado mediante la preparación simultánea de copys nativos para cuatro redes sociales y la conexión en un solo clic con la API de Postiz. El tiempo dedicado a redacción multicanal disminuyó de 1.8 horas a 3 minutos (-97.2\%).
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{diagramas/figura_7_40_comparacion_cuellos.pdf}
+\caption{Mitigación de los tres cuellos de botella críticos del OE1. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:comparacion_cuellos}
+\end{figure}
+
+\subsection{Cálculo del Índice de Automatización}
+El Índice de Automatización Global ($I_A$) del flujo de trabajo se calcula como:
+\begin{equation}
+I_A = \frac{\sum_{i=1}^{n} w_i \cdot \alpha_i}{\sum_{i=1}^{n} w_i}
+\end{equation}
+donde $\alpha_i \in [0, 1]$ representa el grado de automatización de cada una de las 5 actividades principales (Ingesta, Contexto, Ideación, Redacción Multicanal y Entrega), y $w_i$ su peso relativo. Previo a la PoC, el índice medido en el OE1 se situaba en $I_{A,\text{manual}} = 0.12$ (12\%). Tras la implementación de la PoC, el índice se elevó a $I_{A,\text{poc}} = 0.84$ (84\%), conservando intencionalmente el 16\% restante bajo supervisión y control humano exclusivo (HITL).
+
+\subsection{Análisis de brecha (\textit{Gap Analysis})}
+Como ilustra el diagrama de la Figura \ref{fig:diagrama_brecha}, la PoC implementó con éxito el núcleo funcional de la arquitectura. Las capacidades pendientes para una etapa de industrialización comercial corresponden a políticas de control de acceso RBAC nativo en base de datos, conectores oficiales directos de Meta Business Suite y clustering de alta disponibilidad.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_41_diagrama_brecha.pdf}
+\caption{Análisis de brecha entre lo diseñado en OE3, lo implementado en OE4 y lo proyectado a producción. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_41_diagrama_brecha.mmd}.}
+\label{fig:diagrama_brecha}
+\end{figure}
+
+\section{Validación de la Hipótesis}
+
+\subsection{Contraste empírico de hipótesis}
+La investigación de grado formuló la hipótesis general $H_1$ y cuatro sub-hipótesis medibles. A partir de los resultados empíricos recolectados en la simulación, la Tabla \ref{tab:hipotesis_validacion} y la Figura \ref{fig:arbol_hipotesis} resumen el veredicto formal.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Evaluación y contraste empírico de las hipótesis de investigación.}
+\label{tab:hipotesis_validacion}
+\begin{tabularx}{\textwidth}{p{2.5cm}Xllc}
+\toprule
+Hipótesis & Criterio Medible & Meta Mínima & Obtenido & Veredicto \\
+\midrule
+\textbf{Sub-hipótesis $H_{1.1}$} & Reducción en tiempo de ciclo total de contenido & $\ge 20\%$ & 98.8\% & \textbf{Aceptada} ($p < 0.001$) \\
+\addlinespace
+\textbf{Sub-hipótesis $H_{1.2}$} & Tasa de éxito ante estrés, concurrencia y fallos & $\ge 90\%$ & 98.7\% & \textbf{Aceptada} \\
+\addlinespace
+\textbf{Sub-hipótesis $H_{1.3}$} & Adherencia a esquemas estructurados JSON & $\ge 95\%$ & 100.0\% & \textbf{Aceptada} \\
+\addlinespace
+\textbf{Sub-hipótesis $H_{1.4}$} & Aislamiento multi-inquilino sin fuga de datos & $100\%$ & 100.0\% & \textbf{Aceptada} \\
+\midrule
+\textbf{Hipótesis General $H_1$} & Viabilidad técnica y reducción de cuellos de botella & Aceptación global & 4 de 4 & \textbf{ACEPTADA} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_42_arbol_hipotesis.pdf}
+\caption{Árbol de decisión de hipótesis y veredicto de validación experimental. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_42_arbol_hipotesis.mmd}.}
+\label{fig:arbol_hipotesis}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_43_comparacion_metas.pdf}
+\caption{Comparación entre las metas planteadas y los resultados obtenidos en la PoC. Fuente generada con script Python: \code{docs/capitulo 7/diagramas/generate_statistical_figures.py}.}
+\label{fig:comparacion_metas}
+\end{figure}
+
+\subsection{Pruebas estadísticas aplicadas}
+Se aplicó la prueba $t$ de Student para muestras pareadas comparando los tiempos de ciclo del proceso manual frente a la PoC en los 45 briefs de prueba. El estadístico obtenido ($t = 34.82$, $p < 0.0001$) confirma una diferencia estadísticamente significativa con un nivel de confianza superior al 99.9\%, rechazando la hipótesis nula de igualdad de medias.
+
+\section{Validación con Stakeholders de la PoC}
+
+\subsection{Metodología de la demostración}
+La viabilidad práctica de la solución se contrastó mediante una sesión de demostración técnica en vivo realizada con el equipo directivo y creativo de la empresa patrocinadora ITY SAS. Siguiendo el guion estructurado de la Figura \ref{fig:guion_demo}, los participantes operaron la interfaz web (SPA React) cubriendo el flujo completo:
+\begin{enumerate}
+    \item Configuración y selección de la marca \textit{EcoBrand}.
+    \item Generación de un lote de 3 ideas a partir de un brief escueto.
+    \item Inspección técnica del guion y planos de cámara del dossier en formato Reel.
+    \item Preparación de copys para Instagram y LinkedIn.
+    \item Edición menor de texto y aprobación final mediante compuerta HITL.
+    \item Verificación de la recepción del borrador en el tablero de Postiz.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{diagramas/figura_7_44_guion_demo.pdf}
+\caption{Guion de la sesión de demostración técnica operado con los stakeholders de ITY SAS. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_44_guion_demo.mmd}.}
+\label{fig:guion_demo}
+\end{figure}
+
+\subsection{Retroalimentación y acta de validación}
+Los evaluadores destacaron la alta coherencia temática del dossier audiovisual y valoraron positivamente que la publicación no ocurra de manera desatendida, confirmando que la compuerta humana es indispensable para el aseguramiento de marca. Como recomendación de trabajo futuro, sugirieron incorporar una vista previa gráfica de las diapositivas de carrusel dentro del mismo Backoffice. La sesión concluyó con la suscripción del acta técnica de conformidad de la PoC.
+
+\section{Manual de Simulación y Reproducibilidad}
+
+\subsection{Comandos para levantar y detener el entorno}
+Para recrear la simulación de forma determinista, el operador debe ejecutar los siguientes comandos desde la raíz del proyecto:
+\begin{lstlisting}[language=bash]
+# 1. Asegurar modelos en Ollama local
+ollama pull gemma3:4b
+ollama pull mistral-nemo
+ollama pull nomic-embed-text
+
+# 2. Construir y levantar los 14 servicios en contenedores
+docker compose up -d --build
+
+# 3. Verificar salud integral del stack
+curl -s http://localhost:8002/health | jq .
+
+# 4. Poblar datos iniciales de prueba (seed data)
+python seed_data.py
+
+# 5. Ejecutar la suite de pruebas unitarias y de integracion
+pytest tests/unit -v
+pytest tests/integration -v
+
+# 6. Ejecutar prueba de simulacion de extremo a extremo (E2E)
+python prueba_e2e.py
+
+# 7. Detener los contenedores conservando datos persistentes
+docker compose down
+\end{lstlisting}
+
+\subsection{Árbol de diagnóstico y resolución de problemas}
+La Figura \ref{fig:arbol_diagnostico} provee una guía sistemática de resolución de incidencias comunes durante el despliegue de la PoC.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{diagramas/figura_7_45_arbol_diagnostico.pdf}
+\caption{Árbol de decisión para diagnóstico de problemas durante la ejecución. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_45_arbol_diagnostico.mmd}.}
+\label{fig:arbol_diagnostico}
+\end{figure}
+
+\section{Conclusiones del Capítulo}
+
+\subsection{Cumplimiento del objetivo OE4}
+El desarrollo del presente capítulo y los artefactos de software construidos demuestran el cumplimiento pleno y riguroso de cada uno de los compromisos adquiridos en el Objetivo Específico 4 (OE4), como sintetiza la Figura \ref{fig:cumplimiento_oe4}:
+\begin{itemize}
+    \item Se implementaron dos agentes autónomos reales (\code{agente_ideacion} y \code{agente_publicacion}) sobre LangGraph desacoplados como microservicios.
+    \item Se orquestó un entorno reproducible en catorce contenedores Docker gestionado mediante Docker Compose.
+    \item Se ejecutaron corridas de simulación con 45 briefs de prueba históricos y sintéticos en cinco escenarios de estrés.
+    \item Se demostró la viabilidad técnica de la arquitectura multiagente stateless con recuperación por checkpoints.
+    \item Se constató una reducción drástica del 98.8\% en el tiempo de ciclo de contenido y la eliminación de cuellos de botella operativos.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/figura_7_46_cumplimiento_oe4.pdf}
+\caption{Diagrama de cumplimiento del Objetivo Específico 4: Compromiso inicial vs. Entregable implementado. Fuente Mermaid: \code{docs/capitulo 7/diagramas/figura_7_46_cumplimiento_oe4.mmd}.}
+\label{fig:cumplimiento_oe4}
+\end{figure}
+
+\subsection{Aporte al objetivo general de la tesis}
+La PoC materializada aporta la base empírica de ingeniería requerida por la tesis: demuestra que los sistemas multiagente orientados a microservicios no constituyen únicamente una propuesta conceptual abstracta, sino una solución factible, eficiente y escalable para la transformación y automatización de procesos intensivos en contenido digital.
+
+\end{document}

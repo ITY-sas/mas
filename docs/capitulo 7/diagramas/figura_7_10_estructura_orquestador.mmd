@@ -1,0 +1,13 @@
+graph TB
+    ORQ_ROOT["orchestrator/"]
+
+    ORQ_ROOT --> MAIN["main.py\n· FastAPI REST endpoints\n· /process, /ideas/generate, /health\n· /tasks/{id}, /tools, /graph"]
+    ORQ_ROOT --> HIST["history.py\n· Historial de chat persistente en PostgreSQL\n· DDL idempotente de tabla chat_history\n· add_message(), get_history()"]
+    ORQ_ROOT --> DOCKER["Dockerfile\n· Imagen Python 3.10 slim\n· Dependencias FastAPI, LangGraph, Redis, Pika"]
+    ORQ_ROOT --> REQ["requirements.txt\n· langgraph, redis[hiredis], pika, psycopg2-binary"]
+    
+    ORQ_ROOT --> MULTI["multi_agent/ (Submódulo del Supervisor)"]
+    
+    MULTI --> SUP["supervisor.py\n· StateGraph(SupervisorState)\n· start, decide_next\n· dispatch_ideacion, dispatch_publicacion\n· interrupt() & resume handler"]
+    MULTI --> RUN["runtime.py\n· OrchestratorRuntime\n· start_task(), start_idea_batch()\n· RedisSaver (RedisStack)\n· Consumidor EventConsumer(agent.results)\n· recover_running_tasks()"]
+    MULTI --> STATE["state.py\n· TypedDict SupervisorState\n· initial_state()"]

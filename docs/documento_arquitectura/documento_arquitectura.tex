@@ -1,0 +1,496 @@
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{longtable,booktabs,array}
+\usepackage{calc}
+\usepackage{graphicx}
+\usepackage{pdflscape}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{bookmark}
+\usepackage{hyperref}
+
+\hypersetup{
+  pdftitle={Documento de Arquitectura de Software - Sistema Multiagente ITY SAS},
+  pdfauthor={Equipo de Analistas y Arquitectura - Proyecto ITY SAS},
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\graphicspath{{./}{images/}}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!25},
+  showstringspaces=false,
+  columns=fullflexible
+}
+
+\title{
+  \vspace{-1.5cm}
+  \includegraphics[width=0.35\textwidth]{images/arc42-logo.png}\\[1em]
+  \textbf{Documento de Arquitectura de Software (SAD)}\\[0.3em]
+  \Large Sistema Multiagente para la Optimizacion del Proceso de Produccion de Contenido Digital --- ITY SAS\\[0.5em]
+  \large Basado en la Plantilla arc42 (Version 7.0 ES), alineado con ISO/IEC/IEEE 42010:2022 y la SRS IEEE Std 830-1998
+}
+\author{\textbf{Equipo de Arquitectura e Investigacion de Sistemas} \\ Proyecto ITY SAS --- Prueba de Concepto (OE4)}
+\date{Octubre 2026 --- Version 3.0 (Alineacion Integral con Requisitos Oficiales)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent El presente documento constituye la descripcion formal de la arquitectura de software del sistema multiagente desarrollado para ITY SAS. Este documento se encuentra 100\% alineado con la \textit{Especificacion de Requisitos de Software (SRS)} conforme al estandar IEEE Std 830-1998 (Revision 1.0, 5 de septiembre de 2026), cubriendo los tres cuellos de botella del diagnostico de criticidad de la Fase 1 (R1 con IC=15/15, R2 con IC=14/15, R3 con IC=12/15), los 30 requisitos funcionales (REQ-F01 a REQ-F30), las 10 interfaces externas (REQ-IE01 a REQ-IE10) y los 9 requisitos no funcionales (REQ-NF01 a REQ-NF09). Se desarrollan las vistas C4 Nivel 1 a 4, protocolos AUML, modelado Gaia/BDI, decisiones ADR, escenarios ATAM y el analisis de amenazas STRIDE.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduccion y Metas}\label{section-introduction-and-goals}
+
+\subsection{Contexto Organizacional y Diagnostico de Cuellos de Botella (Fase 1 / OE1)}
+El proyecto responde a las necesidades operativas de la empresa \textbf{ITY SAS}. En la Fase 1 se aplico la metodologia de Indice de Criticidad (IC) para diagnosticar tres cuellos de botella criticos:
+\begin{itemize}
+  \item \textbf{R1: Bucle de edicion y retrabajo interno (IC = 15/15)}: Probabilidad de primera correccion de 0,60 y tiempo de ciclo de 7,95 h. La meta del SRS es reducir la probabilidad a 0,10 y el tiempo a 6,70 h (-15,7\%). Asociado a \textbf{REQ-F11 a REQ-F20} (Agente de Control de Calidad y Edicion).
+  \item \textbf{R2: Ineficiencia en ideacion y estrategia (IC = 14/15)}: Tiempo de analisis y conceptualizacion de 19,03 h por pieza. La meta del SRS es reducirlo a menos de 2 h por pieza. Asociado a \textbf{REQ-F01 a REQ-F10} (Agente de Ideacion y Estrategia).
+  \item \textbf{R3: Adaptacion manual para publicacion multicanal (IC = 12/15)}: Tiempo manual de 0,40 h (24 min) por pieza. La meta del SRS es reducirlo a menos de 5 min por pieza. Asociado a \textbf{REQ-F21 a REQ-F30} (Agente de Publicacion Multicanal).
+\end{itemize}
+
+\subsection{Proposito del Sistema y el Flujo en Tres Fases Desacopladas}\label{_vista_de_requerimientos}
+El sistema se organiza en tres fases con compuerta humana (\textit{Human-in-the-Loop}):
+\begin{enumerate}
+  \item \textbf{Fase 1: Ideacion en lote (REQ-F01 a REQ-F10)}: Genera de 1 a 5 dossiers creativos en JSON (Reel o Post) a partir de briefs o perfil de marca, integrando RAG, noticias RSS y auto-reparacion de esquema.
+  \item \textbf{Fase 2: Preparacion de copies por plataforma (REQ-F21, REQ-F22, REQ-F25, REQ-F28)}: Adapta la idea a variantes de copy por red (Instagram, TikTok, LinkedIn, YouTube, X) y las persiste localmente sin contactar a Postiz (\code{awaiting_approval}).
+  \item \textbf{Fase 3: Revision, aprobacion y entrega (REQ-F10, REQ-F23, REQ-F29, REQ-F30)}: Revision humana en SPA, aprobacion formal (\code{approve}) y despacho validado a Postiz API (\code{deliver}).
+\end{enumerate}
+
+\subsection{Catalogo Oficial de Requisitos de Software (SRS IEEE Std 830-1998)}
+
+\subsubsection*{Agente 1: Ideacion y Estrategia (REQ-F01 a REQ-F10) --- Cuello R2}
+\begin{longtable}{p{2.2cm}p{4.5cm}p{2.5cm}p{5.8cm}}
+\toprule
+ID & Nombre & Prioridad & Criterio de Aceptacion SRS \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{REQ-F01} & Consulta de tendencias activas & Must Have & Top 20 audios, 10 retos y 5 formatos; cache 6h y fallback. \\
+\textbf{REQ-F02} & Brief estructurado de formulario & Must Have & Al menos 8 campos obligatorios generados en $<5$ s. \\
+\textbf{REQ-F03} & Validacion semantica de brief & Should Have & Informe de feedback $\ge 3$ lineas; rechazo si $>30$\% vacio. \\
+\textbf{REQ-F04} & Sugerencia de formato & Could Have & Formato sugerido con justificacion de 3 lineas en $<3$ s. \\
+\textbf{REQ-F05} & Rendimiento historico cuenta & Should Have & Resumen ejecutivo de 1 pagina con KPIs ultimos 90 dias. \\
+\textbf{REQ-F06} & Palabras clave y mapa semantico& Should Have & Nube de etiquetas con 5 palabras clave en $<10$ s. \\
+\textbf{REQ-F07} & Alineacion de tono de marca & Could Have & Alerta de desviacion de tono historico en $<5$ s. \\
+\textbf{REQ-F08} & Recuperacion de referentes & Should Have & 3 a 5 referentes visuales con enlace y captura en $<30$ s. \\
+\textbf{REQ-F09} & Sugerencia de KPIs esperados & Could Have & Rango esperado (bajo/medio/alto) con justificacion. \\
+\textbf{REQ-F10} & Retroalimentacion humana & Must Have & Capa de control humano para aceptar, editar o rechazar. \\
+\end{longtable}
+
+\subsubsection*{Agente 2: Control de Calidad y Edicion Asistida (REQ-F11 a REQ-F20) --- Cuello R1}
+\begin{longtable}{p{2.2cm}p{4.5cm}p{2.5cm}p{5.8cm}}
+\toprule
+ID & Nombre & Prioridad & Criterio de Aceptacion SRS \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{REQ-F11} & Validacion tecnica de video & Must Have & Aspecto, duracion, logo, subtitulos y audio (-16 a -12 LUFS). \\
+\textbf{REQ-F12} & Limite de rondas de revision & Must Have & Bloqueo en version v3 y notificacion al lider de proyecto. \\
+\textbf{REQ-F13} & Rough cut automatico & Should Have & Corte inicial con plantilla que reduce edicion base en 40\%. \\
+\textbf{REQ-F14} & Historial de retrabajo editor & Should Have & Tendencias mensuales y patrones de error en dashboard. \\
+\textbf{REQ-F15} & Subtitulos automaticos ASR & Must Have & Archivo SRT sincronizado con precision $\ge 95\%$ en $<2$ min. \\
+\textbf{REQ-F16} & Analisis del ritmo de edicion & Could Have & Alerta en Reels si densidad es menor a 1 corte cada 3 s. \\
+\textbf{REQ-F17} & Generacion de archivo proxy & Could Have & Proxy de baja resolucion en $<30$ s en MinIO/S3. \\
+\textbf{REQ-F18} & Correccion de color histograma& Should Have & Sugerencia de valores numericos de etalonaje en $<5$ s. \\
+\textbf{REQ-F19} & Notificacion por mensajeria & Should Have & Notificacion a Slack/WhatsApp en $<2$ s tras validacion. \\
+\textbf{REQ-F20} & Estimacion tiempo restante & Could Have & Calculo cada 15 min con margen de error menor al 20\%. \\
+\end{longtable}
+
+\subsubsection*{Agente 3: Publicacion Multicanal (REQ-F21 a REQ-F30) --- Cuello R3}
+\begin{longtable}{p{2.2cm}p{4.5cm}p{2.5cm}p{5.8cm}}
+\toprule
+ID & Nombre & Prioridad & Criterio de Aceptacion SRS \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{REQ-F21} & Adaptacion aspecto por red & Must Have & 1:1, 9:16 y 16:9 en $<10$ s con resolucion $\ge 1080\times 1080$. \\
+\textbf{REQ-F22} & Copy adaptado por red social & Must Have & Variantes para IG, LinkedIn, TikTok y FB en $<5$ s. \\
+\textbf{REQ-F23} & Integracion con scheduling & Must Have & Programacion automatizada (Postiz API) con ID en $<3$ s. \\
+\textbf{REQ-F24} & Previsualizacion de contenido & Should Have & Vista previa en movil y escritorio en $<5$ s antes de envio. \\
+\textbf{REQ-F25} & Lista de hashtags relevantes & Should Have & 15 a 30 hashtags ordenados por volumen en $<3$ s. \\
+\textbf{REQ-F26} & Mejor horario de publicacion & Could Have & Sugerencia de horario con nivel de confianza historico. \\
+\textbf{REQ-F27} & Generacion de miniatura & Could Have & Miniatura JPG/PNG con texto superpuesto en $<5$ s. \\
+\textbf{REQ-F28} & Limites de caracteres por red & Must Have & Validacion de longitud (TikTok 150 car) y version abreviada. \\
+\textbf{REQ-F29} & Informe de publicacion & Should Have & Reporte consolidado en PDF y JSON en $<10$ s. \\
+\textbf{REQ-F30} & Manejo de errores contingencia& Must Have & Hasta 3 reintentos con backoff exponencial y auditoria. \\
+\end{longtable}
+
+\subsubsection*{Requisitos No Funcionales (REQ-NF01 a REQ-NF09)}
+\begin{longtable}{p{2.2cm}p{4.5cm}p{2.5cm}p{5.8cm}}
+\toprule
+ID & Nombre & Prioridad & Criterio de Aceptacion SRS \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{REQ-NF01} & Contenedorizacion independiente & Must Have & Imagen base $\le 500$ MB orquestable en Compose/K8s. \\
+\textbf{REQ-NF02} & Latencia entre microservicios & Must Have & Percentil 95 menor a 500 ms bajo carga normal. \\
+\textbf{REQ-NF03} & Disponibilidad del sistema & Should Have & 99,5\% horario laboral (8:00--18:00) y 99,0\% fuera. \\
+\textbf{REQ-NF04} & Cifrado de credenciales & Must Have & Cifrado AES-256-GCM y rotacion cada 90 dias en Vault. \\
+\textbf{REQ-NF05} & Escalabilidad horizontal & Should Have & Soporte de aumento $10\times$ de carga mediante HPA. \\
+\textbf{REQ-NF06} & Registro auditado de acciones & Should Have & Logs con retencion minima de 90 dias; consulta $<2$ s. \\
+\textbf{REQ-NF07} & Modo fallback ante fallas & Could Have & Activacion tras 2 fallos consecutivos usando cache. \\
+\textbf{REQ-NF08} & Tiempo de arranque contenedor & Should Have & Startup percentil 95 menor a 15 segundos. \\
+\textbf{REQ-NF09} & Cumplimiento Ley 1581 (Habeas) & Must Have & Prohibicion absoluta de almacenar PII de audiencia final. \\
+\end{longtable}
+
+\subsection{Personal Involucrado y Stakeholders}\label{_partes_interesadas_stakeholders}
+Segun las Secciones 1.3 y 2.3 del SRS:
+\begin{itemize}
+  \item \textbf{Representante de ITY SAS}: Responsable de operaciones y aprobacion contractual del proyecto.
+  \item \textbf{Lider de Proyecto}: Supervisa el historial de retrabajo, escalaciones de revision (v3) y reportes.
+  \item \textbf{Community Manager}: Usuario final del Agente de Ideacion y Publicacion (briefs, copies, scheduling).
+  \item \textbf{Editor de Video}: Usuario final del Agente de Edicion (sube material, valida y ajusta rough cuts).
+  \item \textbf{Analista de Sistemas (Autor)}: Responsable de la SRS, diseno de arquitectura y prueba de concepto.
+  \item \textbf{Administrador de Sistemas / DevOps}: Gestiona contenedores, credenciales en Vault y monitoreo Prometheus.
+\end{itemize}
+
+\section{Restricciones de la Arquitectura}\label{section-architecture-constraints}
+\begin{itemize}
+  \item \textbf{Contenerizacion (REQ-NF01)}: 14 contenedores backend en red privada Docker (\code{multiagent-net}) con imagenes base optimizadas $\le 500$ MB.
+  \item \textbf{Frontend SPA}: Single Page Application en React 19 (Vite, Tailwind v4) con BFF FastAPI local en puerto 3000.
+  \item \textbf{Inferencia LLM (REQ-IE04)}: Motor Ollama host (\code{:11434}) con \code{gemma3:4b}, \code{mistral-nemo} y vectorizador \code{nomic-embed-text-v1.5} (768 dim).
+  \item \textbf{Persistencia Unificada}: PostgreSQL 16 con extension \code{pgvector} unificando entidades relacionales y vectores semanticos.
+  \item \textbf{Broker AMQP}: RabbitMQ 3.13 con colas durables y confirmaciones manuales (*manual ack*).
+  \item \textbf{Memoria Volatil}: Redis Stack 7.4 (\code{RedisSaver} con aislamiento por \code{thread_id = task_id}).
+  \item \textbf{Scheduling Externo (REQ-IE05)}: Integracion multicanal resuelta via Postiz API (\code{:4007}).
+  \item \textbf{Proteccion de Datos (REQ-NF09)}: Cumplimiento de la Ley 1581 de 2012 de Colombia (cero PII de audiencia).
+\end{itemize}
+
+\section{Alcance y Contexto del Sistema (C4 Nivel 1)}\label{section-context-and-scope}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/01_contexto.png}
+\caption{Vista de Contexto C4 Nivel 1 del Sistema Multiagente.}
+\label{fig:c4-context}
+\end{figure}
+
+\subsection{Catalogo Oficial de Interfaces Externas (REQ-IE01 a REQ-IE10)}
+\begin{longtable}{p{2.2cm}p{4.5cm}p{2.5cm}p{5.8cm}}
+\toprule
+ID & Interfaz Externa & Agente SRS & Implementacion en la Arquitectura \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{REQ-IE01} & API TikTok Research & Ideacion & Resuelto via \code{tool-news} y \code{tool-trending} en PoC. \\
+\textbf{REQ-IE02} & API Instagram Graph & Ideacion & Resuelto via \code{tool-trends} consultando pgvector. \\
+\textbf{REQ-IE03} & Video FFmpeg / OpenCV & Edicion & Validaciones de formato integradas en \code{validate_dossier}. \\
+\textbf{REQ-IE04} & Modelo de Lenguaje LLM & Ideacion / Publicacion & **Implementado**: \code{llm-gateway} conectando a Ollama. \\
+\textbf{REQ-IE05} & Scheduling Metricool/Postiz & Publicacion & **Implementado**: \code{tool-postiz} conectando a Postiz (:4007). \\
+\textbf{REQ-IE06} & Gestor Secretos Vault & Sistema General & Variables .env en PoC; Vault proyectado para produccion. \\
+\textbf{REQ-IE07} & Mensajeria Slack/WhatsApp & Edicion / Publicacion & Resuelto via Server-Sent Events (SSE) y visualizador SPA. \\
+\textbf{REQ-IE08} & API YouTube Data & Publicacion & Gestionado via adaptadores de canal de Postiz API. \\
+\textbf{REQ-IE09} & Monitoreo Prometheus & Sistema General & Endpoints \code{/health} y \code{/metrics} en todos los servicios. \\
+\textbf{REQ-IE10} & Almacenamiento S3 MinIO & Edicion / Publicacion & Volumenes Docker persistentes; S3 proyectado en nube. \\
+\end{longtable}
+
+\section{Estrategia de solucion}\label{section-solution-strategy}
+\begin{enumerate}
+  \item \textbf{Tools-as-a-Service (REQ-NF01)}: Los agentes no acceden directamente a bases de datos; consumen 7 microservicios REST descubiertos mediante manifiestos en \code{/.well-known/tool-manifest}.
+  \item \textbf{Orquestador Stateless}: Transiciones suspendidas con \code{interrupt()} y persistidas en Redis con \code{RedisSaver}.
+  \item \textbf{Comunicacion Hibrida (REQ-NF02)}: REST síncrono para lecturas rapidas ($<500$ ms) y RabbitMQ AMQP para inferencias pesadas.
+  \item \textbf{Base Unificada pgvector}: Integridad referencial ACID estricta vinculando \code{brand_id} con vectores de 768 dimensiones.
+  \item \textbf{LLM Gateway Centralizado (REQ-IE04)}: Balanceo, fallback, reintentos con backoff y cache Redis.
+  \item \textbf{SPA React 19 y Patron BFF}: Interfaz interactiva para edicion de copies y previsualizacion.
+\end{enumerate}
+
+\section{Vista de Bloques (C4 Niveles 2 y 3)}\label{section-building-block-view}
+
+\subsection{C4 Nivel 2: Vista de Contenedores e Inventario del Stack}\label{_sistema_general_de_caja_blanca}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{images/02_contenedores.png}
+\caption{Vista de Contenedores C4 Nivel 2.}
+\label{fig:c4-containers}
+\end{figure}
+
+\begin{longtable}{p{2.8cm}p{1.5cm}p{4.5cm}p{6.8cm}}
+\toprule
+Contenedor & Puerto & Tecnologia & Responsabilidad y Comunicacion \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\code{frontend-bff} & 3000 & FastAPI + React 19 SPA & Sirve la SPA compilada, agrega endpoints, expone SSE; REST con orquestador y tools; proxies CRUD de marcas, ideas y publicaciones con control de inmutabilidad y error 409 Conflict. \\
+\code{orchestrator} & 8002 & FastAPI + LangGraph Runtime & Supervisor stateless; enruta tareas, maneja interrupts, agrega lotes en TaskStore; AMQP y Redis. \\
+\code{agente-ideacion} & 8000 & FastAPI + AMQP + LangGraph & Worker deliberativo de ideacion; consume cola, consulta tools, llama LLM Gateway y persiste dossier. \\
+\code{agente-publicacion}& 8001 & FastAPI + AMQP + LangGraph & Worker deliberativo de publicacion; genera variantes por plataforma y despacha a Postiz. \\
+\code{llm-gateway} & 8003 & FastAPI + Redis Cache & Fachada de LLM; balanceo, reintentos, fallback y cache; HTTP hacia Ollama en host. \\
+\code{tool-client} & 8010 & FastAPI + SQLAlchemy & Consulta perfiles corporativos de marca, gestión de onboarding, CRUD de marcas y configuración dinámica RAG (\code{rag_config} JSONB). \\
+\code{tool-trends} & 8011 & FastAPI + pgvector & Recuperacion RAG sobre tendencias historicas internas de marketing. \\
+\code{tool-competitors}& 8012 & FastAPI + pgvector & Recuperacion RAG de referencias de competidores y estrategias por red. \\
+\code{tool-rag} & 8013 & FastAPI + pgvector & Memoria semantica multi-tenant, persistencia y ciclo de vida CRUD de ideas/publicaciones con re-calculo vectorial síncrono, salvaguarda de inmutabilidad y exclusión de archivados. \\
+\code{tool-news} & 8014 & FastAPI + Feedparser & Consulta en tiempo real de noticias mediante Google News RSS. \\
+\code{tool-trending} & 8015 & FastAPI + Feedparser & Extraccion de hashtags y topics en tendencia desde Google News RSS. \\
+\code{tool-postiz} & 8016 & FastAPI + HTTP Client & Catalogo de canales, validacion de pertenencia a marca y despacho a Postiz API. \\
+\code{rabbitmq} & 5672/15672 & RabbitMQ 3.13 Alpine & Broker de mensajeria AMQP 0-9-1 con colas durables y consola de gestion. \\
+\code{postgres} & 5432 & PostgreSQL 16 + pgvector & Almacen relacional, entidades de dominio, historial y vectores de 768 dimensiones. \\
+\code{redis} & 6379 & Redis Stack 7.4 & Checkpoints LangGraph (\code{RedisSaver}), TaskStore y cache de prompts/embeddings. \\
+\end{longtable}
+
+\subsubsection*{Analisis Matematico de Latencia}
+\[
+T_{fase} = T_{ingreso} + T_{cola} + T_{contexto} + n_{var} \cdot T_{LLM} + n_{var} \cdot T_{persistencia} + T_{resume} + T_{final}
+\]
+
+\subsection{C4 Nivel 3: Componentes del Orquestador y Agentes}\label{_nivel_2}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{images/03_componentes.png}
+\caption{Vista de Componentes C4 Nivel 3 Integrada.}
+\label{fig:components}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/07_grafos_agentes.png}
+\caption{Nodos y Transiciones de los Grafos LangGraph de Agentes.}
+\label{fig:agent-graphs}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{images/08_tool_discovery.png}
+\caption{Flujo de Descubrimiento de Herramientas via Manifiestos JSON.}
+\label{fig:tool-discovery}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{images/18_frontend_modulos.png}
+\caption{Modulos de la SPA React 19 y Relacion con el BFF.}
+\label{fig:frontend-modules}
+\end{figure}
+
+La interfaz web (SPA React 19 servida por el BFF FastAPI) incorpora gobernanza de ciclo de vida en sus vistas principales:
+\begin{itemize}
+    \item \textbf{Sidebar (Gestión y Configuración de Marca)}: Dispone de un modal interactivo para modificar el perfil corporativo y calibrar dinámicamente los parámetros RAG por tenant (\code{similarity_threshold} mediante slider de 0.30 a 0.95, \code{top_k} de 1 a 20 y activación de contraste semántico), además de permitir el archivado (\textit{soft-delete}) de la marca.
+    \item \textbf{Library (Biblioteca de Ideas)}: Provee un modal de edición de ideas con recálculo automático del embedding de 768 dimensiones en pgvector, confirmación de eliminación con advertencia de inmutabilidad (bloqueo ante copias publicadas) y visualización de estados de ciclo de vida (\code{approved}, \code{draft}, \code{archived}).
+    \item \textbf{Publications y Results}: Incorporan insignias visuales de inmutabilidad (\code{Lock Inmutable}) cuando las variantes han sido despachadas o programadas en Postiz, imposibilitando su edición o borrado.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{images/09_bdi_flujo.png}
+\caption{Lectura Analitica BDI del Ciclo de Ejecucion y Auto-Reparacion.}
+\label{fig:bdi-flow}
+\end{figure}
+
+\section{Vista de Ejecucion (Procesos)}\label{section-runtime-view}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{images/04_secuencia_pipeline.png}
+\caption{Diagrama de Secuencia AUML del Pipeline de Ejecucion.}
+\label{fig:auml-pipeline}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{images/17_vincular_canal_postiz.png}
+\caption{Secuencia de Vinculacion de Canales Postiz a una Marca.}
+\label{fig:link-channel}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{images/11_secuencia_publicacion_postiz.png}
+\caption{Secuencia de Preparacion, Aprobacion y Entrega hacia Postiz.}
+\label{fig:postiz-sequence}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{images/19_estados_publicacion.png}
+\caption{Maquina de Estados Finita de una Publicacion.}
+\label{fig:pub-states}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/12_secuencia_fallo_recuperacion.png}
+\caption{Recuperacion ante Fallos y Reanudacion Idempotente con Checkpoints.}
+\label{fig:recovery}
+\end{figure}
+
+\section{Vista de Despliegue (C4 Nivel 4)}\label{section-deployment-view}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.98\textwidth]{images/05_despliegue.png}
+\caption{Vista de Despliegue de Infraestructura C4 Nivel 4.}
+\label{fig:deployment}
+\end{figure}
+
+\section{Conceptos Transversales (Cross-cutting)}\label{section-concepts}
+
+\subsection{Modelo de Datos, Ciclo de Vida y Migración 006}
+El sistema articula su persistencia durable mediante PostgreSQL 16 y la extensión \code{pgvector}. La evolución del esquema se materializa a través de seis migraciones canónicas:
+\begin{itemize}
+    \item \code{001_multi_tenant_foundation.sql} a \code{005_brand_scoped_idea_batches.sql}: Establecen el aislamiento por organización y marca, el catálogo de conocimiento documental y canales, variantes de plataforma e idempotencia de lotes.
+    \item \code{006_crud_and_lifecycle_states.sql}: Formaliza la máquina de estados de contenido, inmutabilidad y parametrización RAG:
+    \begin{itemize}
+        \item \code{ideas_generadas}: Incorpora \code{status VARCHAR(32) DEFAULT 'approved' NOT NULL}, marcas temporales \code{updated_at} y \code{deleted_at}, y el índice parcial \code{idx_ideas_active_brand_status (brand_id, status) WHERE status != 'archived'}.
+        \item \code{publicaciones_generadas}: Incorpora \code{status VARCHAR(32) DEFAULT 'draft' NOT NULL}, marcas temporales \code{updated_at} y \code{deleted_at}, y el índice parcial \code{idx_publications_active_brand_status (brand_id, status) WHERE status != 'archived'}.
+        \item \code{brands}: Incorpora \code{rag_config JSONB DEFAULT '{}'}, permitiendo parametrizar por tenant el umbral de similitud coseno (\code{similarity_threshold}), límite de recuerdos RAG (\code{top_k}) y la activación de contraste semántico.
+    \end{itemize}
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{images/06_modelo_datos.png}
+\caption{Modelo de Datos Entidad-Relacion en PostgreSQL 16 con Ciclo de Vida y Estados (Migración 006).}
+\label{fig:data-model}
+\end{figure}
+
+\subsection{Gobernanza RAG, Sincronización Vectorial e Inmutabilidad (HTTP 409)}
+La recuperación semántica y el ciclo de vida del contenido operan bajo cuatro principios transversales de arquitectura:
+\begin{enumerate}
+    \item \textbf{Aislamiento y exclusión estricta de registros archivados}: Las búsquedas semánticas privadas en \code{tool-rag} (\code{search_similar_ideas} y \code{search_similar_content}) aplican un doble filtro obligatorio: \texttt{brand\_id = \%s} y \code{COALESCE(status, 'approved') != 'archived'}. Esto impide que contenidos eliminados lógicamente o descartados afecten el contexto semántico de futuras generaciones.
+    \item \textbf{Sincronización vectorial continua}: Cualquier modificación textual sobre ideas (\code{PUT /ideas/{id}}) o publicaciones (\code{PUT /publicaciones/{pub_id}}) desencadena síncronamente una llamada a \code{POST /v1/embeddings} del LLM Gateway, recalculando el vector normalizado de 768 componentes y persistiendo \code{embedding} y \code{updated_at = NOW()}.
+    \item \textbf{Inmutabilidad estricta y conflicto de ciclo de vida (HTTP 409)}:
+    \begin{itemize}
+        \item Las publicaciones despachadas a redes sociales (\code{status IN ('sent_to_postiz', 'published')}) son estrictamente inmutables; cualquier solicitud \code{PUT} o \code{DELETE} es bloqueada con \code{HTTP 409 Conflict} (\code{LifecycleConflictError}).
+        \item Una idea no puede ser eliminada si posee publicaciones ya despachadas a Postiz, respondiendo con \code{HTTP 409 Conflict} para proteger la integridad de la auditoría y evitar registros huérfanos.
+        \item La eliminación lógica de una idea sin publicaciones despachadas archiva la idea (\code{status = 'archived'}) y propaga el archivado en cascada a todos sus borradores derivados (\code{draft}).
+    \end{itemize}
+    \item \textbf{Configuración dinámica de RAG por Marca}: El motor vectorial adapta dinámicamente sus hiperparámetros a partir de \code{brands.rag_config}, permitiendo que marcas con requerimientos específicos calibren de forma flexible el umbral de similitud de coseno y la profundidad de memoria.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{images/10_rag_multi_tenant.png}
+\caption{Flujo de Recuperacion y Persistencia RAG Multi-Tenant con Exclusión de Archivados y Sincronización Vectorial.}
+\label{fig:rag-flow}
+\end{figure}
+
+\section{Decisiones de Diseno (ADRs)}\label{section-design-decisions}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{images/15_architecture-decisions.png}
+\caption{Mapa de Decisiones de Arquitectura (ADR) y Componentes Afectados.}
+\label{fig:adr-map}
+\end{figure}
+
+\section{Requerimientos de Calidad}\label{section-quality-scenarios}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.90\textwidth]{images/16_quality_scenarios.png}
+\caption{Resumen Visual de Escenarios de Calidad ATAM.}
+\label{fig:quality-scenarios}
+\end{figure}
+
+\section{Riesgos y deuda tecnica}\label{section-technical-risks}
+
+\subsection{Matriz de Trazabilidad Oficial Extendida (Anexo A SRS)}
+\begin{longtable}{p{1.5cm}p{4.2cm}p{3.8cm}p{2.5cm}p{3.0cm}}
+\toprule
+Cuello & Descripcion y Criticidad & Requisitos Funcionales & Interfaces & Estado en PoC \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{R1} & Bucle edicion/retrabajo (IC=15/15) & REQ-F11 a REQ-F20 & REQ-IE03, IE07, IE10 & Diseno Completo / Estructural PoC \\
+\textbf{R2} & Ineficiencia ideacion (IC=14/15) & REQ-F01 a REQ-F10 & REQ-IE01, IE02, IE04 & 100\% Implementado en PoC \\
+\textbf{R3} & Adaptacion multicanal (IC=12/15) & REQ-F21 a REQ-F30 & REQ-IE04, IE05, IE08 & 100\% Implementado en PoC \\
+\end{longtable}
+
+\subsection{Validacion Formal con Stakeholders (Anexo B SRS)}
+Taller de co-creacion de 2 horas con representantes de ITY SAS, equipo creativo y analista de sistemas. 49 requisitos priorizados con MoSCoW: 20 Must Have (40,8\%), 18 Should Have (36,7\%), 11 Could Have (22,5\%) y 0 Won't Have. Aprobacion formal del 93,9\% en sesion inicial y 100\% tras ajustes de redaccion de REQ-F03, REQ-F16 y REQ-NF07, superando el umbral del 90\%.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/13_arquitectura_evolucion.png}
+\caption{Sintesis de la Ruta de Generacion Implementada en la PoC.}
+\label{fig:arch-eval}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{images/14_roadmap_capacidades.png}
+\caption{Roadmap de Evolucion hacia Arquitectura Productiva.}
+\label{fig:arch-roadmap}
+\end{figure}
+
+\section{Glosario}\label{section-glossary}
+\begin{longtable}{p{3.8cm}p{11.2cm}}
+\toprule
+Termino & Definicion Tecnica \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\textbf{ADR} & Architecture Decision Record: documento que formaliza una decision de diseno estructural. \\
+\textbf{ASR} & Automatic Speech Recognition utilizado en REQ-F15 para subtitulos sincronizados SRT. \\
+\textbf{ATAM} & Architecture Tradeoff Analysis Method: marco de evaluacion de compromisos entre atributos de calidad. \\
+\textbf{AUML} & Agent Unified Modeling Language: extension de UML para sistemas multiagente concurrentes. \\
+\textbf{BDI} & Modelo Belief-Desire-Intention que formaliza el comportamiento de agentes deliberativos. \\
+\textbf{BFF} & Backend for Frontend: servicio intermediario adaptado a las necesidades de la SPA web. \\
+\textbf{Checkpoint} & Instantanea del estado de un grafo serializada en Redis bajo un identificador de hilo (\code{thread_id}). \\
+\textbf{Dossier Creativo} & Estructura JSON validada con guion, escenas, gancho, copies y hashtags de una pieza publicitaria. \\
+\textbf{HPA} & Horizontal Pod Autoscaler de Kubernetes para escalar replicas de pods segun carga (REQ-NF05). \\
+\textbf{Human-in-the-Loop} & Patron que impone una compuerta de revision y aprobacion humana antes de ejecutar acciones externas. \\
+\textbf{IC} & Indice de Criticidad utilizado en la Fase 1 para priorizar cuellos de botella (R1=15, R2=14, R3=12). \\
+\textbf{IVFFlat} & Indice de busqueda de vecinos aproximados usado en pgvector para acelerar similitudes vectoriales. \\
+\textbf{LangGraph} & Motor de ejecucion de flujos y grafos deliberativos con checkpoints e interrupciones. \\
+\textbf{LLM Gateway} & Fachada centralizada que administra balanceo, fallback, reintentos y cache de modelos de lenguaje. \\
+\textbf{LUFS} & Loudness Units Full Scale (ITU-R BS.1770) para validar audio entre -16 y -12 LUFS (REQ-F11). \\
+\textbf{LUT} & Look-Up Table utilizada para aplicar gradacion de color en rough cuts (REQ-F13). \\
+\textbf{MoSCoW} & Tecnica de priorizacion: Must have (20), Should have (18), Could have (11), Won't have (0). \\
+\textbf{Ollama} & Motor de inferencia local para ejecucion eficiente de modelos LLM y embeddings en el host. \\
+\textbf{pgvector} & Extension de PostgreSQL para soporte nativo de tipos vectoriales y calculo de distancias semanticas. \\
+\textbf{Postiz} & Plataforma de codigo abierto para la programacion y distribucion de publicaciones en redes sociales. \\
+\textbf{Prompt Injection} & Vector de ataque que inyecta instrucciones maliciosas en los datos para secuestrar el modelo de lenguaje. \\
+\textbf{RAG} & Retrieval-Augmented Generation: recuperacion semantica de documentos para enriquecer prompts de generacion. \\
+\textbf{RedisSaver} & Checkpointer oficial de LangGraph que persiste estados en bases de datos Redis. \\
+\textbf{Rough Cut} & Primer corte de edicion generado automaticamente a partir de plantilla base (REQ-F13). \\
+\textbf{Row-Level Security} & Mecanismo de PostgreSQL para filtrar filas de forma transparente segun el contexto de seguridad. \\
+\textbf{SRS} & Especificacion de Requisitos de Software formalizada bajo IEEE Std 830-1998 emitida el 5/9/2026. \\
+\textbf{STRIDE} & Modelo de categorizacion de amenazas de seguridad cibernetica. \\
+\textbf{TaskStore} & Componente en Redis para administrar el ciclo de vida y agregacion de estados de tareas y publicaciones. \\
+\textbf{Tool Discovery} & Mecanismo dinamico de localizacion e invocacion de herramientas a traves de manifiestos JSON. \\
+\end{longtable}
+
+\begin{thebibliography}{99}
+\bibitem{ieee830} IEEE Computer Society. (1998). \textit{IEEE Std 830-1998: IEEE Recommended Practice for Software Requirements Specifications}. Institute of Electrical and Electronics Engineers.
+\bibitem{iso42010} ISO/IEC/IEEE. (2022). \textit{ISO/IEC/IEEE 42010:2022 Systems and software engineering---Architecture description}. International Organization for Standardization.
+\bibitem{brownc4} Brown, S. (2018--2024). \textit{The C4 model for visualising software architecture}. \url{https://c4model.com/}.
+\bibitem{gaia} Wooldridge, M., Jennings, N. R., \& Kinny, D. (2000). The Gaia methodology for agent-oriented analysis and design. \textit{Autonomous Agents and Multi-Agent Systems, 3}, 285--312.
+\bibitem{aum1} Odell, J., Parunak, H. V. D., \& Bauer, B. (2000). Extending UML for agents. In G. Wagner, Y. Lespérance, \& E. Yu (Eds.), \textit{Agent-Oriented Information Systems Workshop}.
+\bibitem{rao_georgeff} Rao, A. S., \& Georgeff, M. P. (1995). BDI agents: From theory to practice. In \textit{Proceedings of the First International Conference on Multi-Agent Systems}, 312--319.
+\bibitem{atam} Kazman, R., Klein, M., \& Clements, P. (2000). \textit{ATAM: Method for architecture evaluation}. Technical Report CMU/SEI-2000-TR-004, Software Engineering Institute.
+\bibitem{rabbitmq} VMware. (2024). \textit{RabbitMQ Documentation: Reliability Guide}. \url{https://www.rabbitmq.com/docs/reliability}.
+\bibitem{langgraph} LangChain. (2024--2025). \textit{LangGraph documentation: persistence and interrupts}. \url{https://langchain-ai.github.io/langgraph/}.
+\bibitem{pgvector} pgvector contributors. (2024). \textit{pgvector: Open-source vector similarity search for Postgres}. \url{https://github.com/pgvector/pgvector}.
+\bibitem{stride} Microsoft. (2024). \textit{Threat modeling}. Microsoft Security Development Lifecycle. \url{https://learn.microsoft.com/security/engineering/threat-modeling}.
+\end{thebibliography}
+
+\end{document}

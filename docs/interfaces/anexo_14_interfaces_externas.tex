@@ -1,0 +1,382 @@
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{xcolor}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{longtable,booktabs,array}
+\usepackage{calc}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{bookmark}
+\usepackage{hyperref}
+
+\hypersetup{
+  pdftitle={Anexo 14: Especificación de Interfaces Externas (APIs) - Sistema Multiagente ITY SAS},
+  pdfauthor={Alvaro Felipe Lopez Russi - Universidad Católica de Colombia},
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!10},
+  rulecolor=\color{black!25},
+  showstringspaces=false,
+  columns=fullflexible
+}
+
+\title{
+  \vspace{-1.5cm}
+  \textbf{UNIVERSIDAD CATÓLICA DE COLOMBIA}\\[0.3em]
+  \large Facultad de Ingeniería --- Programa de Ingeniería de Sistemas y Computación\\[1.5em]
+  \Large \textbf{DOCUMENTO TÉCNICO FORMAL --- ANEXO 14}\\[0.5em]
+  \huge \textbf{Especificación de Interfaces Externas (APIs)}\\[0.8em]
+  \large Catálogo de Fichas Técnicas de Integración, Justificación Arquitectónica de Postiz para el Agente de Ideación y Publicación, Contratos OpenAPI 3.0 y Guía de Pruebas Postman
+}
+\author{\textbf{Alvaro Felipe Lopez Russi} (Cód. 67000867) \\ \texttt{aflopez67@ucatolica.edu.co} \\[0.5em] \textit{Trabajo de Grado: Prueba de Concepto de Sistema Multiagente en Microservicios}}
+\date{Bogotá D.C., Octubre 2026 --- Versión 1.0}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent El presente documento constituye el \textbf{Anexo 14: Especificación de Interfaces Externas (APIs)}, producto formal de ingeniería de software elaborado en el marco del trabajo de grado para la empresa publicitaria \textbf{ITY SAS}. En él se formalizan los contratos técnicos de comunicación, protocolos de autenticación, políticas de seguridad y modelos de resiliencia para las diez (10) interfaces externas que interactúan con el Sistema Multiagente (MAS) basado en microservicios y contenedores Docker. Se detalla la justificación arquitectónica de la adopción de la plataforma de código abierto \textbf{Postiz} frente a la conexión directa con Meta Business Suite, analizando su rol bidireccional indispensable tanto para el \textbf{Agente de Ideación y Estrategia} (descubrimiento preventivo de canales, ingesta de restricciones técnicas y consulta de engagement histórico) como para el \textbf{Agente de Publicación y Scheduling} (despacho de variantes de copy multicanal, programación temporal UTC y reintentos ante fallas). El documento físico contiene las fichas técnicas resumidas de las diez interfaces, la matriz de trazabilidad frente a los requisitos funcionales del estándar IEEE Std 830-1998 y los cuellos de botella de la Teoría de Restricciones (ToC), así como la documentación del paquete digital adjunto (\texttt{Anexo\_14\_Interfaces.zip}) compuesto por diez especificaciones OpenAPI 3.0.3 en formato YAML y una colección integral de pruebas automatizadas en Postman v2.1.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Control Documental y Metadatos del Anexo}\label{sec:metadatos}
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{5.5cm} p{10cm}}
+\toprule
+\textbf{Atributo} & \textbf{Detalle del Documento Técnico} \\
+\midrule
+\textbf{Identificador del Documento} & \texttt{ITY-MAS-ANX-014} (Catálogo y Especificación de Interfaces Externas) \\
+\textbf{Vinculación con Objetivos} & Cumplimiento formal de \textbf{OE2 (Requisitos de Interfaces - Sec. 5.4 SRS)} y \textbf{OE3 (Arquitectura de Integración)} \\
+\textbf{Estándar de Especificación} & \textbf{OpenAPI Specification (OAS) 3.0.3}, \textbf{IEEE Std 830-1998} e \textbf{ISO/IEC/IEEE 42010:2022} \\
+\textbf{Entorno de Despliegue} & Docker Engine 26+, Docker Compose v2, FastAPI 0.110+, Python 3.11 \\
+\textbf{Artefactos Digitales Adjuntos} & Archivo comprimido \texttt{Anexo\_14\_Interfaces.zip} con 10 contratos OpenAPI YAML y Colección Postman v2.1 \\
+\textbf{Estado de Aprobación} & Revisado y Validado Técnicamente para la Prueba de Concepto \\
+\bottomrule
+\end{tabular}
+\caption{Metadatos de gobernanza del Anexo 14.}
+\end{table}
+
+\section{Introducción y Propósito del Catálogo}\label{sec:intro}
+
+En la ingeniería de sistemas distribuidos y arquitecturas de microservicios orientadas a agentes (AOMS --- \textit{Agent-Oriented MicroServices}), las \textbf{interfaces de comunicación externa (APIs)} constituyen las fronteras formales a través de las cuales los agentes inteligentes perciben el entorno digital y ejecutan acciones sobre los servicios del mundo exterior (Sycara, 2002; Collier et al., 2019).
+
+El catálogo documentado en este anexo persigue tres metas fundamentales:
+\begin{enumerate}[label=\alph*)]
+    \item \textbf{Estandarización de Contratos:} Proveer especificaciones formales legibles por máquinas bajo la norma OpenAPI 3.0.3 para cada servicio externo consumido por la arquitectura.
+    \item \textbf{Desacoplamiento Estricto:} Aislar a los agentes cognitivos de dependencias directas con librerías propietarias o credenciales en texto plano mediante el uso de microservicios de herramientas (\textit{tool services}) y custodia criptográfica en HashiCorp Vault.
+    \item \textbf{Justificación de la Capa de Publicación:} Demostrar matemáticamente y a nivel de arquitectura la ventaja operativa de integrar Postiz frente al desarrollo fragmentado sobre APIs directas de Meta, TikTok y YouTube.
+\end{enumerate}
+
+\newpage
+\section{Catálogo y Fichas Técnicas Resumidas de las 10 Interfaces}\label{sec:fichas}
+
+A continuación se presentan las fichas técnicas normalizadas de las diez interfaces externas del sistema.
+
+\subsection{Ficha Técnica IE-01: API de TikTok Research}\label{sec:ie01}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-01} --- \textbf{TikTok Research API v2} \\
+\textbf{Proveedor Oficial} & ByteDance Ltd. / TikTok for Developers \\
+\textbf{Agente Asociado} & \textbf{Agente 1: Ideación y Estrategia} (REQ-F01, REQ-F02) \\
+\textbf{Rol en el Proceso} & Minería automatizada de 20 audios en tendencia, retos virales y patrones de edición populares en Colombia. Mitiga el cuello de botella $R_2$ ($IC=14/15$). \\
+\textbf{Protocolo de Transporte} & HTTPS / REST --- Codificación: JSON UTF-8 \\
+\textbf{Protocolo de Autenticación} & \textbf{OAuth 2.0 (Client Credentials Flow)} con rotación de tokens Bearer cada 2 horas custodiados en Vault. \\
+\textbf{Endpoint Principal} & \texttt{POST https://open.tiktokapis.com/v2/research/video/query/} \\
+\textbf{Payload de Ejemplo} & \texttt{\{"query": \{"and": [\{"operation": "EQ", "field\_name": "region\_code", "field\_values": ["CO"]\}]\}, "max\_count": 20\}} \\
+\textbf{Latencia / SLA} & Percentil 95: $t \le 1.200$ ms. Implementa Circuit Breaker con fallback en Redis (24h). \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-01 TikTok Research API.}
+\end{table}
+
+\subsection{Ficha Técnica IE-02: API de Instagram Graph (Meta)}\label{sec:ie02}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-02} --- \textbf{Instagram Graph API (Meta Business Suite v21.0)} \\
+\textbf{Proveedor Oficial} & Meta Platforms Inc. \\
+\textbf{Agente Asociado} & \textbf{Agente 1: Ideación} (REQ-F04, REQ-F05) y \textbf{Agente 3: Publicación} (REQ-F21) \\
+\textbf{Rol en el Proceso} & Extracción de métricas históricas de audiencia (alcance, engagement, tasa de guardado) para retroalimentar la ideación y validación del estado comercial de la cuenta. \\
+\textbf{Protocolo de Transporte} & HTTPS / REST --- JSON \\
+\textbf{Protocolo de Autenticación} & \textbf{User Access Token de Larga Duración (60 días)} con permisos \texttt{instagram\_manage\_insights} y \texttt{pages\_read\_engagement}. \\
+\textbf{Endpoint Principal} & \texttt{GET https://graph.facebook.com/v21.0/\{ig-user-id\}/insights?metric=reach,impressions,profile\_views} \\
+\textbf{Manejo de Errores} & Captura de excepción \texttt{OAuthException} (códigos 463/467) con alerta inmediata al canal HITL vía IE-07. \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-02 Instagram Graph API.}
+\end{table}
+
+\subsection{Ficha Técnica IE-03: Motor Multimedia FFmpeg / OpenCV}\label{sec:ie03}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-03} --- \textbf{Motor Local de Control de Calidad de Video (FFmpeg 6.1 / OpenCV 4.9)} \\
+\textbf{Proveedor Oficial} & Software Libre / FFmpeg Project \& OpenCV Foundation \\
+\textbf{Agente Asociado} & \textbf{Agente 2: Control de Calidad y Edición Asistida} (REQ-F11, REQ-F13, REQ-F15, REQ-F18) \\
+\textbf{Rol en el Proceso} & Validación determinista del render final: relación de aspecto 9:16 ($1080 \times 1920$), duración ($<90$s), normalización de audio ($-16$ a $-12$ LUFS según ITU-R BS.1770) y presencia de isotipo en primeros 3 segundos. Ataca la restricción $R_1$. \\
+\textbf{Protocolo de Transporte} & Contenedor Docker local / Subprocess CLI y enlace C++/Python (\texttt{ffmpeg-python}, \texttt{cv2}). \\
+\textbf{Protocolo de Autenticación} & Ejecución en espacio de nombres aislado (Sandbox en Docker), sin salida a internet requerida. \\
+\textbf{Comandos Clave} & \texttt{ffprobe -v error -select\_streams v:0 -show\_entries stream=width,height,duration -of json} \\
+\textbf{SLA de Ejecución} & Inspección completa de video de 60 segundos en $t \le 15$ segundos. \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-03 FFmpeg / OpenCV.}
+\end{table}
+
+\subsection{Ficha Técnica IE-04: Pasarela de Modelos de Lenguaje (LLM Gateway)}\label{sec:ie04}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-04} --- \textbf{LLM Gateway Service (Microservicio Interno :8003)} \\
+\textbf{Proveedor Oficial} & ITY SAS con enrutamiento multiproveedor (Ollama local Llama 3 / OpenAI GPT-4o / Groq) \\
+\textbf{Agente Asociado} & \textbf{Ambos Agentes:} Agente 1 (Ideación) y Agente 3 (Publicación) \\
+\textbf{Rol en el Proceso} & Estructuración cognitiva de briefs a esquemas Pydantic, extracción de 5 palabras clave, análisis de tono y redacción de 3 variantes de copy diferenciadas. \\
+\textbf{Protocolo de Transporte} & HTTP/1.1 REST --- JSON UTF-8 \\
+\textbf{Protocolo de Autenticación} & Token interno Bearer en encabezado \texttt{Authorization} y claves API upstream custodiadas en Vault. \\
+\textbf{Endpoints Principales} & \texttt{POST http://llm-gateway:8003/v1/generate} y \texttt{POST http://llm-gateway:8003/v1/embeddings} \\
+\textbf{Resiliencia} & Caché Redis (TTL 1h para texto, 24h para embeddings) y degradación a modelo local SLM ante fallos WAN. \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-04 LLM Gateway Service.}
+\end{table}
+
+\subsection{Ficha Técnica IE-05: API de Metricool REST (Fallback)}\label{sec:ie05}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-05} --- \textbf{Metricool Planner REST API v1} \\
+\textbf{Proveedor Oficial} & D rigid Technologies S.L. / Metricool \\
+\textbf{Agente Asociado} & \textbf{Agente 3: Publicación y Scheduling} (REQ-F23, REQ-F30) \\
+\textbf{Rol en el Proceso} & Mecanismo secundario de contingencia (Fallback) para la programación de copys en caso de indisponibilidad temporal del clúster de Postiz. Mitiga el cuello $R_3$. \\
+\textbf{Protocolo de Transporte} & HTTPS / REST --- JSON \\
+\textbf{Protocolo de Autenticación} & Encabezado propietario de seguridad \texttt{X-MC-TOKEN} con token comercial cifrado en Vault. \\
+\textbf{Endpoint Principal} & \texttt{POST https://app.metricool.com/api/v1/planner/posts} \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-05 Metricool REST API.}
+\end{table}
+
+\subsection{Ficha Técnica IE-06: Gestión de Secretos (HashiCorp Vault)}\label{sec:ie06}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-06} --- \textbf{HashiCorp Vault Key-Value Secrets Engine v2} \\
+\textbf{Proveedor Oficial} & HashiCorp Inc. \\
+\textbf{Agente Asociado} & \textbf{Infraestructura Transversal del Sistema Multiagente} (NFR-04, NFR-09) \\
+\textbf{Rol en el Proceso} & Custodia centralizada, inyección dinámica y rotación de credenciales sensibles (API Keys de redes, contraseñas de bases de datos y tokens JWT). Ningún agente almacena secretos en código o variables planas. \\
+\textbf{Protocolo de Transporte} & HTTPS / REST --- JSON \\
+\textbf{Protocolo de Autenticación} & \textbf{Token de Servicio (\texttt{X-Vault-Token})} o AppRole restringido por ID de marca bajo el Principio de Mínimo Privilegio. \\
+\textbf{Endpoint Principal} & \texttt{GET http://vault:8200/v1/secret/data/brands/\{brand\_id\}/\{service\_name\}} \\
+\textbf{Cifrado en Reposo} & \textbf{AES-256-GCM} en backend persistente. Cumplimiento estricto de la Ley 1581 de 2012. \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-06 HashiCorp Vault Secrets Engine.}
+\end{table}
+
+\subsection{Ficha Técnica IE-07: Notificaciones Operativas (WhatsApp / Slack)}\label{sec:ie07}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-07} --- \textbf{WhatsApp Business Cloud API (Meta) \& Slack Incoming Webhooks} \\
+\textbf{Proveedor Oficial} & Meta Platforms Inc. / Slack Technologies \\
+\textbf{Agente Asociado} & \textbf{Agente 2: Edición} (REQ-F19) y \textbf{Agente 3: Publicación} (REQ-F30) \\
+\textbf{Rol en el Proceso} & Enlace operativo para el paradigma Human-in-the-Loop (HITL): alerta al Director Creativo ante rechazos en el control de calidad de video y confirma al Community Manager la programación exitosa de contenidos. \\
+\textbf{Protocolo de Transporte} & HTTPS / REST --- JSON \\
+\textbf{Protocolo de Autenticación} & Bearer Token OAuth 2.0 (WhatsApp Cloud) y Webhook Token URL (Slack). \\
+\textbf{Endpoint Principal} & \texttt{POST https://graph.facebook.com/v21.0/\{phone-id\}/messages} \\
+\textbf{SLA de Alertamiento} & Entrega del mensaje en $t \le 2$ segundos tras la emisión del evento en RabbitMQ. \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-07 WhatsApp Business / Slack Webhooks.}
+\end{table}
+
+\subsection{Ficha Técnica IE-08: API de YouTube Data v3}\label{sec:ie08}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-08} --- \textbf{Google YouTube Data API v3} \\
+\textbf{Proveedor Oficial} & Google LLC / Alphabet Inc. \\
+\textbf{Agente Asociado} & \textbf{Agente 3: Publicación y Scheduling} (REQ-F21, REQ-F23) \\
+\textbf{Rol en el Proceso} & Despliegue de contenidos audiovisuales en formato 16:9 y verticales (Shorts), parametrización de metadatos SEO y monetización. \\
+\textbf{Protocolo de Transporte} & HTTPS / REST Multipart Upload --- JSON \\
+\textbf{Protocolo de Autenticación} & \textbf{OAuth 2.0 (Google Identity)} con alcance \texttt{https://www.googleapis.com/auth/youtube.upload}. \\
+\textbf{Endpoint Principal} & \texttt{POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable\&part=snippet,status} \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-08 Google YouTube Data API v3.}
+\end{table}
+
+\subsection{Ficha Técnica IE-09: Sistema de Monitoreo Prometheus}\label{sec:ie09}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-09} --- \textbf{Prometheus Metrics Exporter API} \\
+\textbf{Proveedor Oficial} & Cloud Native Computing Foundation (CNCF) \\
+\textbf{Agente Asociado} & \textbf{Monitoreo Global del Ecosistema Multiagente} (NFR-03, NFR-05) \\
+\textbf{Rol en el Proceso} & Recolección de telemetría de rendimiento: latencias p50/p95 por agente, tasa de éxito de tareas, uso de memoria RAM/CPU en Docker y profundidad de colas en RabbitMQ. \\
+\textbf{Protocolo de Transporte} & HTTP / Text Metrics Format --- Scraping cada 15 segundos \\
+\textbf{Endpoint Principal} & \texttt{GET http://\{service-host\}:\{port\}/metrics} \\
+\textbf{Visualización} & Cuadros de mando unificados en \textbf{Grafana Dashboards}. \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-09 Prometheus Metrics Exporter.}
+\end{table}
+
+\subsection{Ficha Técnica IE-10: Almacenamiento de Objetos S3 (MinIO)}\label{sec:ie10}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{4.5cm} p{11cm}}
+\toprule
+\textbf{Parámetro Técnico} & \textbf{Especificación de la Interfaz} \\
+\midrule
+\textbf{Identificador / Nombre} & \texttt{IE-10} --- \textbf{MinIO S3-Compatible Distributed Object Storage} \\
+\textbf{Proveedor Oficial} & MinIO Inc. / Protocolo Amazon Web Services S3 \\
+\textbf{Agente Asociado} & \textbf{Agente 2: Edición} (REQ-F17) y \textbf{Agente 3: Publicación} (REQ-F27) \\
+\textbf{Rol en el Proceso} & Almacenamiento distribuido de activos multimedia pesados (renders .mp4, proxies de revisión liviana, portadas e imágenes) con generación de URLs presignadas de vigencia temporal. \\
+\textbf{Protocolo de Transporte} & HTTP/HTTPS --- AWS Signature Version 4 (HMAC-SHA256) \\
+\textbf{Endpoints Principales} & \texttt{PUT http://minio:9000/\{bucket\}/\{object\}} y \texttt{GET ...?presigned=true} \\
+\textbf{Organización} & Buckets aislados: \texttt{ity-media/raw/}, \texttt{ity-media/renders/}, \texttt{ity-media/proxies/} \\
+\bottomrule
+\end{tabular}
+\caption{Ficha técnica resumida: IE-10 MinIO S3 Object Storage.}
+\end{table}
+
+\newpage
+\section{Especificación y Justificación Exhaustiva de Postiz en la Arquitectura}\label{sec:postiz}
+
+\subsection{Justificación Técnica: ¿Por qué Postiz frente a la Integración Directa con Meta Suite?}\label{sec:postiz-just}
+
+Durante el levantamiento del diagnóstico operativo (Capítulos 2 y 3), se analizó la posibilidad de integrar los agentes directamente con las APIs propietarias de las redes sociales. Sin embargo, un análisis técnico formal evidenció que esta alternativa acarreaba cinco riesgos operativos críticos para una PYME publicitaria como ITY SAS:
+
+\begin{enumerate}
+    \item \textbf{La Barrera de la Verificación Empresarial de Meta (Meta Business Verification):} Obtener permisos de publicación en producción (\texttt{instagram\_content\_publish}) requiere auditorías legales corporativas en Estados Unidos (presentación de RUT, extractos bancarios notariados y contratos de constitución), proceso que demora de 2 a 4 meses y que ante inconsistencias documentales inhabilita las cuentas comerciales.
+    \item \textbf{El Síndrome de la Sesión Inválida (Caducidad Forzosa de Tokens):} Los tokens de usuario de Meta expiran forzosamente a los 60 días o se invalidan instantáneamente cuando los clientes modifican su clave personal o activan 2FA. En el proceso As-Is, esto causaba la Desviación Crítica UP-5. Postiz neutraliza esta falla mediante un demonio en segundo plano que renueva automáticamente los tokens OAuth sin interrumpir la operación.
+    \item \textbf{Explosión Combinatoria de SDKs Heterogéneos:} Conectarse individualmente a Meta, TikTok, YouTube y LinkedIn obligaría al sistema multiagente a mantener cuatro pilas de software divergentes, incrementando la fragilidad del código y los tiempos de mantenimiento.
+    \item \textbf{Soberanía y Código Abierto (Docker):} Postiz es una solución de código abierto alojada en el propio entorno de la agencia (\texttt{postiz/postiz-docker-compose}), suprimiendo tarifas recurrentes por usuario (ahorrando aproximadamente \$99 USD/mes en software comercial SaaS).
+    \item \textbf{Garantía Legal bajo la Ley 1581 de 2012:} El autohospedaje garantiza que los tokens y contenidos no residan en servidores de terceros en jurisdicciones no compatibles con el régimen colombiano de protección de datos personales.
+\end{enumerate}
+
+\subsection{Interacción de Postiz con Ambos Agentes}\label{sec:postiz-agentes}
+
+A diferencia de los enfoques comerciales donde las plataformas de publicación solo se utilizan en el paso final, en el Sistema Multiagente de ITY SAS \textbf{Postiz interviene como una herramienta activa para ambos agentes}:
+
+\subsubsection{Rol de Postiz para el Agente 1: Ideación y Estrategia (Ideator)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Descubrimiento Preventivo de Canales:} Antes de redactar propuestas creativas, el Agente de Ideación invoca \texttt{GET /integrations} a través del microservicio \texttt{tool-postiz}. Si la marca evaluada carece de canal en TikTok, el agente restringe su modelo generativo a formatos visuales de Instagram o artículos profesionales de LinkedIn, evitando proponer ideas inviables.
+    \item \textbf{Ingesta Dinámica de Restricciones Técnicas:} Consulta las limitaciones vigentes de cada canal (caracteres máximos en el pie de foto, duraciones permitidas de video) para inyectarlas como restricciones duras en el prompt del LLM Gateway.
+    \item \textbf{Mitigación de la Fatiga Publicitaria:} Lee el historial de publicaciones pasadas para identificar qué ganchos creativos han sido sobreutilizados en los últimos 35 días, garantizando frescura temática.
+\end{itemize}
+
+\subsubsection{Rol de Postiz para el Agente 3: Publicación y Scheduling (Publisher)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Despacho de Variantes de Copy Multicanal:} Envía un único payload estructurado conteniendo textos personalizados para cada red social mediante el atributo \texttt{contents: \{instagram: "...", tiktok: "...", linkedin: "..."\}}.
+    \item \textbf{Programación Temporal de Precisión UTC:} Calcula los picos históricos de interacción de la audiencia y envía la marca temporal normalizada (\texttt{publish\_at: "2026-08-25T18:00:00Z"}), delegando la ejecución a la cola interna de Postiz.
+    \item \textbf{Soporte de Modalidades Flexibles:} Permite operar en modo borrador (\texttt{mode: "draft"}) para cuentas en fase de calibración supervisadas por humanos, o en modo programado (\texttt{mode: "schedule"}) para automatización desatendida.
+\end{itemize}
+
+\subsection{Capa de Aislamiento: Microservicio Interno \texttt{tool-postiz}}\label{sec:tool-postiz}
+
+Para salvaguardar la confidencialidad entre marcas competidoras, el acceso a Postiz está mediado por el microservicio \texttt{tool-postiz} (:8016), el cual valida cada petición contra la tabla relacional \texttt{brand\_channels} en PostgreSQL. Si un agente solicita publicar en un canal que no pertenece al \texttt{brand\_id} de la tarea en curso, la pasarela bloquea la transacción de inmediato, impidiendo publicaciones cruzadas accidentales.
+
+\newpage
+\section{Matriz de Trazabilidad Integral}\label{sec:trazabilidad}
+
+\begin{table}[h!]
+\centering
+\scriptsize
+\begin{tabular}{c p{3.2cm} p{2.8cm} p{2.8cm} p{2.2cm} c}
+\toprule
+\textbf{ID} & \textbf{Nombre de Interfaz} & \textbf{Agente Responsable} & \textbf{Requisitos IEEE 830} & \textbf{Restricción ToC} & \textbf{Cobertura} \\
+\midrule
+\textbf{IE-01} & TikTok Research API & Agente Ideación & REQ-F01, REQ-F02 & $R_2$ (Ideación, $14/15$) & $100\%$ \\
+\textbf{IE-02} & Instagram Graph API & Ideación y Publ. & REQ-F04, REQ-F05, REQ-F21 & $R_2$ e $R_3$ & $100\%$ \\
+\textbf{IE-03} & Motor FFmpeg / OpenCV & Agente Edición/QC & REQ-F11, REQ-F13, REQ-F15, REQ-F18 & $R_1$ (Edición, $15/15$) & $100\%$ \\
+\textbf{IE-04} & LLM Gateway Service & Ambos Agentes & REQ-F02, REQ-F06, REQ-F22, REQ-F28 & $R_1, R_2, R_3$ & Transversal \\
+\textbf{IE-05} & Metricool REST API & Agente Publicación & REQ-F23, REQ-F30 & $R_3$ (Publicación) & Contingencia \\
+\textbf{IE-06} & HashiCorp Vault API & Infraestructura & REQ-F30, NFR-04, NFR-09 & Transversal (Seguridad) & $100\%$ \\
+\textbf{IE-07} & WhatsApp / Slack API & Edición y Publicación & REQ-F19, REQ-F30, NFR-06 & $R_1$ y $R_4$ (Alertas HITL) & $100\%$ \\
+\textbf{IE-08} & YouTube Data API v3 & Agente Publicación & REQ-F21, REQ-F23 & $R_3$ (Video 16:9) & $100\%$ \\
+\textbf{IE-09} & Prometheus Exporter & Observabilidad & NFR-03, NFR-05 & Control de Capacidad & $100\%$ \\
+\textbf{IE-10} & MinIO S3 Storage & Edición y Publicación & REQ-F17, REQ-F27, NFR-01 & $R_1$ y $R_3$ (Almacenamiento) & $100\%$ \\
+\bottomrule
+\end{tabular}
+\caption{Matriz de trazabilidad: Interfaces vs Requisitos IEEE 830 vs Restricciones ToC.}
+\end{table}
+
+\section{Estructura del Paquete Digital y Colección de Postman}\label{sec:postman}
+
+El paquete digital complementario \texttt{Anexo\_14\_Interfaces.zip} adjunto a esta entrega física contiene:
+
+\begin{enumerate}
+    \item \textbf{Directorio \texttt{openapi/}:} Diez especificaciones formales OpenAPI 3.0.3 en formato YAML que definen exhaustivamente las firmas de los endpoints, tipos de datos Pydantic, respuestas de error y esquemas de autenticación.
+    \item \textbf{Directorio \texttt{postman/}:}
+    \begin{itemize}
+        \item \texttt{ITY\_SAS\_Interfaces\_Externas.postman\_collection.json}: Colección completa con 4 carpetas operativas conteniendo peticiones reales, encabezados parametrizados y scripts de prueba para certificar los códigos HTTP \texttt{200 OK} y esquemas JSON.
+        \item \texttt{ITY\_SAS\_Environment.postman\_environment.json}: Archivo de variables de entorno para pruebas locales sobre Docker (\texttt{postiz\_api\_url}, \texttt{llm\_gateway\_url}, \texttt{vault\_addr}, etc.).
+    \end{itemize}
+\end{enumerate}
+
+\begin{center}
+\vspace{1cm}
+\textbf{UNIVERSIDAD CATÓLICA DE COLOMBIA --- FACULTAD DE INGENIERÍA}\\
+\textit{Bogotá D.C., Colombia --- 2026}
+\end{center}
+
+\end{document}

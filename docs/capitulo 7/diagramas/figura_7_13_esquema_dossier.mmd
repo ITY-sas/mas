@@ -1,0 +1,57 @@
+classDiagram
+    class DossierCreativo {
+        +string title
+        +string content_type ("reel" | "post")
+        +string concept
+        +string objective
+        +string audience
+        +string key_message
+        +string format
+        +string cta
+        +string why_it_works
+        +list deliverables
+        +int brand_id
+    }
+
+    class ReelSpecification {
+        +int duration_seconds
+        +list~SceneScript~ script
+        +list~CameraShot~ camera
+        +string performance_direction
+        +string location_and_art_direction
+        +string audio
+        +string editing_notes
+    }
+
+    class SceneScript {
+        +int scene
+        +int duration_seconds
+        +string visual
+        +string action
+        +string dialogue_or_voiceover
+        +string on_screen_text
+    }
+
+    class CameraShot {
+        +int scene
+        +string shot
+        +string angle
+        +string movement
+        +string framing
+    }
+
+    class PostSpecification {
+        +string visual_concept
+        +string composition
+        +string image_direction
+        +string text_on_asset
+        +string caption_direction
+        +list~string~ carousel_slides
+        +string alt_text
+        +string platform_adaptations
+    }
+
+    DossierCreativo <|-- ReelSpecification : cuando content_type == "reel"
+    DossierCreativo <|-- PostSpecification : cuando content_type == "post"
+    ReelSpecification *-- SceneScript : 1..*
+    ReelSpecification *-- CameraShot : 1..*

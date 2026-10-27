@@ -1,0 +1,44 @@
+graph LR
+    subgraph Backlog["1. Backlog del Producto"]
+        B1["H01: Configuración de Monorepo y Docker"]
+        B2["H02: Modelo de Datos Relacional y pgvector"]
+        B3["H03: Tool Services Atómicos y Discovery"]
+        B4["H04: LLM Gateway con Resiliencia"]
+        B5["H05: Agente de Ideación y Validación"]
+        B6["H06: Agente de Publicación y Postiz"]
+        B7["H07: Supervisor Stateless LangGraph"]
+        B8["H08: Frontend Backoffice SPA + BFF"]
+        B9["H09: Suite de Pruebas Unit/Integ/Perf"]
+        B10["H10: Simulación y Recolección de Métricas"]
+    end
+
+    subgraph ToDo["2. Por Hacer (Sprint Plan)"]
+        TD1["Refactor de Conectores Oficiales"]
+        TD2["Migración a Autenticación OAuth2 / JWT"]
+    end
+
+    subgraph InProgress["3. En Progreso"]
+        IP1["Pruebas de Carga Sostenida E2E"]
+    end
+
+    subgraph InReview["4. En Revisión (CI / Tests)"]
+        IR1["Validación con Stakeholders ITY SAS"]
+    end
+
+    subgraph Done["5. Hecho (Completado en PoC)"]
+        D1["Docker Compose 14 Servicios Backend"]
+        D2["Migraciones 001 a 005 en PostgreSQL"]
+        D3["7 Tool Services + Envelope Unificado"]
+        D4["LLM Gateway (Balanceo, Fallback, Caché)"]
+        D5["Grafo de Ideación + Reparación JSON"]
+        D6["Grafo de Publicación + Variantes"]
+        D7["Runtime Supervisor + RedisSaver"]
+        D8["BFF FastAPI + SPA React"]
+        D9["Suite pytest (178 unitarias en verde)"]
+        D10["5 Escenarios de Simulación Ejecutados"]
+    end
+
+    Backlog -.-> ToDo
+    ToDo -.-> InProgress
+    InProgress -.-> InReview
+    InReview -.-> Done

@@ -40,7 +40,11 @@ Desktop.ini
 # Archivos con backtick (esqueletos no oficiales)
 `*
 
-docs/*
+docs/*.pdf
+docs/**/*.pdf
+docs/**/*.png
+!docs/**/*.md
+!docs/*.md
 
 # Local credentials and environment overrides
 .env

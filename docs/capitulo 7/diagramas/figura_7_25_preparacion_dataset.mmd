@@ -1,0 +1,17 @@
+graph LR
+    S1["1. Recolección de Datos Históricos\n(Briefs reales de campañas en ITY SAS)"]
+    S2["2. Anonimización y Privacidad\n(Eliminación de PII, nombres de clientes reales,\nmarcas sustituidas por EcoBrand, TechStart, FitLife)"]
+    S3["3. Curaduría y Normalización\n(Estandarización de objetivos, audiencias,\npilares de marca, y formatos Reel / Post)"]
+    S4["4. Inyección Sintética de Esquinas\n(Briefs incompletos, briefs con caracteres especiales,\nsimulaciones de contingencia)"]
+    S5["5. Carga Automatizada\n(seed_data.py + DDL migraciones + pgvector)"]
+
+    S1 --> S2
+    S2 --> S3
+    S3 --> S4
+    S4 --> S5
+
+    style S1 fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style S2 fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    style S3 fill:#fff8e1,stroke:#fbc02d,stroke-width:2px
+    style S4 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style S5 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px

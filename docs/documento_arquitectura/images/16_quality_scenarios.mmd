@@ -1,0 +1,7 @@
+flowchart LR
+    stimulus["Estímulo arquitectónico"] --> response["Respuesta esperada"] --> measure["Medida / verificación"]
+    fail["RabbitMQ no disponible"] --> retry["Consumidores reintentan; tarea observable"] --> test_fail["Test de integración bajo caída<br/>pendiente"]
+    redelivery["Agente recibe mensaje duplicado"] --> idempotent["Lee checkpoint y no duplica salida"] --> test_redelivery["Tests del agent_runner<br/>unitarios"]
+    tenant["Brief con brand_id"] --> scoped["RAG filtra la marca en SQL"] --> test_tenant["test_rag_multitenant<br/>unitario"]
+    model["Proveedor LLM no responde"] --> fallback["Gateway reintenta/fallback"] --> test_model["Unit tests del gateway<br/>E2E multi-proveedor pendiente"]
+    load["Pipeline con 2 generaciones"] --> latency["Completar dentro del objetivo P05"] --> test_load["Plan: <120 s; resultado medido<br/>no disponible en esta revisión"]

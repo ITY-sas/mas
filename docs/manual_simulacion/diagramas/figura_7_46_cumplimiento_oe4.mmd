@@ -1,0 +1,25 @@
+graph LR
+    subgraph Comprometido["Compromiso Enunciado OE4"]
+        C1["Dos agentes autónomos funcionales"]
+        C2["Entorno basado en contenedores reproducible"]
+        C3["Simulación con datos históricos / sintéticos"]
+        C4["Demostración de viabilidad técnica"]
+        C5["Evaluación de reducción de cuellos de botella"]
+    end
+
+    subgraph Entregado["Entregable Materializado en Capítulo 7"]
+        E1["Agente Ideación (Dossier Reel/Post) + Agente Publicación (Postiz)\nDesacoplados en microservicios LangGraph independientes"]
+        E2["docker-compose.yml con 14 contenedores backend + BFF SPA React\nPostgreSQL, Redis Stack, RabbitMQ, Gateway, 7 Tools"]
+        E3["Dataset de 45 briefs curados y anonimizados (EcoBrand, TechStart, FitLife)\n5 escenarios de estrés, fallo, sobrecarga y multi-marca"]
+        E4["178 pruebas unitarias en verde, integración E2E validada,\nresiliencia probada con fallo de red y fallback de LLM"]
+        E5["Reducción del 98.8% en tiempo de ciclo (4.2h a 3 min),\nretención editorial y eliminación del retrabajo"]
+    end
+
+    C1 ==>|100% Cumplido| E1
+    C2 ==>|100% Cumplido| E2
+    C3 ==>|100% Cumplido| E3
+    C4 ==>|100% Cumplido| E4
+    C5 ==>|100% Cumplido| E5
+
+    style Comprometido fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style Entregado fill:#e8f5e9,stroke:#388e3c,stroke-width:2px

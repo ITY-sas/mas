@@ -1,0 +1,38 @@
+sequenceDiagram
+    autonumber
+    participant O as Orquestador
+    participant Q as RabbitMQ
+    participant A as Agente de publicación
+    participant T as Tools (client/trends/trending/RAG)
+    participant G as LLM Gateway
+    participant DB as PostgreSQL
+    participant Z as tool-postiz
+    participant API as Postiz API
+
+    O->>Q: agent.task.triggered(publicacion, publication_action=prepare)
+    Q->>A: Entrega del evento
+    A->>T: Obtener perfil, tendencias, trending y canales seleccionados
+    T-->>A: Contexto
+    loop Una vez por cada plataforma distinta
+        A->>G: POST /v1/generate (idea + contexto + plataforma)
+        G-->>A: Copy adaptado al canal
+        A->>T: rag.save_publicacion (brand_id, idea_id, platform, copy)
+        T->>G: POST /v1/embeddings
+        G-->>T: Embedding
+        T->>DB: INSERT publicaciones_generadas + platform
+        DB-->>T: publication_id
+        T-->>A: Variante persistida
+    end
+    A->>Q: agent.task.completed(postiz.status=prepared)
+    Q-->>O: Variantes listas, aprobación humana pendiente
+    Note over O,A: El usuario revisa/edita y aprueba, y deliver crea una tarea nueva
+    O->>Q: agent.task.triggered(publicacion, publication_action=deliver)
+    Q->>A: Copies aprobados, modo, fecha y canales
+    A->>Z: create_post (mode, fecha, canales, contenido por canal)
+    Z->>DB: Verificar canales activos de la marca
+    DB-->>Z: Canales permitidos
+    Z->>API: HTTPS POST /posts
+    API-->>Z: IDs de posts / respuesta del proveedor
+    Z-->>A: Resultado Postiz (created, skipped o failed)
+    A->>Q: agent.task.completed(publicacion)
+    Q-->>O: Resultado + estado

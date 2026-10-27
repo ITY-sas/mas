@@ -1,0 +1,16 @@
+graph LR
+    subgraph ToolServiceCommon["Estructura Común de Microservicio Tool Service (FastAPI)"]
+        MAN["GET /.well-known/tool-manifest\n(build_manifest: metadatos, operaciones, tipos)"]
+        HLT["GET /health\n(Estado de conectividad y dependencias)"]
+        OPS["Endpoints Operativos\n(Ej. /search, /profile, /similar, /create_post)"]
+        ENV["make_envelope(tool, data, duration_ms, status='ok')\nEnvelope Uniforme: tool, status, data, error, duration_ms"]
+    end
+
+    MAN -.-> OPS
+    OPS --> ENV
+    HLT -.-> OPS
+
+    style MAN fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style HLT fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style OPS fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style ENV fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px

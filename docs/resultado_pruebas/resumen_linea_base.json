@@ -1,0 +1,60 @@
+{
+  "total_muestras": 166,
+  "cuentas_analizadas": 3,
+  "lista_cuentas": [
+    "Amatu",
+    "Astra",
+    "Car Rental Miami"
+  ],
+  "fase1_general": {
+    "media_horas": 18.83,
+    "mediana_horas": 16.32,
+    "desv_std_horas": 8.03,
+    "min_horas": 10.02,
+    "max_horas": 42.99
+  },
+  "espera_fase2_general": {
+    "media_horas": 4.37,
+    "mediana_horas": 4.2,
+    "min_horas": 1.13,
+    "max_horas": 7.94
+  },
+  "tiempo_ciclo_total_general": {
+    "media_horas": 93.05,
+    "mediana_horas": 53.44,
+    "min_horas": 34.49,
+    "max_horas": 315.71
+  },
+  "por_tipo_contenido": {
+    "Historia": {
+      "n": 121,
+      "fase1_media_h": 14.71,
+      "fase1_mediana_h": 14.38,
+      "fase1_min_h": 10.02,
+      "fase1_max_h": 19.95,
+      "espera_media_h": 4.45,
+      "total_media_h": 50.34,
+      "total_mediana_h": 50.09
+    },
+    "Post estático": {
+      "n": 15,
+      "fase1_media_h": 29.52,
+      "fase1_mediana_h": 28.88,
+      "fase1_min_h": 20.37,
+      "fase1_max_h": 42.99,
+      "espera_media_h": 3.85,
+      "total_media_h": 126.38,
+      "total_mediana_h": 123.51
+    },
+    "Reel": {
+      "n": 30,
+      "fase1_media_h": 30.12,
+      "fase1_mediana_h": 29.2,
+      "fase1_min_h": 20.22,
+      "fase1_max_h": 42.84,
+      "espera_media_h": 4.28,
+      "total_media_h": 248.67,
+      "total_mediana_h": 247.41
+    }
+  }
+}

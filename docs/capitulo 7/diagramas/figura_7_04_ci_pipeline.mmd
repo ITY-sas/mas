@@ -1,0 +1,19 @@
+graph LR
+    subgraph CI["Pipeline de Integración Continua (GitHub Actions)"]
+        S1["Etapa 1: Lint & Formato\n(ruff / black / flake8)"]
+        S2["Etapa 2: Pruebas Unitarias\n(pytest -m unit, 178 tests)"]
+        S3["Etapa 3: Build Docker\n(Multi-stage build 14 imágenes)"]
+        S4["Etapa 4: Test Integración\n(docker compose up + pytest -m integration)"]
+        S5["Etapa 5: Artefactos & Reporte\n(Coverage + Logs de simulación)"]
+    end
+
+    S1 -->|Exit 0| S2
+    S2 -->|Exit 0| S3
+    S3 -->|Exit 0| S4
+    S4 -->|Exit 0| S5
+
+    style S1 fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style S2 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style S3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style S4 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style S5 fill:#e0f2f1,stroke:#00796b,stroke-width:2px

@@ -1,0 +1,32 @@
+sequenceDiagram
+    autonumber
+    participant RMQ as RabbitMQ (agent.publicacion.task)
+    participant Runner as AgentRunner (Publicación)
+    participant Graph as LangGraph (PublicacionState)
+    participant Tools as Tool Services (REST)
+    participant GW as LLM Gateway (:8003)
+    participant Postiz as tool-postiz (:8016)
+
+    RMQ->>Runner: Recibe agent.task.triggered con idea y canales
+    Runner->>Graph: invoke(initial_state)
+
+    alt publication_action == "prepare" (Preparación sin envío)
+        Graph->>Tools: GET /client, GET /trends, GET /channels
+        Tools-->>Graph: Envelopes con perfiles y canales de la marca
+        Graph->>GW: POST /v1/generate (Variante por cada plataforma)
+        GW-->>Graph: Contenido adaptado (Instagram, LinkedIn, etc.)
+        Graph->>Tools: POST tool-rag /publicaciones (Guarda variante con platform)
+        Tools-->>Graph: IDs generados
+        Note over Graph: schedule_post registra estado 'prepared'
+    else publication_action == "deliver" (Entrega aprobada)
+        Note over Graph: START salta directo a nodo schedule_post
+        alt Canales válidos y configurados en brand_channels
+            Graph->>Postiz: POST /create_post {mode, publish_at, integration_ids, contents}
+            Postiz-->>Graph: Resultado creación Postiz {status: "created", post_id}
+        else Canales no configurados o sin __type
+            Note over Graph: Omisión segura: Postiz omitido, copiado preservado
+        end
+    end
+
+    Graph-->>Runner: Estado final {publication, variants, postiz}
+    Runner->>RMQ: Publica agent.task.completed -> agent.results

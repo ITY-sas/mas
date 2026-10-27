@@ -1,0 +1,17 @@
+stateDiagram-v2
+    [*] --> preparing: POST /ideas/:id/publish
+    preparing --> awaiting_approval: preparacion completada (postiz.status=prepared)
+    preparing --> failed: error del agente
+    awaiting_approval --> approved_pending: POST /publications/:id/approve
+    awaiting_approval --> sending: POST /publications/:id/deliver
+    approved_pending --> sending: POST /publications/:id/deliver
+    sending --> draft: Postiz created, mode=draft
+    sending --> scheduled: Postiz created, mode=schedule
+    sending --> sent: Postiz created, mode=now
+    sending --> skipped: sin canales configurados
+    sending --> failed: error de Postiz
+    draft --> [*]
+    scheduled --> [*]
+    sent --> [*]
+    skipped --> [*]
+    failed --> [*]

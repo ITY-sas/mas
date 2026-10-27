@@ -1,0 +1,164 @@
+openapi: 3.0.3
+info:
+  title: Postiz Public API
+  description: API pública oficial de Postiz para gestión de integraciones multicanal, programación y publicación de contenidos en redes sociales.
+  version: 1.0.0
+servers:
+  - url: https://api.postiz.com/public/v1
+    description: Servidor Cloud Oficial de Postiz
+  - url: http://localhost:5000/public/v1
+    description: Servidor Postiz Local Auto-hospedado (Docker)
+security:
+  - ApiKeyAuth: []
+paths:
+  /integrations:
+    get:
+      summary: Listar integraciones y canales sociales conectados
+      description: Recupera el listado de redes sociales (Instagram, TikTok, LinkedIn, YouTube, X, Facebook) vinculadas a la instancia o equipo.
+      parameters:
+        - name: group
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtro opcional por grupo u organización
+      responses:
+        '200':
+          description: Lista de canales conectados y su estado operativo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Integration'
+        '401':
+          $ref: '#/components/schemas/ErrorResponse'
+  /posts:
+    post:
+      summary: Crear borrador, programar o publicar contenido multicanal
+      description: Envía una pieza multimedia con variantes de copy para múltiples canales sociales conectados en Postiz.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '200':
+          description: Publicación creada o programada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+        '400':
+          $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: API Key generada en el panel de configuración de Postiz
+  schemas:
+    Integration:
+      type: object
+      properties:
+        id:
+          type: string
+          example: int_inst_9921
+        provider:
+          type: string
+          enum: [instagram, tiktok, linkedin, youtube, facebook, x]
+          example: instagram
+        name:
+          type: string
+          example: "@amatu_cosmetica"
+        picture:
+          type: string
+          example: "https://cdn.postiz.com/avatars/amatu.png"
+        disabled:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+    CreatePostRequest:
+      type: object
+      required:
+        - content
+        - integration_ids
+      properties:
+        content:
+          type: string
+          description: Texto base de la publicación
+          example: "Descubre nuestra nueva línea de cuidado dermatológico natural #Amatu"
+        integration_ids:
+          type: array
+          items:
+            type: string
+          description: Lista de IDs de integraciones en Postiz donde se publicará
+          example: ["int_inst_9921", "int_tt_4412"]
+        contents:
+          type: object
+          description: Variantes de copy adaptadas por canal específico
+          properties:
+            instagram:
+              type: string
+              example: "🌿 ¿Sabías que el 80% de los sérums tradicionales usan sulfatos? Conoce el nuevo sérum botánico. Link en bio."
+            tiktok:
+              type: string
+              example: "POV: Cuando cambias tu rutina de skincare y tu piel por fin respira ✨ #skincare #natural"
+            linkedin:
+              type: string
+              example: "Innovación en formulación cosmética: cómo los ingredientes botánicos certificados transforman la dermocosmética."
+        mode:
+          type: string
+          enum: [draft, schedule, immediate]
+          default: draft
+          example: schedule
+        publish_at:
+          type: string
+          format: date-time
+          description: Fecha y hora UTC para programación (requerido si mode=schedule)
+          example: "2026-08-15T18:00:00Z"
+        settings:
+          type: object
+          description: Configuraciones avanzadas por red (ej. ubicación, etiquetado)
+        tags:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              value:
+                type: string
+    PostResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: post_881923
+        status:
+          type: string
+          enum: [draft, scheduled, published, error]
+          example: scheduled
+        scheduledFor:
+          type: string
+          format: date-time
+          example: "2026-08-15T18:00:00Z"
+        integrations:
+          type: array
+          items:
+            type: string
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 401
+        message:
+          type: string
+          example: "Unauthorized: Invalid API Key"

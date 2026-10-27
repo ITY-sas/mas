@@ -1,0 +1,95 @@
+erDiagram
+    ORGANIZATIONS ||--o{ BRANDS : owns
+    ORGANIZATIONS ||--o{ ORGANIZATION_MEMBERS : has
+    USERS ||--o{ ORGANIZATION_MEMBERS : joins
+    BRANDS ||--o{ BRAND_MEMBERS : has
+    USERS ||--o{ BRAND_MEMBERS : works_on
+
+    CLIENTES ||--o| LEGACY_CLIENT_BRAND : maps
+    BRANDS ||--o| LEGACY_CLIENT_BRAND : replaces
+
+    BRANDS ||--o{ IDEAS_GENERADAS : owns
+    BRANDS ||--o{ PUBLICACIONES_GENERADAS : owns
+    IDEAS_GENERADAS ||--o{ PUBLICACIONES_GENERADAS : inspires
+
+    BRANDS ||--o{ BRAND_SOURCES : scopes
+    BRAND_SOURCES ||--o{ BRAND_DOCUMENTS : describes
+    BRAND_DOCUMENTS ||--o{ BRAND_CHUNKS : splits_into
+    BRAND_CHUNKS ||--o{ BRAND_EVIDENCE : supports
+    BRANDS ||--o{ BRAND_CHANNELS : publishes_to
+
+    ORGANIZATIONS {
+        bigserial id PK
+        varchar_255 name
+        varchar_100 slug UK
+        varchar_50 status
+        timestamptz created_at
+    }
+
+    BRANDS {
+        bigserial id PK
+        bigint organization_id FK
+        varchar_255 name
+        varchar_100 slug
+        varchar_50 status
+        jsonb rag_config
+        vector_768 embedding
+        timestamptz created_at
+    }
+
+    IDEAS_GENERADAS {
+        serial id PK
+        bigint brand_id FK
+        integer client_id
+        uuid generation_batch_id
+        smallint generation_index
+        varchar_32 status
+        text content
+        vector_768 embedding
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    PUBLICACIONES_GENERADAS {
+        serial id PK
+        bigint brand_id FK
+        integer client_id
+        integer idea_id FK
+        varchar_50 platform
+        varchar_32 status
+        text content
+        vector_768 embedding
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    BRAND_CHANNELS {
+        bigserial id PK
+        bigint brand_id FK
+        varchar_50 provider
+        varchar_255 external_id UK
+        jsonb settings
+        varchar_255 credential_reference
+        varchar_50 status
+    }
+
+    BRAND_CHUNKS {
+        bigserial id PK
+        bigint document_id FK
+        bigint brand_id FK
+        varchar_50 scope
+        integer chunk_index
+        text content
+        vector_768 embedding
+    }
+
+    CHAT_HISTORY {
+        bigserial id PK
+        varchar_255 session_id
+        integer client_id
+        varchar_50 role
+        text message
+        timestamptz created_at
+    }

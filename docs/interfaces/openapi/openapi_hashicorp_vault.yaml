@@ -1,0 +1,29 @@
+openapi: 3.0.3
+info:
+  title: HashiCorp Vault Secrets Engine API
+  description: API interna para el almacenamiento seguro, cifrado AES-256-GCM y rotación de tokens y credenciales de redes sociales (NFR-04).
+  version: 1.0.0
+servers:
+  - url: http://vault:8200/v1
+security:
+  - VaultToken: []
+paths:
+  /secret/data/{path}:
+    get:
+      summary: Leer secreto de una marca o servicio
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "brands/amatu/postiz_key"
+      responses:
+        '200':
+          description: Credencial cifrada descifrada para el agente autorizado
+components:
+  securitySchemes:
+    VaultToken:
+      type: apiKey
+      in: header
+      name: X-Vault-Token

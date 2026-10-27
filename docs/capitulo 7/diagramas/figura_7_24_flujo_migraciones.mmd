@@ -1,0 +1,33 @@
+graph LR
+    INIT["init.sql\n· Extensión pgvector\n· Tablas legacy: clientes, tendencias,\n  referencias_competencia, ideas,\n  publicaciones iniciales"]
+    
+    M1["001_multi_tenant_foundation.sql\n· organizations, users, org_members\n· brands, brand_members\n· legacy_client_brand (mapeo clientes -> brands)\n· brand_id en ideas y publicaciones"]
+    
+    M2["002_brand_knowledge_and_channels.sql\n· brand_sources, brand_documents\n· brand_chunks (pgvector embedding)\n· brand_evidence\n· brand_channels (integraciones Postiz)"]
+    
+    M3["003_publication_platform.sql\n· Columna platform en publicaciones_generadas\n· Índices compuestos (brand_id, platform, created_at)"]
+    
+    M4["004_idea_generation_batches.sql\n· generation_batch_id (UUID)\n· generation_index (smallint)"]
+    
+    M5["005_brand_scoped_idea_batches.sql\n· Índice único idempotente:\n  (brand_id, generation_batch_id, generation_index)"]
+    
+    M6["006_crud_and_lifecycle_states.sql\n· status, updated_at, deleted_at en ideas y publicaciones\n· Índices parciales WHERE status != 'archived'\n· rag_config JSONB en brands"]
+    
+    HIST["orchestrator/history.py (DDL Idempotente)\n· Tabla chat_history con session_id (task_id)\n· Ejecución IF NOT EXISTS al arrancar runtime"]
+
+    INIT -->|Orden docker-entrypoint 01| M1
+    M1 -->|Orden docker-entrypoint 02| M2
+    M2 -->|Orden docker-entrypoint 03| M3
+    M3 -->|Orden docker-entrypoint 04| M4
+    M4 -->|Orden docker-entrypoint 05| M5
+    M5 -->|Orden docker-entrypoint 06| M6
+    M6 -.->|Runtime Startup| HIST
+
+    style INIT fill:#f5f5f5,stroke:#616161,stroke-width:2px
+    style M1 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style M2 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style M3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style M4 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style M5 fill:#ede7f6,stroke:#512da8,stroke-width:2px
+    style M6 fill:#e0f7fa,stroke:#00838f,stroke-width:2px
+    style HIST fill:#fff8e1,stroke:#fbc02d,stroke-width:2px

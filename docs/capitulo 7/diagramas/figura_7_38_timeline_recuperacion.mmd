@@ -1,0 +1,15 @@
+gantt
+    title Cronograma de Recuperacion ante Caida de RabbitMQ (Escenario 4)
+    dateFormat  mm:ss
+    axisFormat  %M:%S
+
+    section Flujo de Tarea
+    Inicio de Tarea y Checkpoint Redis     :done,    t1, 00:00, 00:05
+    Publicacion en Cola AMQP               :done,    t2, 00:05, 00:08
+    Fallo Inyectado docker stop rabbitmq   :crit,    t3, 00:08, 00:18
+    Retencion Segura de Estado en Redis    :active,  t4, 00:08, 00:25
+    Reinicio de Contenedor RabbitMQ        :done,    t5, 00:18, 00:25
+    Reconexion EventConsumer en Orquestador:done,    t6, 00:25, 00:28
+    Recuperacion de Tareas Pendientes      :done,    t7, 00:28, 00:30
+    Redelivery y Ejecucion de Agente       :done,    t8, 00:30, 00:48
+    Finalizacion y Persistencia            :done,    t9, 00:48, 00:52

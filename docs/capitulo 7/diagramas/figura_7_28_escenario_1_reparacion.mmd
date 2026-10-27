@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    actor Tester as Script de Simulación
+    participant Orq as Orchestrator API (:8002)
+    participant Ideacion as Agente Ideación (:8000)
+    participant GW as LLM Gateway (:8003)
+    participant Ollama as Ollama Engine
+
+    Tester->>Orq: POST /process {brief: "Campaña verano", content_format: "reel"}
+    Note over Tester,Orq: Brief deliberadamente ambiguo / incompleto
+    Orq->>Ideacion: agent.task.triggered
+    Note over Ideacion: load_context infiere contexto desde perfil EcoBrand en tool-client
+    Ideacion->>GW: POST /v1/generate con esquema Reel
+    GW->>Ollama: chat_completion()
+    Ollama-->>GW: JSON incompleto (omite script[1].on_screen_text y camera.movement)
+    GW-->>Ideacion: Respuesta cruda
+    Note over Ideacion: validate_dossier() falla con ValueError
+    Note over Ideacion: Genera prompt de auto-reparación indicando el error exacto
+    Ideacion->>GW: POST /v1/generate (REPAIR REQUIRED prompt, cache=False)
+    GW->>Ollama: chat_completion()
+    Ollama-->>GW: JSON completo y validado
+    GW-->>Ideacion: Respuesta reparada
+    Note over Ideacion: validate_dossier() OK -> Éxito en 1 intento
+    Ideacion-->>Orq: agent.task.completed {idea, preproduction validada}
+    Orq-->>Tester: 200 OK (Dossier íntegro recuperado)

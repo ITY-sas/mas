@@ -1,0 +1,26 @@
+graph TD
+    S_START([START]) --> s_node["nodo: start"]
+    
+    s_node --> decide1{"decide_next"}
+    
+    decide1 -->|workflow: generate_idea & not idea| dispatch_ideacion["nodo: dispatch_ideacion<br/>interrupt() esperando ideacion"]
+    decide1 -->|workflow: prepare_publication & not publication| dispatch_publicacion["nodo: dispatch_publicacion<br/>interrupt() esperando preparacion"]
+    decide1 -->|workflow: deliver_publication & not dispatched| dispatch_publicacion_del["nodo: dispatch_publicacion<br/>interrupt() esperando entrega Postiz"]
+    decide1 -->|otro caso / completado| S_END([END])
+    
+    dispatch_ideacion -->|Reanudación con Command resume| decide2{"decide_next"}
+    decide2 -->|idea lista, no auto-publicar| S_END
+    
+    dispatch_publicacion -->|Reanudación con Command resume| decide3{"decide_next"}
+    decide3 -->|copies preparados| S_END
+    
+    dispatch_publicacion_del -->|Reanudación con Command resume| decide4{"decide_next"}
+    decide4 -->|entrega completada| S_END
+
+    style dispatch_ideacion fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style dispatch_publicacion fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style dispatch_publicacion_del fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style decide1 fill:#f3e5f5,stroke:#4a148c
+    style decide2 fill:#f3e5f5,stroke:#4a148c
+    style decide3 fill:#f3e5f5,stroke:#4a148c
+    style decide4 fill:#f3e5f5,stroke:#4a148c

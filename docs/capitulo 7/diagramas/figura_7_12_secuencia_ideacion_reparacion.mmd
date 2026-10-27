@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    participant RMQ as RabbitMQ (agent.ideacion.task)
+    participant Runner as AgentRunner (Ideación)
+    participant Graph as LangGraph (IdeacionState)
+    participant Tools as Tool Services (REST)
+    participant GW as LLM Gateway (:8003)
+    participant RAG as tool-rag (:8013)
+
+    RMQ->>Runner: Entrega agent.task.triggered {brief, client_id, brand_id}
+    Runner->>Graph: invoke(initial_state)
+    
+    Graph->>Tools: GET /profile, /search, /similar
+    Tools-->>Graph: Envelopes {status: ok, data: ...}
+    
+    Graph->>Tools: GET /news (Google News RSS)
+    Tools-->>Graph: Envelope con noticias
+    
+    Graph->>GW: POST /v1/generate (Prompt + Contexto + Schema)
+    GW-->>Graph: Respuesta inicial LLM (JSON en bruto)
+    
+    Note over Graph: validate_dossier(dossier)<br/>¿Campos vacíos o incompletos?
+    alt Dossier Inválido (Campos faltantes / formato roto)
+        Note over Graph: Detección de error: ej. falta script[i].dialogue
+        Graph->>GW: POST /v1/generate (REPAIR REQUIRED prompt + error + cache=False)
+        GW-->>Graph: Respuesta reparada LLM
+        Note over Graph: validate_dossier(dossier) -> Éxito (Reparación única completada)
+    else Dossier Válido
+        Note over Graph: Validación satisfactoria en primera pasada
+    end
+
+    Graph->>RAG: POST /ideas {brand_id, content, generation_batch_id}
+    Note over RAG: Genera embedding vía gateway e inserta en ideas_generadas
+    RAG-->>Graph: Envelope {id: idea_id, brand_id: ...}
+    
+    Graph-->>Runner: Estado final {idea, idea_id, preproduction}
+    Runner->>RMQ: Publica agent.task.completed -> agent.results

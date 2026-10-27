@@ -1,0 +1,48 @@
+graph TD
+    subgraph Disenado["Diseñado en OE3 (Alcance Teórico Completo)"]
+        D_ORQ["Supervisor con Memoria Externa"]
+        D_AG1["Agente de Ideación"]
+        D_AG2["Agente de Publicación"]
+        D_AG3["Agente Editor / Crítico Autónomo"]
+        D_TOOLS["Ecosistema Tools-as-a-Service"]
+        D_GW["LLM Gateway Multi-proveedor"]
+        D_MULTI["Aislamiento Multi-inquilino RLS"]
+        D_AUTH["Autenticación OAuth2 / JWT"]
+        D_POSTIZ["Entrega Automática Postiz"]
+    end
+
+    subgraph Implementado["Implementado en PoC OE4 (Entorno de Contenedores)"]
+        I_ORQ["Supervisor LangGraph Stateless + RedisSaver"]
+        I_AG1["Agente Ideación (Dossier Reel/Post + Auto-reparación)"]
+        I_AG2["Agente Publicación (Variantes por Canal + HITL)"]
+        I_TOOLS["7 Tool Services con Manifiestos y Envelopes"]
+        I_GW["LLM Gateway (Balanceo, Fallback, Redis Cache)"]
+        I_MULTI["Aislamiento por brand_id en Consultas Vectoriales"]
+        I_POSTIZ["Integración REST tool-postiz condicional"]
+        I_BFF["BFF FastAPI + SPA React Backoffice"]
+    end
+
+    subgraph Pendiente["Pendiente para Fase Productiva"]
+        P_AG3["Agente Editor dedicado (sustituido por schema repair)"]
+        P_RLS["Políticas RLS nativas en PostgreSQL y RBAC estricto"]
+        P_AUTH["Servidor de Identidad Keycloak / Auth0"]
+        P_HA["Cluster RabbitMQ y PostgreSQL con Alta Disponibilidad"]
+        P_METAS["Conectores oficiales directos Meta Suite"]
+    end
+
+    D_ORQ --> I_ORQ
+    D_AG1 --> I_AG1
+    D_AG2 --> I_AG2
+    D_AG3 -.->|Sustituido en PoC| I_AG1
+    D_AG3 --> P_AG3
+    D_TOOLS --> I_TOOLS
+    D_GW --> I_GW
+    D_MULTI --> I_MULTI
+    D_MULTI --> P_RLS
+    D_AUTH --> P_AUTH
+    D_POSTIZ --> I_POSTIZ
+    D_POSTIZ --> P_METAS
+
+    style Disenado fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style Implementado fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style Pendiente fill:#fff3e0,stroke:#f57c00,stroke-width:2px

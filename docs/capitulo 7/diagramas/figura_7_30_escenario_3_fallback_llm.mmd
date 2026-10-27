@@ -1,0 +1,37 @@
+stateDiagram-v2
+    [*] --> EvaluandoCache: POST /v1/generate
+    
+    EvaluandoCache --> RetornoCache: Cache Hit en Redis
+    RetornoCache --> [*]: 200 OK (cached=true, ~3ms)
+    
+    EvaluandoCache --> SeleccionandoProveedor: Cache Miss
+    SeleccionandoProveedor --> IntentandoPrimario: Proveedor Primario (gemma3:4b, peso 100)
+    
+    state IntentandoPrimario {
+        [*] --> InvocandoHTTP
+        InvocandoHTTP --> RespuestaExitosa: 200 OK desde Ollama
+        InvocandoHTTP --> DeteccionFallo: Error 500 / Timeout / 503
+    }
+    
+    RespuestaExitosa --> GuardarCacheYResponder: Retorna inferencia
+    GuardarCacheYResponder --> [*]: 200 OK (attempts=1)
+    
+    DeteccionFallo --> ActivandoResiliencia: Registro de fallo en Registry
+    
+    state ActivandoResiliencia {
+        [*] --> BackoffJitter: Exponential Backoff (1.0s + jitter)
+        BackoffJitter --> ReintentoPrimario: Intento 2
+        ReintentoPrimario --> FalloPersistente: Falla nuevamente
+    }
+    
+    FalloPersistente --> ConmutandoFallback: Cadena de Fallback (mistral-nemo)
+    
+    state ConmutandoFallback {
+        [*] --> InvocandoSecundario: POST {base_url}/api/chat
+        InvocandoSecundario --> FallbackExitoso: 200 OK
+        InvocandoSecundario --> FalloTotal: Todos caídos
+    }
+    
+    FallbackExitoso --> GuardarCacheYResponder: 200 OK (attempts=2, fallback activo)
+    FalloTotal --> ErrorGateway: 502 Bad Gateway (AllProvidersFailed)
+    ErrorGateway --> [*]

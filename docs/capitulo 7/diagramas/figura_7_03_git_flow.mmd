@@ -1,0 +1,25 @@
+graph LR
+    subgraph GitBranches["Estrategia de Ramas (GitFlow Ligero)"]
+        F1["feat/llm-gateway"]
+        F2["feat/ideacion-agent"]
+        F3["feat/publicacion-postiz"]
+        F4["feat/multi-tenant-rag"]
+        DEV["rama develop (Integración continua)"]
+        MAIN["rama main (Línea base PoC / Release)"]
+    end
+
+    subgraph Actions["Disparadores de CI / GitHub Workflows"]
+        PR["Pull Request hacia develop"]
+        PUSH["Push a develop / main"]
+        TAG["Release Tag v1.0.0-poc"]
+    end
+
+    F1 -->|PR| PR
+    F2 -->|PR| PR
+    F3 -->|PR| PR
+    F4 -->|PR| PR
+
+    PR -->|Valida tests unitarios & linter| DEV
+    DEV -->|Push validado| PUSH
+    PUSH -->|Merge tras validación E2E| MAIN
+    MAIN -->|Etiquetado reproducible| TAG

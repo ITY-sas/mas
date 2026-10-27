@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    actor Cliente as Usuario / SPA React
+    participant Orq as Orchestrator API
+    participant Runtime as OrchestratorRuntime
+    participant Redis as Redis (RedisSaver & TaskStore)
+    participant RMQ as RabbitMQ (agent.task.*)
+    participant Ideacion as Microservicio Ideación
+    participant Publicacion as Microservicio Publicación
+    participant PG as PostgreSQL (pgvector & Chat)
+
+    Cliente->>Orq: POST /process (brief, brand_id, client_id)
+    Orq->>Runtime: start_task(brief, client_id)
+    Runtime->>Redis: TaskStore.create(task_id, status="running")
+    Runtime->>PG: history.add(task_id, "user", brief)
+    Runtime->>Redis: LangGraph.invoke() -> interrupt(dispatch_ideacion)
+    Note over Runtime,Redis: Checkpoint guardado en Redis con thread_id
+    Runtime->>RMQ: publish(agent.task.triggered -> agent.ideacion.task)
+    
+    RMQ->>Ideacion: consume(agent.task.triggered)
+    Note over Ideacion: Ejecuta StateGraph:<br/>load_context -> fetch_news -><br/>generate_idea -> save_idea
+    Ideacion->>RMQ: publish(agent.task.completed -> agent.results)
+    
+    RMQ->>Runtime: consume(agent.task.completed)
+    Runtime->>Redis: LangGraph.invoke(Command(resume=result))
+    Note over Runtime: Supervisor evalúa decide_next -> END
+    Runtime->>Redis: TaskStore.set_result(task_id, result, status="completed")
+    Runtime->>PG: history.add(task_id, "assistant", idea_dossier)
+    Runtime->>RMQ: publish(task.completed)
+    Orq-->>Cliente: 200 OK {task_id, status: "completed", idea, preproduction}
+
+    Note over Cliente: Fase de Aprobación Humana (HITL) en Backoffice
+    Cliente->>Orq: POST /ideas/{id}/publish (canales seleccionados)
+    Orq->>Publicacion: Preparar variantes de copy (Instagram, LinkedIn, etc.)
+    Publicacion-->>Orq: Variantes generadas y persistidas
+    Orq-->>Cliente: Variantes para revisión humana
+
+    Cliente->>Orq: POST /publications/{id}/deliver (Aprobado)
+    Orq->>Publicacion: Despachar entrega con Postiz
+    Publicacion-->>Orq: Post creado / programado en Postiz
+    Orq-->>Cliente: Entrega confirmada

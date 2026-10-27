@@ -1,0 +1,24 @@
+graph TD
+    S_START([START]) --> cond_start{"¿publication_action == 'deliver'?"}
+    
+    cond_start -->|No: Fase de Preparación| load_context["nodo: load_context<br/>Perfil de marca, tendencias y canales Postiz"]
+    cond_start -->|Sí: Fase de Entrega| schedule_post["nodo: schedule_post<br/>Invocación a Postiz API"]
+    
+    load_context --> fetch_trending["nodo: fetch_trending<br/>Topics trending y hashtags RSS"]
+    
+    fetch_trending --> generate_post["nodo: generate_post<br/>Generación LLM de variantes<br/>Instagram, LinkedIn, TikTok, Facebook"]
+    
+    generate_post --> save_post["nodo: save_post<br/>Persistencia de cada variante en PostgreSQL<br/>con platform, idea_id y brand_id"]
+    
+    save_post --> schedule_post_prep["nodo: schedule_post<br/>Modo preparación: sin entrega externa"]
+    
+    schedule_post_prep --> S_END([END])
+    schedule_post --> S_END
+
+    style cond_start fill:#f3e5f5,stroke:#4a148c
+    style load_context fill:#e8f5e9,stroke:#2e7d32
+    style fetch_trending fill:#e8f5e9,stroke:#2e7d32
+    style generate_post fill:#fff8e1,stroke:#f57f17
+    style save_post fill:#ede7f6,stroke:#512da8
+    style schedule_post fill:#e1f5fe,stroke:#01579b
+    style schedule_post_prep fill:#e1f5fe,stroke:#01579b

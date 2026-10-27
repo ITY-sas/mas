@@ -1,0 +1,30 @@
+flowchart LR
+    subgraph spa["SPA React 19 + Tailwind v4 (frontend/src)"]
+        ctx["AppContext<br/>marca activa, lotes, tareas, SSE, avisos"]
+        api["api/client.js"]
+        dash["Dashboard"]
+        studio["Studio<br/>lotes 1-5 + canales Postiz"]
+        library["Library<br/>dossiers por marca"]
+        results["Results<br/>copies editables por canal"]
+        pubs["Publications<br/>aprobar y entregar"]
+        trace["Traceability<br/>pipeline + timeline"]
+        hist["History"]
+        system["System<br/>salud + tools + RAG"]
+        dash --> ctx
+        studio --> ctx
+        library --> ctx
+        results --> ctx
+        pubs --> ctx
+        trace --> ctx
+        hist --> ctx
+        system --> ctx
+        ctx --> api
+    end
+
+    api -->|REST + SSE| bff["BFF FastAPI :3000<br/>sirve frontend/static"]
+    bff -->|ideas/generate, publish, approve, deliver, publications| orch["Orquestador :8002"]
+    bff -->|ideas, detalle, stats| rag["tool-rag :8013"]
+    bff -->|canales, integraciones| postiz["tool-postiz :8016"]
+    bff -->|task:*, SSE| redis[("Redis")]
+    bff -->|clientes, canales, historial| pg[("PostgreSQL")]
+    bff -->|health| agents["Agentes y gateway"]

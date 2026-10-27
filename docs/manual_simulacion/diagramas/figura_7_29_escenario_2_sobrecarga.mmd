@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    actor Cliente1 as Hilo 1 (Brief EcoBrand)
+    actor Cliente2 as Hilo 2 (Brief TechStart)
+    actor Cliente3 as Hilo N (Brief FitLife)
+    participant Orq as Orchestrator API (:8002)
+    participant Redis as Redis Stack (TaskStore & RedisSaver)
+    participant RMQ as RabbitMQ (agent.ideacion.task)
+    participant Agente as Worker Agente Ideación (Pool de réplicas)
+    participant GW as LLM Gateway (:8003)
+
+    par Envío Concurrente de N Briefs
+        Cliente1->>Orq: POST /process (wait=false) -> task_id_1
+        Cliente2->>Orq: POST /process (wait=false) -> task_id_2
+        Cliente3->>Orq: POST /process (wait=false) -> task_id_N
+    end
+
+    Note over Orq,Redis: Tareas registradas en paralelo en TaskStore
+    Orq->>RMQ: Publica N mensajes agent.task.triggered
+
+    Note over RMQ: Cola amortiguadora desacopla picos de carga (Zero Drops)
+    
+    loop Consumo secuencial / concurrente por disponibilidad de inferencia
+        RMQ->>Agente: Entrega mensaje N
+        Agente->>GW: POST /v1/generate
+        GW-->>Agente: Retorna generación
+        Agente->>RMQ: Publica agent.task.completed
+    end
+
+    par Sondeo / Polling de Resultados
+        Cliente1->>Orq: GET /tasks/{task_id_1} -> completed
+        Cliente2->>Orq: GET /tasks/{task_id_2} -> completed
+        Cliente3->>Orq: GET /tasks/{task_id_N} -> completed
+    end

@@ -1,0 +1,56 @@
+graph LR
+    subgraph OE1["OE1: Diagnóstico de Proceso y Cuellos de Botella"]
+        R1["Cuello R1: Retrabajo y Edición"]
+        R2["Cuello R2: Latencia en Ideación"]
+        R3["Cuello R3: Dispersión en Publicación Multicanal"]
+    end
+
+    subgraph OE2["OE2: Especificación y Requisitos (Gaia / AUML)"]
+        FR1["FR-01: Ingesta de Briefs & Onboarding"]
+        FR2["FR-02: Generación Estructurada (Reel/Post)"]
+        FR3["FR-03: Puerta de Aprobación Humana (HITL)"]
+        FR4["FR-04: Multi-publicación desacoplada"]
+        NFR["NFRs: Trazabilidad, Aislamiento & Resiliencia"]
+    end
+
+    subgraph OE3["OE3: Diseño Arquitectónico (C4 / ADR)"]
+        ADR1["ADR-001: Microservicios & Tools-as-a-Service"]
+        ADR2["ADR-002: LangGraph Stateless & RedisSaver"]
+        ADR3["ADR-003: LLM Gateway Centralizado con Caché"]
+        ADR4["ADR-004: Integración Externa con Postiz API"]
+        ADR6["ADR-006: Tenancy por brand_id en pgvector"]
+    end
+
+    subgraph OE4["OE4: Implementación de la PoC en Contenedores"]
+        POC_ORQ["Orquestador FastAPI + Runtime AMQP"]
+        POC_IDE["Agente de Ideación + Validación de Dossier"]
+        POC_PUB["Agente de Publicación + Variantes por Canal"]
+        POC_GW["LLM Gateway + Fallback & Redis"]
+        POC_TOOLS["7 Tool Services Independientes"]
+        POC_DB["PostgreSQL 16 + pgvector + Migraciones"]
+        POC_ENV["docker-compose.yml (14 Servicios + BFF)"]
+    end
+
+    R1 --> FR2
+    R2 --> FR1
+    R2 --> FR2
+    R3 --> FR3
+    R3 --> FR4
+
+    FR1 --> ADR1
+    FR2 --> ADR2
+    FR2 --> ADR3
+    FR3 --> ADR2
+    FR4 --> ADR4
+    NFR --> ADR6
+
+    ADR1 --> POC_TOOLS
+    ADR2 --> POC_ORQ
+    ADR2 --> POC_IDE
+    ADR2 --> POC_PUB
+    ADR3 --> POC_GW
+    ADR4 --> POC_TOOLS
+    ADR6 --> POC_DB
+    POC_ORQ --> POC_ENV
+    POC_IDE --> POC_ENV
+    POC_PUB --> POC_ENV

@@ -1,0 +1,79 @@
+openapi: 3.0.3
+info:
+  title: Microservicio Interno Tool-Postiz
+  description: Microservicio FastAPI desacoplado que expone operaciones Postiz al Orquestador y Agentes del Sistema Multiagente de ITY SAS.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8016
+    description: Despliegue en contenedor Docker Compose (:8016)
+paths:
+  /.well-known/tool-manifest:
+    get:
+      summary: Manifiesto de capacidades del tool
+      description: Retorna el catálogo estructurado de operaciones soportadas para descubrimiento dinámico vía ToolRegistry.
+      responses:
+        '200':
+          description: Manifiesto estandarizado
+  /integrations:
+    get:
+      summary: Consultar integraciones y catálogo de canales
+      parameters:
+        - name: group
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Envelope estandarizado con canales
+  /posts:
+    post:
+      summary: Crear o programar post en Postiz con validación de marca
+      description: Valida contra la base de datos PostgreSQL si los canales pertenecen a brand_id antes de enviar a la API externa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [brand_id, content]
+              properties:
+                brand_id:
+                  type: integer
+                  example: 1
+                content:
+                  type: string
+                  example: "Lanzamiento oficial de campaña"
+                integration_ids:
+                  type: array
+                  items:
+                    type: string
+                mode:
+                  type: string
+                  enum: [draft, schedule, immediate]
+                publish_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Envelope con ID de publicación o estado skipped
+  /link_channel:
+    post:
+      summary: Vincular canal de Postiz a una marca en PostgreSQL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [brand_id, external_id]
+              properties:
+                brand_id:
+                  type: integer
+                  example: 1
+                external_id:
+                  type: string
+                  example: "int_inst_9921"
+      responses:
+        '200':
+          description: Canal vinculado en tabla brand_channels

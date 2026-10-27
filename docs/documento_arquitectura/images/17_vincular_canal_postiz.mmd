@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    actor U as Operador de Studio
+    participant B as Frontend BFF
+    participant Z as tool-postiz
+    participant API as Postiz API
+    participant DB as PostgreSQL
+
+    U->>B: GET /api/postiz/integrations
+    B->>Z: GET /available-integrations
+    Z->>API: GET /integrations
+    API-->>Z: id, identifier, name y metadatos
+    Z-->>B: Catálogo saneado (sin credenciales)
+    B-->>U: Selector de integraciones disponibles
+
+    U->>B: POST /api/brands/{brand_id}/channels {external_id}
+    B->>Z: POST /channels
+    Z->>API: GET /integrations (verifica que el ID exista)
+    API-->>Z: Integración coincidente
+    Z->>DB: Consultar propietario actual del integration ID
+    alt Canal libre o ya pertenece a esta marca
+        Z->>DB: INSERT/UPDATE brand_channels<br/>provider + external_id + settings.__type
+        DB-->>Z: channel id
+        Z-->>B: Canal vinculado y configurado
+        B-->>U: Actualizar selector de canales de la marca
+    else Canal vinculado a otra marca
+        Z-->>B: Error: canal ya vinculado a otra marca
+        B->>DB: UPDATE brand_channels SET brand_id (reasignación directa del BFF)
+        B-->>U: Canal transferido a la marca seleccionada
+    end

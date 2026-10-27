@@ -1,0 +1,71 @@
+graph TB
+    subgraph HostMachine["Host del Desarrollador / Servidor PoC"]
+        OLLAMA["Ollama LLM Engine (11434)\n(gemma3:4b, mistral-nemo, nomic-embed)"]
+        BFF["BFF FastAPI + SPA React (8080/5173)\n(Local / Backoffice Ejecutivo)"]
+        
+        subgraph DockerCompose["Red Docker: docker-compose.yml (14 Servicios Backend)"]
+            subgraph Infra["Infraestructura de Datos y Mensajería"]
+                PG["postgres:5432\n(pgvector/pg16 + 5 migraciones)"]
+                REDIS["redis:6379\n(redis-stack: checkpoints + task_store + cache)"]
+                RMQ["rabbitmq:5672/15672\n(rabbitmq:3-management bus de eventos)"]
+            end
+
+            subgraph CoreServices["Servicios Nucleares"]
+                ORQ["orchestrator:8002\n(FastAPI + Supervisor LangGraph Stateless)"]
+                GW["llm-gateway:8003\n(Centralización LLM, Fallback, Redis Cache)"]
+            end
+
+            subgraph AgentServices["Microservicios de Agentes"]
+                AG_IDE["agente-ideacion:8000\n(LangGraph StateGraph + JSON Repair)"]
+                AG_PUB["agente-publicacion:8001\n(LangGraph StateGraph + Variantes)"]
+            end
+
+            subgraph ToolServices["Tools-as-a-Service (7 Microservicios)"]
+                T_CLI["tool-client:8010"]
+                T_TRN["tool-trends:8011"]
+                T_CMP["tool-competitors:8012"]
+                T_RAG["tool-rag:8013"]
+                T_NWS["tool-news:8014"]
+                T_TRD["tool-trending:8015"]
+                T_PST["tool-postiz:8016"]
+            end
+        end
+
+        subgraph PostizStack["postiz-docker-compose (Instancia Separada)"]
+            POSTIZ_API["Postiz Core API:4007"]
+            POSTIZ_DB["Postiz Postgres:5433"]
+            POSTIZ_REDIS["Postiz Redis:6380"]
+        end
+    end
+
+    BFF -->|HTTP REST| ORQ
+    ORQ -->|AMQP: agent.task.triggered| RMQ
+    RMQ -->|AMQP Consumo| AG_IDE
+    RMQ -->|AMQP Consumo| AG_PUB
+    AG_IDE -->|AMQP: agent.task.completed| RMQ
+    AG_PUB -->|AMQP: agent.task.completed| RMQ
+    RMQ -->|AMQP Consumo| ORQ
+    
+    ORQ -->|Checkpoints & TaskStore| REDIS
+    ORQ -->|Historial de Chat| PG
+    
+    AG_IDE -->|HTTP REST Call| T_CLI
+    AG_IDE -->|HTTP REST Call| T_TRN
+    AG_IDE -->|HTTP REST Call| T_CMP
+    AG_IDE -->|HTTP REST Call| T_RAG
+    AG_IDE -->|HTTP REST Call| T_NWS
+    
+    AG_PUB -->|HTTP REST Call| T_CLI
+    AG_PUB -->|HTTP REST Call| T_TRN
+    AG_PUB -->|HTTP REST Call| T_TRD
+    AG_PUB -->|HTTP REST Call| T_RAG
+    AG_PUB -->|HTTP REST Call| T_PST
+
+    T_PST -->|HTTP API /posts| POSTIZ_API
+    
+    AG_IDE -->|HTTP POST /v1/generate| GW
+    AG_PUB -->|HTTP POST /v1/generate| GW
+    T_RAG -->|HTTP POST /v1/embeddings| GW
+
+    GW -->|host.docker.internal:11434| OLLAMA
+    GW -->|Cache prompts/embeddings| REDIS

@@ -1,0 +1,16 @@
+graph TB
+    H1["Hipótesis Principal (H1)\nLa implementación de una arquitectura multi-agente en microservicios\nreduce significativamente los cuellos de botella de contenido\ny demuestra viabilidad técnica en contenedores.\n[ACEPTADA EMPÍRICAMENTE]"]
+
+    H1 --> H11["Sub-hipótesis H1.1 (Tiempo de Ciclo)\nReducción >= 20% en tiempo de ciclo total.\nResultado medido: 98.8% de reducción.\n[ACEPTADA (p < 0.001)]"]
+    
+    H1 --> H12["Sub-hipótesis H1.2 (Tasa de Éxito y Resiliencia)\nTasa de éxito >= 90% ante fallos de red y carga.\nResultado medido: 98.7% promedio en 5 escenarios.\n[ACEPTADA]"]
+    
+    H1 --> H13["Sub-hipótesis H1.3 (Adherencia Estructural)\nValidez de esquemas JSON generados >= 95%.\nResultado medido: 100% (con auto-reparación en 1 intento).\n[ACEPTADA]"]
+    
+    H1 --> H14["Sub-hipótesis H1.4 (Aislamiento Multi-inquilino)\nCero fuga de información entre marcas en pgvector.\nResultado medido: 0% de fuga en 100 consultas cruzadas.\n[ACEPTADA]"]
+
+    style H1 fill:#2e7d32,stroke:#1b5e20,stroke-width:3px,color:#fff
+    style H11 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style H12 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style H13 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style H14 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px

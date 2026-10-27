@@ -1,0 +1,17 @@
+graph LR
+    L1["Servicios Docker\n(Orquestador, Agentes, Gateway, Tools)"]
+    L2["Emisión de Logs JSON Estructurados\n(timestamp, level, task_id, node, duration_ms)"]
+    L3["Parser & Extractor de Métricas\n(test_performance.py / prueba_e2e.py)"]
+    L4["Almacén de Resultados\n(Redis TaskStore, CSVs y PostgreSQL)"]
+    L5["Visualización y Validación\n(Scripts Matplotlib, Tabla de Tiempos y Gráficos)"]
+
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
+    L4 --> L5
+
+    style L1 fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style L2 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style L3 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style L4 fill:#ede7f6,stroke:#512da8,stroke-width:2px
+    style L5 fill:#fce4ec,stroke:#c2185b,stroke-width:2px

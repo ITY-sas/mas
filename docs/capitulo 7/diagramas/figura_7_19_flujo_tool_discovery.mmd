@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    participant Agente as Agente (Ideación / Publicación)
+    participant Registry as ToolRegistry (common/tool_client.py)
+    participant ToolSvc as Tool Service (Ej. tool-trends:8011)
+
+    Note over Agente,Registry: 1. Fase de Descubrimiento (Lazy / Cached)
+    Agente->>Registry: call("trends", "search", params={query: "..."})
+    alt Manifiesto no en caché
+        Registry->>ToolSvc: GET /.well-known/tool-manifest
+        ToolSvc-->>Registry: Manifiesto JSON con operaciones, rutas y métodos
+        Registry->>Registry: validate_manifest() y mapeo op_id -> endpoint
+    end
+
+    Note over Agente,ToolSvc: 2. Fase de Invocación REST
+    Registry->>ToolSvc: GET /search?query=...
+    ToolSvc-->>Registry: Envelope uniforme JSON {tool, status: "ok", data: [...]}
+    Registry->>Registry: parse_envelope() -> valida status == 'ok'
+    Registry-->>Agente: Retorna 'data' desempaquetado al nodo LangGraph

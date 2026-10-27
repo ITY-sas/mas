@@ -1,0 +1,814 @@
+% Capitulo 6: desarrollo de la arquitectura del sistema multiagente.
+% Documento autonomo compilable; requiere una distribucion LaTeX con TikZ.
+\documentclass[12pt,oneside]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{graphicx}
+\usepackage{pdflscape}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\hypersetup{colorlinks=true,linkcolor=blue!45!black,citecolor=blue!45!black,urlcolor=blue!45!black,pdftitle={Desarrollo de la arquitectura del sistema multiagente},pdfauthor={}}
+\setcounter{chapter}{5}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.25em}
+\setlist{topsep=0.3em,itemsep=0.2em}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\implementado}{\textbf{Implementado en la PoC}}
+\newcommand{\pendiente}{\textbf{Pendiente / propuesto}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\graphicspath{{./}{diagramas/}}
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,breaklines=true,frame=single,rulecolor=\color{black!25},showstringspaces=false}
+
+\begin{document}
+\chapter{Desarrollo de la arquitectura del sistema multiagente}
+\label{chap:arquitectura}
+
+\noindent\textbf{Estado del documento.} Capítulo técnico elaborado a partir del código, las migraciones, los archivos de despliegue y el plan de pruebas del repositorio \code{proyecto multiagente}. Describe la prueba de concepto (PoC), no una arquitectura de producción certificada. Las afirmaciones se distinguen como implementadas, derivadas del diseño, o pendientes de validación. Los nombres de requisitos FR/NFR de la matriz son una propuesta de trazabilidad que debe cotejarse con el catálogo oficial del OE2.
+
+\section{Introducción y alcance arquitectónico}
+
+\subsection{Propósito del sistema}
+El sistema automatiza la generación de contenido de marketing mediante dos agentes autónomos desplegados como servicios: un agente de ideación, que construye un concepto y un dossier creativo (Reel o Post) a partir de un brief y contexto recuperado, y un agente de publicación, que transforma una idea seleccionada en variantes de copy por plataforma y, solo tras aprobación humana explícita, las entrega a Postiz. Un supervisor recibe cada solicitud, selecciona el agente según el flujo de trabajo (\code{workflow}) y consolida el resultado. La finalidad arquitectónica es desacoplar planificación, capacidades de dominio, modelos de lenguaje y persistencia, manteniendo el estado de ejecución fuera de los procesos de agente.
+
+El proceso de negocio se divide en tres fases con una compuerta humana entre ellas: (1) generación de un lote de una a cinco ideas por marca; (2) preparación de copies por canal para una idea elegida, sin contacto con Postiz; (3) aprobación y entrega (borrador, programación o publicación inmediata). La generación nunca publica automáticamente. Las entradas del orquestador son \code{POST /ideas/generate}, \code{POST /ideas/{id}/publish}, \code{POST /publications/{id}/approve} y \code{POST /publications/{id}/deliver}; \code{POST /process} se conserva para generar una idea individual. La interfaz web es un BFF FastAPI que sirve una SPA React (Backoffice ejecutivo) para operar los tres pasos, vincular canales Postiz a marcas y consultar la traza de cada tarea.
+
+El aporte arquitectónico no consiste en afirmar que varios agentes produzcan necesariamente mejor texto que una llamada aislada a un LLM. La PoC compone una ruta reproducible alrededor del modelo: reúne contexto de marca y fuentes, valida una salida estructurada, persiste el resultado y coordina etapas desacopladas mediante contratos. La mejora de calidad frente a una solución monolítica de una sola llamada requiere un experimento comparativo con briefs, criterios editoriales y métricas constantes; no se infiere únicamente de la arquitectura.
+
+\subsection{Alcance y restricciones}
+El sistema de interés comprende el supervisor LangGraph, dos agentes como procesos, siete tool services, el LLM Gateway, RabbitMQ, Redis Stack, PostgreSQL/pgvector y el BFF web con su SPA React. Docker Compose declara los 14 servicios backend; el BFF (que sirve la SPA compilada con Vite) se ejecuta localmente por separado en el procedimiento documentado. La instancia de Postiz se levanta con su propio Compose (\code{postiz/postiz-docker-compose}), fuera del Compose principal. El capítulo describe esta arquitectura de PoC y su base multi-tenant tal como está codificada, no una instalación productiva con alta disponibilidad o autenticación de usuarios.
+
+La plataforma de publicación implementada se integra opcionalmente con la API pública de Postiz. La disponibilidad de canales depende de sus integraciones, de credenciales configuradas y de la asociación de cada canal a una marca. Meta/Instagram pueden ser destinos administrados por Postiz si el proveedor los ofrece, pero el repositorio no contiene un conector directo de Meta Suite.
+
+\subsection{Alineación con ISO/IEC/IEEE 42010}
+ISO/IEC/IEEE 42010 establece que una descripción de arquitectura identifica el sistema de interés, stakeholders, concerns, viewpoints, views y decisiones de arquitectura, y documenta la relación entre ellos \cite{iso42010}. Este capítulo adopta ese enfoque: delimita el sistema, explicita preocupaciones de usuario, operación, seguridad, evolución y datos; usa vistas C4 para estructura; Gaia/AUML para roles y protocolos; y ADR para registrar decisiones y consecuencias.
+
+La correspondencia no implica certificación ni conformidad formal con la norma. La tesis debe asociar los viewpoints a los formatos exigidos por la institución y añadir los requisitos OE2 aprobados, las fuentes bibliográficas exigidas y las actas de revisión que no están almacenadas en el repositorio.
+
+\subsection{Stakeholders arquitectónicos}
+\begin{longtable}{p{3.2cm}p{4.1cm}p{7.0cm}}
+\toprule
+Stakeholder & Concern & Interés arquitectónico \\
+\midrule
+Responsable de marketing & Calidad, tono y oportunidad del contenido & Configurar marcas, enviar briefs, revisar ideas/publicaciones y decidir si se publica. \\
+Operador de la PoC & Arranque y diagnóstico & Levantar servicios, revisar salud, tareas, eventos y fallos. \\
+Equipo de desarrollo & Evolución y testabilidad & Añadir agentes/tools, cambiar modelos y contratos sin acoplamiento directo. \\
+Administrador de datos & Integridad y aislamiento & Mantener PostgreSQL, migraciones, datos de marca y filtros RAG. \\
+Responsable de seguridad / ITY SAS & Secretos, acceso y cumplimiento & Revisar credenciales, exposición de endpoints, datos de marca y riesgos de proveedores. \\
+Asesor académico & Trazabilidad metodológica & Verificar C4, Gaia/AUML, BDI, decisiones y evidencias de validación. \\
+\bottomrule
+\end{longtable}
+
+\section{Marco metodológico arquitectónico}
+
+\subsection{Integración de C4, Gaia, AUML y BDI}
+C4 representa la estructura estática en contexto, contenedores, componentes y código, con abstracciones apropiadas a cada audiencia \cite{brownc4}. Se utiliza para ubicar el sistema y sus dependencias, mostrar procesos/contenedores y descomponer las responsabilidades internas.
+
+Gaia guía la especificación de una sociedad de agentes mediante roles, responsabilidades, permisos y protocolos \cite{gaia}. AUML expresa interacciones entre agentes extendiendo notaciones UML para sistemas concurrentes y protocolos multiagente \cite{aum1,aum2}; para la PoC se presentan diagramas de secuencia con semántica de mensajes inspirada en FIPA-ACL \cite{fipaacl}. El modelo BDI se emplea como lente de análisis de creencias, deseos e intenciones, no como afirmación de que exista una biblioteca BDI en tiempo de ejecución \cite{rao_georgeff}.
+
+La combinación evita mezclar preguntas distintas: C4 responde dónde viven responsabilidades y dependencias; Gaia identifica quién hace qué; AUML especifica el intercambio; BDI ofrece una interpretación de decisión; ADR explica por qué se escogieron tecnologías. ATAM se usa para plantear escenarios de atributos de calidad y riesgos, no para afirmar que se realizó una evaluación formal completa \cite{atam}.
+
+\subsection{Estrategia de descomposición en subfases}
+\begin{enumerate}
+  \item Delimitar el sistema de interés, usuarios, proveedores y restricciones de la PoC.
+  \item Identificar capacidades de negocio: recibir brief, recuperar contexto, generar idea, generar copy, persistir y opcionalmente publicar.
+  \item Separar agentes de tools: razonamiento/flujo en los agentes; acceso a dominio e integraciones encapsulados en servicios de herramientas.
+  \item Definir estado, eventos, datos y fallos: Redis para checkpoints y TaskStore; RabbitMQ para despacho; PostgreSQL para datos durables.
+  \item Elegir protocolos por necesidad: REST para consultas síncronas/contratos y AMQP para despachos asíncronos.
+  \item Describir vistas C4, roles/protocolos Gaia-AUML y la interpretación BDI.
+  \item Derivar escenarios de calidad, ADR, riesgos, controles y plan de verificación.
+  \item Validar con ejecución automatizada y stakeholders; esta última actividad queda pendiente de evidencia formal.
+\end{enumerate}
+
+\subsection{Comparación de estilos arquitectónicos}
+La matriz es una evaluación cualitativa de diseño, de 1 (menos favorable) a 5 (más favorable), con el mismo peso para cada criterio. No son resultados experimentales. Criterios: C1 aislamiento de fallos; C2 escalado independiente; C3 resiliencia asíncrona; C4 simplicidad para consultas/latencia; C5 integración desacoplada; C6 observabilidad; C7 simplicidad de consistencia; C8 esfuerzo de PoC (5 = menor esfuerzo); C9 extensibilidad.
+
+\begin{landscape}
+\begin{table}[p]
+\centering\scriptsize
+\caption{Comparación cualitativa de estilos arquitectónicos (1--5)}
+\begin{tabular}{p{4.0cm}ccccccccc c}
+\toprule
+Estilo & C1 & C2 & C3 & C4 & C5 & C6 & C7 & C8 & C9 & Suma \\
+\midrule
+Monolito modular & 2 & 1 & 2 & 4 & 1 & 2 & 5 & 5 & 2 & 24 \\
+Monolito en capas & 2 & 1 & 2 & 4 & 2 & 3 & 4 & 4 & 2 & 24 \\
+Microservicios REST síncronos & 5 & 5 & 2 & 5 & 2 & 4 & 2 & 2 & 4 & 31 \\
+Microservicios orientados a eventos & 5 & 5 & 5 & 2 & 5 & 3 & 2 & 2 & 5 & 34 \\
+Arquitectura basada en actores & 4 & 4 & 4 & 3 & 4 & 3 & 3 & 2 & 4 & 31 \\
+Serverless / funciones gestionadas & 4 & 4 & 4 & 3 & 4 & 4 & 3 & 2 & 4 & 32 \\
+Híbrida: microservicios + eventos + REST & 5 & 4 & 5 & 4 & 5 & 4 & 3 & 3 & 5 & 38 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{landscape}
+
+La alternativa seleccionada es híbrida: REST facilita contratos explícitos de consulta y herramientas, mientras RabbitMQ desacopla los trabajos prolongados de los agentes. La suma orienta la discusión, pero no reemplaza una ponderación acordada con stakeholders ni mediciones de latencia, costo o disponibilidad.
+
+\subsection{Registro de decisiones arquitectónicas (ADR)}
+Cada ADR documenta contexto, decisión, alternativas y consecuencias. Su estado describe la PoC revisada.
+
+\subsubsection*{ADR-001: estilo arquitectónico general}
+\textbf{Estado: aceptado en la PoC.} Se adopta una arquitectura híbrida de microservicios, supervisor central y workers agentes. Alternativas: monolito, REST entre todos los componentes y sistema basado solo en eventos. Consecuencia positiva: despliegue y ownership por responsabilidad, y desacoplamiento temporal de agentes. Costos: operación de 14 servicios, consistencia eventual, contratos distribuidos y necesidad de observabilidad central. No implica que exista HA.
+
+\subsubsection*{ADR-002: RabbitMQ frente a Kafka}
+\textbf{Estado: aceptado en la PoC.} RabbitMQ provee colas durables, ack/reentrega y RPC sobre AMQP; el volumen y la retención requerida de la PoC no justifican operar Kafka. Kafka sería candidato si se exige retención prolongada, replay de streams o alto throughput. Consecuencia: RabbitMQ es punto crítico único en el Compose actual y los eventos no constituyen un log analítico de retención ilimitada.
+
+\subsubsection*{ADR-003: LangGraph como motor de flujo}
+\textbf{Estado: aceptado en la PoC.} LangGraph modela el supervisor con interrupciones y reanudaciones, además de un grafo local por agente. No decide mediante un planificador autónomo genérico: el supervisor enruta de forma determinista según el \code{workflow} de la tarea (\code{generate_idea}, \code{prepare_publication}, \code{deliver_publication}) y según la presencia de idea/publicación. Cada tarea despacha un único agente y termina; encadenar ideación y publicación es una decisión del usuario, no del supervisor. RedisSaver externo permite reanudar por \code{thread_id}. El flujo de negocio reside en nodos tipados y el runtime despacha por RabbitMQ.
+
+\subsubsection*{ADR-004: fuentes externas y competencia}
+\textbf{Estado: aceptado en la PoC.} Tendencias y referencias de competencia se consultan desde PostgreSQL/pgvector; noticias y topics trending proceden de feeds RSS de Google News a través de tools. No hay proveedor de social listening comercial identificado ni métricas de engagement ingeridas. La cobertura, licencias, frescura y sesgo del RSS requieren evaluación; incorporar un proveedor futuro exige adapter/tool, términos de uso y pruebas.
+
+\subsubsection*{ADR-005: gateway multi-proveedor de LLM}
+\textbf{Estado: implementado como gateway configurable; despliegue de varios proveedores externos no acreditado.} Los agentes consumen un único contrato HTTP y el gateway centraliza balanceo entre proveedores configurados, reintentos, fallback y caché. La configuración de la PoC usa Ollama/modelos locales. Ventaja: evita acoplar agentes al proveedor; riesgo: el gateway concentra tráfico y prompts, y el fallback debe mantener compatibilidad de modelos y salida estructurada.
+
+\subsubsection*{ADR-006: pgvector frente a base vectorial dedicada}
+\textbf{Estado: aceptado en la PoC.} Se usa PostgreSQL 16 con extensión pgvector para mantener atributos relacionales, filtros de marca y vectores en una sola plataforma. Se evita una base adicional para la escala de la PoC. Deben evaluarse recall, latencia, índices y aislamiento bajo carga real antes de decidir si se necesita un motor vectorial especializado.
+
+\subsubsection*{ADR-007: observabilidad del razonamiento}
+\textbf{Estado: implementación parcial.} Se guardan estados de tarea, checkpoints, historial de chat, herramientas invocadas y logs; existen endpoints de salud, métricas JSON, grafo y estado de agente, además de traza en frontend (vista de trazabilidad con visualizador de pipeline de cinco etapas, línea de tiempo y consulta de historial). No hay Langfuse, OpenTelemetry distribuido, panel Prometheus ni auditoría integral de prompts/respuestas. Se recomienda añadir telemetría LLM con redacción de PII, retención limitada y controles de acceso antes de producción.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.82\textwidth]{diagramas/15_architecture-decisions.pdf}
+\caption{Relación entre ADR y componentes. Fuente Mermaid: \code{docs/diagramas/15_architecture-decisions.mmd}.}
+\label{fig:adr-map}
+\end{figure}
+
+\section{Vista de contexto (C4 nivel 1)}
+
+\subsection{Propósito y alcance de la vista}
+La vista de contexto sitúa al sistema de generación de contenido frente a sus usuarios y sistemas externos. Los componentes de almacenamiento, broker y servicios agentes se consideran internos al sistema de interés; se muestran en el nivel siguiente.
+
+\subsection{Actores del sistema}
+El actor primario es el responsable de marketing que entrega un brief, revisa y edita los resultados y aprueba su entrega. El operador técnico configura modelos, servicios y credenciales y diagnostica fallos. Son roles de uso; el repositorio no implementa un proveedor de identidad ni RBAC de interfaz.
+
+\subsection{Sistemas externos}
+\begin{itemize}
+  \item \textbf{Ollama en el host}: servicio HTTP de inferencia local usado por el gateway.
+  \item \textbf{Google News RSS}: fuente pública leída por tools de noticias y trending.
+  \item \textbf{Postiz}: API externa opcional para consultar integraciones y crear borrador, programación o publicación inmediata.
+  \item \textbf{Canales sociales}: destinos a los que Postiz puede conectar; no se invocan directamente desde este repositorio.
+\end{itemize}
+
+Meta Suite, proveedor formal de social listening y gestor de tareas externo no aparecen como integraciones directas. El TaskStore de Redis es una responsabilidad interna.
+
+\subsection{Diagrama de contexto}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/01_contexto.pdf}
+\caption{Vista de contexto C4 nivel 1. Fuente Mermaid: \code{docs/diagramas/01_contexto.mmd}.}
+\label{fig:c4-context}
+\end{figure}
+
+\subsection{Análisis de fronteras del sistema}
+La frontera funcional contiene el BFF, el supervisor, los agentes y los servicios de herramientas. RabbitMQ, Redis y PostgreSQL son infraestructura gestionada por el despliegue de la PoC y forman parte de su frontera operativa, aunque son productos externos. Ollama, RSS y Postiz son dependencias externas. El navegador consume el BFF; no conoce colas, credenciales de proveedores ni consultas SQL.
+
+\section{Vista de contenedores (C4 nivel 2)}
+
+\subsection{Propósito y criterios de descomposición}
+En C4, un contenedor es una unidad desplegable/ejecutable que delimita responsabilidades, no necesariamente una imagen Docker. En esta PoC, Compose empaqueta 14 servicios: RabbitMQ, PostgreSQL, Redis, gateway, siete tools, dos agentes y orquestador. El frontend se ejecuta localmente por separado (BFF Python que sirve la SPA compilada en \code{frontend/static}); el Dockerfile de frontend existe, pero el Compose revisado no lo declara.
+
+Los criterios de separación son: ciclo de vida independiente, propiedad de datos y contrato acotado. No se afirma que cada servicio tenga una base de datos física independiente: varios tools comparten instancia PostgreSQL y separan ownership lógico de tablas.
+
+\subsection{Inventario de contenedores}
+\begin{longtable}{p{2.8cm}p{2.0cm}p{4.1cm}p{5.4cm}}
+\toprule
+Contenedor / puerto & Proceso & Responsabilidad & Comunicación / estado \\
+\midrule
+Frontend BFF :3000 (local) & FastAPI + SPA React 19 (Vite, Tailwind v4) & Backoffice de ocho módulos, API de interfaz, SSE y agregación de respuestas & REST con orquestador, tool-rag y tool-postiz; Redis y PostgreSQL de forma directa (listado de tareas, perfiles, vínculo de canales). Fuera del Compose actual. \\
+Orchestrator :8002 & FastAPI + LangGraph runtime & Ingreso, lotes de ideas, preparación/aprobación/entrega de publicaciones, despacho de un agente por tarea y consolidación & REST de entrada; RabbitMQ; RedisSaver/TaskStore; tool-rag y tool-postiz por REST para validar idea/canales; PostgreSQL history. \\
+Agente ideación :8000 & FastAPI + consumidor AMQP + LangGraph & Contexto de marca/mercado, dossier validado e idea persistida & Consume cola ideación; tools y gateway por REST; checkpoint Redis. \\
+Agente publicación :8001 & FastAPI + consumidor AMQP + LangGraph & Variantes de copy por plataforma, persistencia y entrega a Postiz de copies aprobados & Consume cola publicación; tools/gateway; checkpoint Redis. \\
+LLM Gateway :8003 & FastAPI & Abstracción de generación y embeddings, balanceo/fallback/cache & HTTP desde agentes/tools; HTTP hacia Ollama; caché Redis. \\
+Tool client :8010 & FastAPI & Consulta del perfil y datos de marca & Manifiesto REST y operaciones; PostgreSQL. \\
+Tool trends :8011 & FastAPI & Recuperación de tendencias internas & Manifiesto REST/AMQP; PostgreSQL/pgvector y gateway para embeddings. \\
+Tool competitors :8012 & FastAPI & Recuperación de referencias de competencia & Manifiesto REST/AMQP; PostgreSQL/pgvector. \\
+Tool RAG :8013 & FastAPI & Similaridad, listado/detalle de ideas, estado de lotes, escritura de ideas/publicaciones por plataforma, estadísticas e ingesta documental & Manifiesto REST/AMQP; PostgreSQL/pgvector y gateway. \\
+Tool news :8014 & FastAPI & Consulta de noticias RSS & REST/AMQP hacia agentes; Google News RSS. \\
+Tool trending :8015 & FastAPI & Consulta de temas trending & REST/AMQP; RSS. \\
+Tool Postiz :8016 & FastAPI & Catálogo de integraciones, vínculo canal-marca, validación de canales y creación de publicación multicanal & REST/AMQP interno; HTTPS externo a Postiz; PostgreSQL (\code{brand_channels}); API key opcional. \\
+RabbitMQ :5672/:15672 & Broker & Transporte de eventos, RPC y consola de administración & AMQP 0-9-1; colas durables y mensajes persistentes. \\
+PostgreSQL :5432 & PostgreSQL 16 + pgvector & Datos de marcas, memoria, fuentes y chat history & SQL; volumen persistente en Compose. \\
+Redis :6379 & Redis Stack 7.4 & Checkpoints, TaskStore y cache de gateway & Redis protocol; volumen persistente en Compose. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Patrones de comunicación: REST frente a AMQP}
+\begin{longtable}{p{3.0cm}p{4.2cm}p{7.0cm}}
+\toprule
+Patrón & Casos de uso & Contrato \\
+\midrule
+REST/HTTP síncrono & Navegador-BFF, BFF-orquestador, agentes-tools, agentes-gateway, gateway-Ollama & JSON; verbos HTTP; errores HTTP/envelope; manifiesto \code{/.well-known/tool-manifest}. Adecuado a lectura de contexto y generación que devuelve respuesta al agente. \\
+AMQP asíncrono & Orquestador-agentes y publicación de resultado & RabbitMQ con colas durables; eventos JSON; ack manual en consumidores de agentes; correlation ID y task ID. Desacopla vida de la petición web y ejecución de agente. \\
+SSE & BFF-navegador & \code{GET /api/tasks/{id}/stream}; el BFF sondea TaskStore en Redis y emite la traza cuando detecta cambio. No es entrega directa de eventos RabbitMQ. El progreso de un lote de ideas se consulta por sondeo REST (\code{GET /api/idea-batches/{id}}). \\
+RPC sobre AMQP & Invocación asíncrona ofrecida por tools & Evento a \code{tool.<name>.rpc}, \code{reply_to} efímero y correlación. Los grafos de agentes revisados llaman tools por REST, por lo que esta capacidad no constituye su ruta principal. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Justificación tecnológica por contenedor}
+FastAPI/Uvicorn ofrece contratos HTTP y OpenAPI generado; LangGraph representa flujos con nodos y checkpoints; RabbitMQ permite despacho sin mantener una petición HTTP abierta; Redis Stack admite RedisSaver y metadatos; PostgreSQL/pgvector unifica datos relacionales y vectoriales; gateway propio evita que los agentes dependan de la API de Ollama; Docker Compose facilita una PoC replicable. Son decisiones de adecuación al alcance, no un análisis de rendimiento a escala productiva.
+
+\subsection{Análisis de latencia}
+Los objetivos de rendimiento del plan de pruebas son umbrales por verificar: embedding menor a 2 s; recuperación de tendencias menor a 3 s; armado de contexto menor a 10 s; generación menor a 60 s; pipeline menor a 120 s; salud menor a 500 ms; búsqueda vectorial menor a 500 ms sin embedding. No deben citarse como resultados obtenidos.
+
+El camino crítico de cada fase es secuencial, pero las fases ya no se encadenan en una única tarea: ideación, preparación y entrega son tareas independientes separadas por decisiones del usuario. Para la fase de ideación de una idea y para la de preparación, una aproximación para instrumentación es:
+\[
+T_{fase}=T_{ingreso}+T_{cola}+T_{contexto}+n_{var}\,T_{LLM}+n_{var}\,T_{persistencia}+T_{resume}+T_{final},
+\]
+donde $n_{var}=1$ en ideación y es el número de plataformas distintas en preparación (una llamada al modelo por plataforma). La entrega solo invoca a Postiz y no llama al LLM. En un lote, el orquestador despacha de forma secuencial las tareas hijas (hasta cinco) y el agente las consume de la misma cola; el tiempo total del lote depende de la concurrencia de consumidores y del modelo. Las consultas dentro de los nodos actuales se ejecutan de forma secuencial, por lo que su latencia se suma. La caché puede reducir generación/embedding repetidos; no se dispone de una medición reproducible para asignar percentiles.
+
+\subsection{Diagrama de contenedores}
+\begin{landscape}
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{diagramas/02_contenedores.pdf}
+\caption{C4 nivel 2: contenedores, protocolos y dependencias principales. El backend de Compose agrupa 14 servicios; el BFF se ejecuta fuera del Compose actual. Fuente Mermaid: \code{docs/diagramas/02_contenedores.mmd}.}
+\label{fig:c4-containers}
+\end{figure}
+\end{landscape}
+
+\subsection{Escenarios de atributos de calidad (ATAM)}
+\begin{longtable}{p{2.0cm}p{3.2cm}p{3.0cm}p{4.6cm}p{2.2cm}}
+\toprule
+Atributo & Estímulo / fuente & Entorno & Respuesta esperada & Medida / estado \\
+\midrule
+Disponibilidad & RabbitMQ deja de responder durante una tarea & Ejecución activa & El productor registra fallo; consumidores reintentan conexión; tareas quedan diagnosticables & Recuperación funcional descrita; prueba bajo falla pendiente. \\
+Recuperabilidad & Muere un agente después de checkpoint & Reentrega del mensaje & El agente retoma desde Redis y no duplica el efecto final si el checkpoint terminó & Idempotencia cubierta por pruebas unitarias; E2E ante caída pendiente. \\
+Rendimiento & Solicitud de una idea o de copies para una plataforma & Stack local con Ollama & Completar la fase dentro del presupuesto de experiencia & P05 <120 s es objetivo del plan, no medición reportada. \\
+Aislamiento & Brief de marca A busca memoria similar & Datos de varias marcas & La consulta privada añade filtro SQL por \code{brand_id} antes de ordenar & Prueba unitaria del SQL existente; autorización/RLS pendiente. \\
+Interoperabilidad & Se añade una operación a un tool & Servicio compatible con manifiesto & ToolRegistry la descubre sin codificar URL/path en grafo & Tests de discovery definidos; integración con stack debe ejecutarse. \\
+Modificabilidad & Cambia el proveedor/modelo LLM & Configuración ambiental & Agentes siguen usando el contrato gateway & Abstracción implementada; validación multi-proveedor real pendiente. \\
+\bottomrule
+\end{longtable}
+
+Los escenarios especifican estímulo, entorno, respuesta y medida para orientar una evaluación ATAM. Las medidas que se extraen del plan de pruebas son umbrales objetivo; no representan resultados de rendimiento obtenidos. El escenario de recuperación requiere especial cautela porque el consumidor de resultados del supervisor usa auto-ack según su configuración actual.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{diagramas/16_quality_scenarios.pdf}
+\caption{Resumen visual de escenarios de calidad y evidencia disponible. Fuente Mermaid: \code{docs/diagramas/16_quality_scenarios.mmd}.}
+\label{fig:quality-scenarios}
+\end{figure}
+
+\section{Vista de componentes (C4 nivel 3)}
+
+\subsection{Propósito y criterios de descomposición}
+La vista descompone los contenedores que implementan comportamiento. Un componente es una agrupación lógica de código con responsabilidad y contrato; no siempre es un proceso independiente. Se separan el supervisor, el runtime/event adapter, nodos de agente, tools de dominio y los módulos de la SPA.
+
+\subsection{Componentes del supervisor y flujos de trabajo}
+El grafo del supervisor es \code{START -> start -> decide_next -> [dispatch_ideacion | dispatch_publicacion | END]}. \code{decide_next} enruta por \code{brief.workflow}: \code{generate_idea} despacha ideación si aún no hay idea y termina; \code{prepare_publication} (y el heredado \code{publish_idea}) despacha publicación una vez y termina; \code{deliver_publication} despacha publicación con \code{publication_action=deliver}. Las mutaciones de aprobación (\code{approve}) no pasan por el grafo: el orquestador actualiza directamente el resultado de la tarea de preparación en el TaskStore. El runtime también crea tareas padre de lote (\code{idea_batch}) que agregan el progreso de hasta cinco tareas hijas (estado \code{running}, \code{completed}, \code{partial} o \code{failed}) y expone el listado de publicaciones derivando su estado (\code{preparing}, \code{awaiting_approval}, \code{approved_pending}, \code{sending}, \code{draft}, \code{scheduled}, \code{sent}, \code{failed}, \code{skipped}) a partir de TaskStore, sin tabla propia.
+
+\subsection{Componentes del agente de ideación}
+El grafo implementado es \code{START -> load_context -> fetch_news -> generate_idea -> save_idea -> END}. \code{load_context} obtiene perfil, tendencias, competencia e ideas similares de la marca; si el brief llega vacío, compone uno a partir del perfil de marca y de los temas solicitados. \code{fetch_news} consulta RSS; \code{generate_idea} llama al gateway con un esquema JSON especializado por formato (Reel o Post) y un ángulo de generación distinto por posición del lote, parsea y valida el dossier, y solicita una reparación si faltan campos; \code{save_idea} delega embedding/escritura a tool-rag junto con \code{generation_batch_id} y \code{generation_index}. El estado registra los identificadores de herramientas.
+
+\subsection{Componentes del agente de edición}
+La arquitectura no despliega un agente de edición separado. La comprobación editorial automatizada implementada está dentro del grafo de ideación: \code{generate_idea} parsea el JSON, \code{validate_dossier} comprueba los campos del formato y, si la validación falla, se efectúa un único intento adicional con instrucciones de reparación. Si la segunda salida tampoco cumple el esquema, la tarea falla. Por tanto, el rol técnico es un paso de validación del agente de ideación, no una entidad autónoma que reciba asignaciones o mantenga un estado BDI propio.
+
+\subsection{Componentes del agente de publicación}
+El grafo tiene dos entradas. En preparación (\code{publication_action=prepare}): \code{START -> load_context -> fetch_trending -> generate_post -> save_post -> schedule_post -> END}. En entrega (\code{deliver}) la arista condicional de \code{START} salta directamente a \code{schedule_post}, de modo que no se regenera ni se vuelve a guardar el copy aprobado. \code{load_context} carga perfil y tendencias y, si hay canales seleccionados, consulta a tool-postiz los canales de la marca. \code{fetch_trending} recupera topics a partir de la idea (ya no un tema fijo). \code{generate_post} agrupa los canales por plataforma y realiza una llamada al gateway por plataforma, con instrucciones específicas del canal, produciendo una variante por plataforma; \code{save_post} persiste cada variante en tool-rag con su columna \code{platform}. \code{schedule_post} en modo \code{prepare} solo devuelve \code{postiz.status=prepared}; en modo \code{deliver} exige canales, descarta los que carecen de configuración \code{__type}, llama a \code{postiz.create_post} con el copy aprobado de cada canal y devuelve \code{created}, \code{skipped} o \code{failed} (un fallo de Postiz conserva los copies generados).
+
+El flujo de aprobación es una compuerta humana fuera de los grafos: el usuario revisa y edita las variantes en la SPA, el orquestador comprueba que cada canal seleccionado tenga un copy no vacío (\code{approve}) y solo entonces despacha la entrega (\code{deliver}). La entrega solo puede usar canales elegidos en la preparación, los vuelve a validar contra la marca y rechaza canales sin configuración Postiz. Sin la clave \code{POSTIZ_API_KEY} la preparación funciona, pero la entrega falla de forma controlada.
+
+\subsection{Diagrama de componentes integrado}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{diagramas/03_componentes.pdf}
+\caption{Componentes del supervisor y grafos LangGraph de ideación/publicación, con ToolRegistry, gateway y persistencia. Fuente Mermaid: \code{docs/diagramas/03_componentes.mmd}.}
+\label{fig:components}
+\end{figure}
+
+La composición interna de los grafos es secuencial. En ideación, el contexto se recupera antes de consultar noticias, generar la idea y persistirla. En publicación (preparación), se recuperan perfil/tendencias y temas trending antes de generar y guardar un texto por plataforma; el último nodo solo llama a Postiz cuando la acción es \code{deliver}. Las herramientas no son subgrafos ni agentes deliberativos: son procesos FastAPI que exponen contratos REST y, opcionalmente, RPC AMQP.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.96\textwidth]{diagramas/07_grafos_agentes.pdf}
+\caption{Nodos y transiciones de supervisor, ideación y publicación. Fuente Mermaid: \code{docs/diagramas/07_grafos_agentes.mmd}.}
+\label{fig:agent-graphs}
+\end{figure}
+
+\subsection{Extensibilidad: registro de agentes y tools}
+Las tools se descubren mediante URLs configuradas en \code{TOOL_URLS}; cada servicio publica manifiesto con nombre, versión, operaciones, método, path y parámetros. \code{ToolRegistry} descarga manifiestos, los valida y mapea la operación a REST. Se obtiene extensibilidad de tools, no una instalación plug-and-play sin configuración.
+
+Los agentes no se descubren mediante un Agent Registry dinámico. El supervisor declara en código el enrutamiento por \code{workflow} y las colas de ideación/publicación, y el estado tipado enumera sus resultados. Incorporar otro agente requiere cambiar estado, lógica de decisión, nodos de despacho, cola y runtime; por ello NFR-05 se cumple parcialmente en la dimensión de tools y queda pendiente para agentes.
+
+\subsection{Componentes de la interfaz (SPA React)}
+La SPA se organiza en ocho módulos navegables bajo un estado global (\code{AppContext}: marca activa, lotes, tareas, suscripción SSE, avisos y operaciones CRUD) y una única capa de acceso HTTP (\code{api/client.js}) hacia el BFF: Dashboard (KPIs y lote activo), Studio (generación de lotes de 1 a 5 ideas, formato automático/Reel/Post y vínculo de canales Postiz por marca), Library (explorador de dossiers por marca, disparo de preparación de copies, edición de ideas con recálculo automático de embeddings vectoriales en pgvector, eliminación con advertencia de inmutabilidad y control de conflicto HTTP 409 si existen publicaciones despachadas, y visualización de badges de ciclo de vida), Results (preproducción, edición de copies por canal, simulación de red social y badge de inmutabilidad \code{Lock} para publicaciones enviadas), Publications (estado de preparaciones y entregas, aprobación, envío y visualización de copias inmutables), Traceability (visualizador del pipeline y línea de tiempo), History (auditoría de tareas) y System (salud de servicios, estadísticas RAG y catálogo de tools). Adicionalmente, el componente transversal \code{Sidebar} incorpora un modal de configuración de marca que permite editar perfiles, restricciones de tono y parámetros de búsqueda vectorial RAG por tenant (\code{similarity_threshold}, \code{top_k} y contraste semántico), además de soportar el archivado (\textit{soft-delete}) de marcas. La SPA compilada se sirve por el mismo proceso FastAPI en el puerto 3000; React escapa por defecto el texto interpolado y el código no emplea inserción de HTML sin sanear.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/18_frontend_modulos.pdf}
+\caption{Módulos de la SPA, BFF y servicios que consume cada uno. Fuente Mermaid: \code{docs/diagramas/18_frontend_modulos.mmd}.}
+\label{fig:frontend-modules}
+\end{figure}
+
+\section{Especificación de agentes con Gaia}
+
+\subsection{Fundamento y convención}
+Gaia permite especificar una sociedad de agentes mediante roles, protocolos, actividades, responsabilidades y permisos. En esta PoC se consideran agentes solo los procesos que reciben una tarea, mantienen estado de ejecución propio y producen un resultado: supervisor, ideación y publicación. El responsable de marketing es actor externo; los tool services y el LLM Gateway son servicios invocados y no roles autónomos de Gaia. Los permisos descritos son capacidades de proceso, no autorizaciones de usuario ni ACL de seguridad.
+
+\subsection{Modelo de roles}
+\begin{longtable}{p{2.5cm}p{3.5cm}p{3.7cm}p{3.0cm}p{2.5cm}}
+\toprule
+Rol Gaia & Responsabilidad & Actividades & Recursos de información & Resultado / protocolo \\
+\midrule
+Supervisor & Seleccionar el agente según el flujo de trabajo y consolidar su resultado. & Validar la solicitud recibida, crear task, ejecutar el grafo hasta el próximo interrupt, despachar evento, reanudar y finalizar; agregar el progreso de un lote. & \code{brief}, \code{workflow}, \code{client_id}, \code{brand_id}, \code{idea}, \code{publication}, IDs, log y tarea pendiente. & \code{POST /ideas/generate}, \code{/ideas/{id}/publish}, \code{/publications/{id}/deliver}, \code{/process}; \code{agent.task.triggered/completed}. \\
+Ideator & Producir una idea/dossier (Reel o Post) a partir del brief, o del perfil si el brief es vacío, y el contexto disponible. & Cargar perfil, tendencias, competencia e ideas similares; consultar RSS; generar/validar dossier; guardar idea con su lote y posición. & Brief, ángulo de generación, perfil, contextos, respuestas de herramientas, idea y \code{preproduction}. & Consume \code{agent.ideacion.tasks}; responde en \code{agent.results}. \\
+Publisher & Generar una variante de copy por plataforma para una idea seleccionada y, solo con aprobación previa, entregarla a Postiz. & Preparación: cargar perfil/tendencias/trending y canales; generar un texto por plataforma; guardar cada variante. Entrega: crear el post en Postiz con el copy aprobado de cada canal. & Idea y dossier, IDs, canales de la marca, modo, fecha, ajustes por canal, variantes y respuesta Postiz. & Consume \code{agent.publicacion.tasks}; responde en \code{agent.results}. \\
+\bottomrule
+\end{longtable}
+
+El agente de ideación y el de publicación tienen grafos y checkpoints propios. El supervisor no ejecuta herramientas de dominio: planifica y despacha (las validaciones previas de idea y canales en los endpoints de publicación son consultas REST a tool-rag y tool-postiz hechas por el orquestador antes de despachar). La marca se transmite como dato de tarea y se utiliza en las consultas RAG/escrituras; como no hay autenticación de usuario, esta separación de roles no equivale a una frontera de autorización. El responsable de marketing actúa además como revisor humano: es quien edita y aprueba los copies antes de la entrega.
+
+\subsection{Modelo de interacciones}
+El supervisor inicia el rol Ideator con un evento durable por cada idea del lote y recibe su resultado; la tarea termina allí. Posteriormente, por decisión del usuario, inicia el rol Publisher en modo preparación y, tras la aprobación humana, de nuevo en modo entrega. Cada agente ejecuta su grafo y usa ToolRegistry para descubrir manifiestos e invocar herramientas. La separación se justifica porque la publicación necesita una idea elegida y revisión humana; no existen propuestas paralelas ni asignación competitiva.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/08_tool_discovery.pdf}
+\caption{Descubrimiento por manifiesto e invocación REST de una operación de tool. Fuente Mermaid: \code{docs/diagramas/08_tool_discovery.mmd}.}
+\label{fig:tool-discovery}
+\end{figure}
+
+\subsection{Restricciones de seguridad}
+Los agentes solo invocan tools y gateway por contratos, sin importar directamente la lógica de negocio compartida. La identidad del rol de agente se expresa en colas y campos \code{agent/source}; no se firma criptográficamente y RabbitMQ usa credenciales de desarrollo. La entrada RSS, el brief y la respuesta del LLM son datos no confiables. Los secretos, PII y aislamiento entre usuarios requieren controles adicionales descritos en la vista de seguridad.
+
+\section{Modelo de comportamiento BDI}
+
+\subsection*{6.7.0. Mecanismo de implementación de la deliberación}
+La implementación usa grafos deterministas de LangGraph, validadores y enrutamiento explícito. No hay clases \textit{Belief}, \textit{Desire} e \textit{Intention}, ciclo BDI genérico ni planificador de intenciones. BDI se presenta aquí como modelo analítico para explicar qué información sustenta los objetivos y qué acciones materializan las intenciones.
+
+\setcounter{subsection}{0}
+\subsection{Fundamento BDI y ciclo}
+En BDI, las creencias modelan información considerada por el agente; los deseos, estados que busca alcanzar; y las intenciones, planes comprometidos para alcanzar deseos. El ciclo de esta PoC puede interpretarse como observar estado/contexto, elegir la siguiente transición determinista, ejecutar nodo, actualizar estado y reconsiderar si una validación falla. La reconsideración ocurre localmente, no mediante deliberación autónoma general.
+
+\subsection{Modelo BDI del agente de ideación}
+\begin{description}
+  \item[Creencias:] brief, perfil de marca, tendencias, competencia, ideas similares, noticias y formato solicitado, según respuestas de tools.
+  \item[Deseo:] producir idea y dossier utilizables, coherentes con el formato y el perfil de marca.
+  \item[Intención:] cargar contexto, recuperar noticias, generar JSON, validar esquema y persistir idea con embedding.
+  \item[Regla de reconsideración implementada:] si faltan campos requeridos, genera una única solicitud de reparación sin caché; si vuelve a incumplir, falla el nodo y la tarea. No se reintenta indefinidamente.
+\end{description}
+
+\subsection{Modelo BDI del agente de edición}
+No existe agente Editor. Como aproximación funcional, el validador de dossier aporta una revisión estructural: cree el esquema/solicitud y el formato, desea evitar dossiers incompletos e intenta repararlos con el LLM. No evalúa factualidad, severidad, derechos de autor, tono con rúbricas ni evidencias. El ciclo futuro podría ser: validar sintaxis y contenido, clasificar hallazgos por severidad, corregir automáticamente fallos menores y escalar bloqueos al usuario. Ese comportamiento no debe atribuirse a la PoC actual.
+
+\subsection{Modelo BDI del agente de publicación}
+\begin{description}
+  \item[Creencias:] idea seleccionada por el usuario y su dossier, perfil de marca, tendencias y topics trending; canales de la marca con su configuración, modo, fecha y la acción solicitada (preparar o entregar).
+  \item[Deseo:] producir copy adaptado a cada plataforma elegida y, tras aprobación humana, enviarlo a los canales seleccionados.
+  \item[Intención:] en preparación, cargar contexto, generar una variante por plataforma y persistirlas; en entrega, crear el post en Postiz con los copies aprobados.
+  \item[Resolución de conflictos implementada:] no hay planificador multiobjetivo. El orquestador valida modo; para \code{schedule}, fecha obligatoria; los IDs deben pertenecer a canales activos de la marca y, en entrega, ser un subconjunto de los elegidos al preparar y tener configuración Postiz. Cada canal debe tener un copy aprobado no vacío. Los canales sin configuración se omiten (\code{skipped}) y un fallo de Postiz no descarta los copies. No se calcula automáticamente el mejor horario.
+\end{description}
+
+\subsection{Pseudocódigo del ciclo interpretativo}
+\begin{lstlisting}
+recibir evento y recuperar checkpoint(agent, task_id)
+si el checkpoint ya contiene salida final:
+    responder con el resultado guardado (idempotencia)
+si hay nodos pendientes:
+    retomar desde el ultimo checkpoint
+si no:
+    inicializar creencias con payload del evento
+mientras el grafo tenga una transicion:
+    ejecutar el siguiente nodo del plan LangGraph
+    actualizar estado y checkpoint en Redis
+    si el dossier no satisface el esquema:
+        solicitar una reparacion acotada; reconsiderar una vez
+    si ocurre error no recuperable:
+        publicar resultado failed y terminar
+extraer salida tipada y publicar agent.task.completed
+\end{lstlisting}
+El pseudocódigo sintetiza \code{common/agent_runner.py} y los grafos; no describe un intérprete BDI implementado.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{diagramas/09_bdi_flujo.pdf}
+\caption{Lectura analítica BDI del ciclo ejecutado por los grafos, sin motor BDI independiente. Fuente Mermaid: \code{docs/diagramas/09_bdi_flujo.mmd}.}
+\label{fig:bdi-flow}
+\end{figure}
+
+\section{Protocolos de interacción (AUML)}
+
+\subsection{Fundamento y niveles de protocolo}
+Los diagramas siguientes usan lifelines y mensajes de estilo AUML para hacer explícita la colaboración. Los nombres de evento JSON son contratos propios inspirados en performativas \code{request}, \code{inform} y \code{failure}; no se declara conformidad completa con FIPA ACL. HTTP representa interacción request/response y AMQP la coordinación asíncrona.
+
+\subsection{Protocolo Request/Inform implementado}
+\begin{landscape}
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{diagramas/04_secuencia_pipeline.pdf}
+\caption{Secuencia AUML del camino de ejecución: BFF, supervisor, RabbitMQ, agentes, tools, gateway y persistencia. Fuente Mermaid: \code{docs/diagramas/04_secuencia_pipeline.mmd}.}
+\label{fig:auml-request-inform}
+\end{figure}
+\end{landscape}
+
+El protocolo Request/Inform se materializa en eventos JSON propios, no en mensajes FIPA-ACL completos. El orquestador publica \code{agent.task.triggered}; el consumidor ejecuta el grafo y responde con \code{agent.task.completed}, incluyendo agente, estado, resultado o error, duración e identificadores de tarea/correlación. Para llamadas REST, el request/response es síncrono y la respuesta de los tools usa un envelope uniforme.
+
+\subsection{Asignación secuencial del trabajo}
+El protocolo implementado no es Contract Net. El supervisor conoce de antemano el flujo y selecciona el agente mediante \code{decide_next} a partir del campo \code{workflow} de la tarea: \code{generate_idea} despacha ideación; \code{prepare_publication} y \code{deliver_publication} despachan publicación (con \code{publication_action} igual a \code{prepare} o \code{deliver}). Cada tarea despacha un solo agente y finaliza; encadenar fases requiere una nueva solicitud del usuario. Los eventos \code{agent.task.triggered} y \code{agent.task.completed} son solicitudes y respuestas correlacionadas por \code{task_id}; no contienen CFP, propuestas ni votación entre agentes.
+
+Esta elección corresponde a la PoC porque cada rol tiene una etapa determinada y no existe un conjunto de agentes equivalentes que compitan por la misma tarea. Contract Net solo sería pertinente si se añadieran varios agentes candidatos, una función de evaluación de propuestas y reglas de selección. Por esa razón no se incluye un diagrama de Contract Net como parte de la arquitectura desarrollada.
+
+\subsection{Ciclo de vida de ideas y publicaciones}
+El sistema articula el ciclo de vida en dos planos complementarios:
+\begin{enumerate}
+    \item \textbf{Plano de orquestación y tareas (Redis TaskStore):} Durante el flujo asíncrono, una preparación completada queda en \code{awaiting_approval}; la aprobación explícita (\code{approve}) la traslada a \code{approved_pending}; la entrega (\code{deliver}) dispara una tarea \code{sending} que culmina en \code{draft}, \code{scheduled} o \code{sent} según el modo de despacho hacia Postiz API, o en \code{failed}/\code{skipped}.
+    \item \textbf{Plano de entidades durables e inmutabilidad (PostgreSQL, Migración 006):} Las tablas \code{ideas_generadas} y \code{publicaciones_generadas} disponen de máquinas de estado formales, marcas de tiempo (\code{updated_at}, \code{deleted_at}) y salvaguardas de integridad histórica:
+    \begin{itemize}
+        \item \textit{Ideas}: Se originan en estado \code{approved}; transicionan a \code{published} cuando sus variantes son despachadas a redes sociales, o a \code{archived} mediante eliminación lógica (\textit{soft-delete}). Si una idea posee publicaciones ya despachadas a Postiz (\code{sent_to_postiz} o \code{published}), el sistema bloquea su eliminación respondiendo con \code{HTTP 409 Conflict} (\code{LifecycleConflictError}).
+        \item \textit{Publicaciones}: Se almacenan inicialmente en estado \code{draft}. Mientras permanezcan en borrador, admiten edición con regeneración automática de embeddings vectoriales en pgvector. Una vez enviadas a Postiz (\code{sent_to_postiz}), adquieren condición de \textbf{inmutabilidad estricta}: cualquier intento de modificación (\code{PUT}) o eliminación (\code{DELETE}) es bloqueado con \code{HTTP 409 Conflict}.
+    \end{itemize}
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{diagramas/19_estados_publicacion.pdf}
+\caption{Estados de una publicación entre preparación, aprobación y entrega. Fuente Mermaid: \code{docs/diagramas/19_estados_publicacion.mmd}.}
+\label{fig:publication-states}
+\end{figure}
+
+\subsection{Especificación de mensajes JSON}
+El evento de RabbitMQ es un envelope común serializado como JSON UTF-8. Campos opcionales pueden omitirse; \code{correlation_id} hereda \code{task_id} si no se informa.
+\begin{lstlisting}
+{
+  "event_type": "agent.task.triggered",
+  "task_id": "uuid",
+  "correlation_id": "uuid",
+  "event_id": "uuid",
+  "timestamp": "UTC ISO-8601",
+  "source": "orchestrator",
+  "reply_to": null,
+  "agent": "ideacion",
+  "tool": null,
+  "operation": null,
+  "payload": {"brief": {}, "client_id": 1, "brand_id": 1},
+  "status": "completed",
+  "error": null,
+  "duration_ms": null
+}
+\end{lstlisting}
+Un resultado usa \code{event_type=agent.task.completed}, el campo \code{agent}, estado \code{completed|failed} y \code{payload.result}. La tarea total publica \code{task.completed}. El contrato no incorpora autenticación por mensaje, firma, schema registry ni versionado por compatibilidad semántica más allá de los campos/event names.
+
+La operación \code{tool-rag} para similitud exige \code{brand_id}, consulta y límite; los manifiestos describen método, ruta y parámetros y permiten al registro resolver la URL en tiempo de ejecución. Las respuestas REST llevan \code{tool}, \code{status}, \code{data}, \code{error}, \code{duration_ms}, \code{correlation_id} y \code{server_time}. Los errores del dominio se representan como envelope con estado \code{error}; el cliente del registro los propaga como error de herramienta.
+
+\subsection{Concurrencia y consistencia}
+RabbitMQ permite procesar mensajes de tareas distintas sin mantener una conexión HTTP de extremo a extremo. Cada tarea usa \code{thread_id=task_id} en el supervisor y \code{thread_id=<agent>:<task_id>} en los agentes. El runner revisa checkpoint terminado para devolver el mismo resultado y retoma nodos pendientes ante redelivery. Los consumidores de tareas de agente se configuran con ack manual; el consumidor del orquestador para resultados usa el valor por defecto \code{auto_ack=True}, por lo que la gestión de caída tras recibir resultado necesita endurecerse y probarse antes de afirmar entrega recuperable de extremo a extremo. El runtime protege la reanudación con un lock de instancia, que serializa callbacks de resultados en ese proceso; el paralelismo agregado no se ha medido. La consistencia entre TaskStore, checkpoint y PostgreSQL es eventual, no una transacción distribuida.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.96\textwidth]{diagramas/12_secuencia_fallo_recuperacion.pdf}
+\caption{Recuperación local de checkpoints y ventana de riesgo del consumidor de resultados del supervisor. Fuente Mermaid: \code{docs/diagramas/12_secuencia_fallo_recuperacion.mmd}.}
+\label{fig:recovery-sequence}
+\end{figure}
+
+La garantía implementada combina redelivery en los consumidores de agente con reanudación idempotente del grafo. No debe describirse como entrega exactamente una vez: el resultado depende de RabbitMQ, los checkpoints y la confirmación del consumidor. En particular, debe probarse el caso de caída después de recibir un resultado y antes de reanudar/persistir el supervisor.
+
+\section{Vista de despliegue}
+
+\subsection{Propósito y alcance}
+La topología de desarrollo consiste en un host con Docker Engine/Compose, servicios backend en una red privada Compose y puertos publicados en localhost. Ollama se ejecuta en el host y es alcanzado por contenedores mediante \code{host.docker.internal}. La SPA/BFF se inicia como proceso local en el puerto 3000; la SPA se compila antes con \code{npm run build} (Vite) hacia \code{frontend/static}, que FastAPI sirve en la misma raíz. Postiz y RSS son dependencias de Internet o, en el caso de Postiz, de una instancia local con su propio Compose (por defecto \code{http://host.docker.internal:4007/api/public/v1}).
+
+\subsection{Infraestructura de hardware}
+El repositorio no fija CPU, RAM, almacenamiento, acelerador ni proveedor cloud. El modelo local requiere recursos de cómputo acordes al modelo seleccionado; no se debe asignar una configuración de hardware como requisito probado sin medir. La conexión entre servicios internos usa HTTP/AMQP sin TLS en la PoC. La exposición pública requiere proxy TLS, firewall, autenticación y gestión de secretos.
+
+\subsection{Diagrama de despliegue}
+\begin{landscape}
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{diagramas/05_despliegue.pdf}
+\caption{Despliegue de desarrollo en un host Docker Compose y proceso local del BFF. Fuente Mermaid: \code{docs/diagramas/05_despliegue.mmd}.}
+\label{fig:deployment}
+\end{figure}
+\end{landscape}
+
+\subsection{Estrategia de escalabilidad}
+Los agentes consumen colas compartidas y guardan checkpoint en Redis, condición favorable a replicar workers si se controla la identidad de tareas y las reentregas. El supervisor está descrito como stateless respecto al proceso, pero el servicio Compose no configura réplicas ni balanceador. PostgreSQL, Redis y RabbitMQ son instancias únicas; por tanto son puntos únicos de fallo en el despliegue de PoC.
+
+\subsection{Estrategia de recuperación}
+Los servicios de aplicación declaran reinicio \code{on-failure}; las tareas en curso pueden ser redespachadas desde TaskStore al iniciar el runtime. Las garantías de entrega efectivas deben probarse incluyendo pérdida/recreación del broker y confirmación de publicaciones.
+La persistencia se configura con volúmenes de PostgreSQL y Redis. En el Compose revisado RabbitMQ no declara volumen nombrado, por lo que no debe afirmarse que mensajes sobreviven a eliminación/recreación del contenedor. Redis no es sustituto de almacenamiento de negocio y el broker no es almacenamiento de resultados.
+
+\subsection{Requisitos de red}
+\begin{itemize}
+  \item Ingreso local: TCP 3000 para BFF, 8000--8003 para agentes/orquestador/gateway, 8010--8016 para tools.
+  \item Datos y broker: TCP 5432 PostgreSQL, 6379 Redis y 5672 AMQP; 15672 consola RabbitMQ solo para administración local.
+  \item Salida: 11434 al servicio Ollama del host; HTTPS hacia Postiz si se configura; HTTPS/RSS a Google News.
+  \item Producción: restringir puertos de datos al segmento privado, autenticar APIs, usar TLS en saltos externos y no publicar interfaces administrativas.
+\end{itemize}
+
+\subsection{Modelo de capacidad y costo}
+No hay telemetría, precios cloud ni mediciones de carga suficientes para estimar valores monetarios o dimensionamiento nominal. La estimación debe completarse mediante carga representativa. Modelo mensual parametrizable:
+\[
+C_{mes}=C_{compute}+C_{storage}+C_{backup}+C_{network}+C_{LLM}+C_{Postiz}+C_{operations}.
+\]
+Con Ollama local, \(C_{LLM}\) es principalmente hardware/energía/operación; con proveedor remoto, se calcula a partir de tokens o llamadas y tarifas vigentes. Para evaluar capacidad se deben medir concurrencia, duración p50/p95, tasa de caché, tamaño de prompts, tiempo de cola, RAM/VRAM por modelo, conexiones a PostgreSQL y tamaño de checkpoints. La estimación de producción es pendiente; no es defendible asignar costos sin esos datos.
+
+\section{Modelo de datos}
+
+\subsection{Propósito y capas de persistencia}
+PostgreSQL conserva datos de negocio, perfiles, contenido y chat; pgvector añade embeddings de 768 dimensiones en las tablas aplicables. Redis conserva estado de orquestación, tareas, checkpoints y cache; RabbitMQ transporta eventos/RPC. Estas responsabilidades son distintas y se representan separadamente.
+
+\subsection{Modelo entidad-relación}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{diagramas/06_modelo_datos.pdf}
+\caption{Modelo entidad-relación lógico derivado de \code{init.sql}, migraciones 001 a 006 y DDL de historial. Fuente Mermaid: \code{docs/diagramas/06_modelo_datos.mmd}.}
+\label{fig:er}
+\end{figure}
+
+\subsection{Diccionario de datos}
+El esquema se materializa en \code{init.sql}, las migraciones \code{001_multi_tenant_foundation.sql} a \code{006_crud_and_lifecycle_states.sql} y el DDL idempotente del módulo \code{orchestrator/history.py}. Compose monta las seis migraciones en el directorio de inicialización de PostgreSQL. La 003 añade \code{platform} a las publicaciones, la 004 añade \code{generation_batch_id} y \code{generation_index} a las ideas, la 005 vuelve único el par lote/posición dentro de cada marca, y la 006 introduce ciclo de vida (\code{status}), trazabilidad temporal (\code{updated_at}, \code{deleted_at}) e índices parciales para registros activos en ideas y publicaciones, además de la configuración dinámica \code{rag_config} (JSONB) en marcas. Las tablas vectoriales usan dimensiones de 768 componentes. La notación \code{PK}, \code{FK}, \code{UK} y \code{NN} indica clave primaria, clave foránea, unicidad y obligatoriedad.
+
+\begin{longtable}{p{2.8cm}p{7.4cm}p{4.8cm}}
+\toprule
+Entidad & Columnas y restricciones principales & Función en el sistema \\
+\midrule
+\code{clientes} & \code{id SERIAL PK}; \code{nombre VARCHAR(100)}; perfil, restricciones de tono, histórico, producto/servicio, audiencia, objetivo, propuesta de valor, pilares, canales y restricciones legales como \code{TEXT}; \code{pais VARCHAR(80) DEFAULT 'Colombia'}; \code{zona_horaria VARCHAR(80) DEFAULT 'America/Bogota'}; \code{embedding VECTOR(768)}. & Perfil legacy de cliente usado por operaciones de compatibilidad. \\
+\code{tendencias} & \code{id SERIAL PK}; \code{categoria VARCHAR(100)}; \code{content TEXT}; \code{fuente VARCHAR(50) DEFAULT 'interna'}; \code{fecha DATE DEFAULT CURRENT_DATE}; \code{embedding VECTOR(768)}. & Corpus de tendencia interna para recuperación semántica. \\
+\code{referencias_competencia} & \code{id SERIAL PK}; \code{competidor VARCHAR(100)}; \code{content TEXT}; \code{plataforma VARCHAR(50)}; \code{embedding VECTOR(768)}. & Contexto de competencia mantenido por su tool. \\
+\code{ideas_generadas} & \code{id SERIAL PK}; \code{client_id INTEGER}; \code{brand_id BIGINT FK NN}; \code{content TEXT} (dossier JSON serializado); \code{embedding VECTOR(768)}; \code{generation_batch_id UUID}; \code{generation_index SMALLINT}; \code{status VARCHAR(32) DEFAULT 'approved' NN}; \code{created_at, updated_at TIMESTAMP}; \code{deleted_at TIMESTAMP}; índice único parcial \code{(brand_id,generation_batch_id,generation_index)}; índice parcial \code{idx_ideas_active_brand_status (brand_id,status)} donde \code{status != 'archived'}. & Ideas durables, ciclo de vida (\code{approved}, \code{published}, \code{archived}) y memoria semántica activa; el recálculo vectorial de 768 dimensiones es automático al editar; inmutable ante borrado si posee publicaciones despachadas. \\
+\code{publicaciones_generadas} & \code{id SERIAL PK}; \code{client_id INTEGER}; \code{brand_id BIGINT FK NN}; \code{idea_id INTEGER}; \code{platform VARCHAR(64)}; \code{content TEXT}; \code{embedding VECTOR(768)}; \code{status VARCHAR(32) DEFAULT 'draft' NN}; \code{created_at, updated_at TIMESTAMP}; \code{deleted_at TIMESTAMP}; índice \code{(brand_id,platform,created_at DESC)}; índice parcial \code{idx_publications_active_brand_status (brand_id,status)} donde \code{status != 'archived'}. & Variantes de copy persistidas en PostgreSQL con ciclo de vida (\code{draft}, \code{sent_to_postiz}, \code{archived}); memoria semántica activa; inmutabilidad estricta (bloqueo HTTP 409 Conflict) tras el despacho a Postiz. \\
+\code{organizations} & \code{id BIGSERIAL PK}; \code{name VARCHAR(160) NN}; \code{slug VARCHAR(160) NN UK}; \code{status VARCHAR(32) DEFAULT 'active'}; \code{created_at, updated_at TIMESTAMPTZ DEFAULT now()}. & Tenant raíz de marcas y membresías. \\
+\code{users} & \code{id BIGSERIAL PK}; \code{email VARCHAR(320) NN UK}; \code{display_name VARCHAR(160) DEFAULT ''}; \code{status VARCHAR(32) DEFAULT 'active'}; timestamps \code{TIMESTAMPTZ}. & Identidad referenciada por tablas de membresía; el servicio de autenticación no está implementado. \\
+\code{organization_members} & \code{organization_id BIGINT FK}; \code{user_id BIGINT FK}; \code{role VARCHAR(32) DEFAULT 'member'}; \code{created_at TIMESTAMPTZ}; PK compuesta \code{(organization_id,user_id)}. & Vínculo usuario-organización con rol declarado. \\
+\code{brands} & \code{id BIGSERIAL PK}; \code{organization_id BIGINT FK NN}; \code{name VARCHAR(160) NN}; \code{slug VARCHAR(160) NN}; \code{status VARCHAR(32) DEFAULT 'ready'}; \code{profile_marca}, \code{restricciones_tono}, \code{historico}, \code{producto_servicio}, \code{audiencia_objetivo}, \code{objetivo_marketing}, \code{propuesta_valor}, \code{pilares_contenido}, \code{canales_objetivo}, \code{restricciones_legales} como texto; \code{pais}, \code{zona_horaria}; \code{rag_config JSONB DEFAULT '{}'}; \code{embedding VECTOR(768)}; timestamps; UK \code{(organization_id,slug)}. & Marca, perfil y configuración dinámica de parámetros RAG por tenant (\code{similarity_threshold}, \code{top_k}, \code{contrast_enabled}). \\
+\code{brand_members} & \code{brand_id BIGINT FK}; \code{user_id BIGINT FK}; \code{role VARCHAR(32) DEFAULT 'editor'}; \code{created_at TIMESTAMPTZ}; PK compuesta \code{(brand_id,user_id)}. & Vínculo usuario-marca; la autorización runtime debe añadirse separadamente. \\
+\code{legacy_client_brand} & \code{client_id INTEGER PK/FK -> clientes}; \code{brand_id BIGINT FK UK}. & Mapeo de compatibilidad de cliente legacy a marca. \\
+\code{brand_sources} & \code{id BIGSERIAL PK}; \code{organization_id FK}, \code{brand_id FK}; \code{scope CHECK(global,organization,brand)}; \code{source_type VARCHAR(48) NN}; \code{title VARCHAR(320)}; \code{url}; \code{status}; \code{content_hash}; \code{metadata JSONB}; \code{fetched_at}, \code{created_at}. CHECK exige IDs compatibles con el scope. & Catálogo de fuentes y procedencia por ámbito. \\
+\code{brand_documents} & \code{id BIGSERIAL PK}; \code{source_id FK}; \code{organization_id FK}, \code{brand_id FK}; \code{scope CHECK(global,organization,brand)}; \code{title VARCHAR(320) NN}; \code{mime_type VARCHAR(128)}; \code{content TEXT NN}; \code{content_hash VARCHAR(128) NN}; \code{status}; \code{metadata JSONB}; \code{created_at}. & Documento de conocimiento asociado a fuente y tenant. \\
+\code{brand_chunks} & \code{id BIGSERIAL PK}; \code{document_id BIGINT FK NN}; \code{organization_id FK}, \code{brand_id FK}; \code{scope}; \code{chunk_index INTEGER NN}; \code{content TEXT NN}; \code{embedding VECTOR(768)}; \code{metadata JSONB}; \code{created_at}; UK \code{(document_id,chunk_index)}. & Fragmentos vectorizados para recuperación documental. \\
+\code{brand_evidence} & \code{id BIGSERIAL PK}; FK opcionales a marca/fuente/documento/chunk; \code{claim TEXT NN}; \code{evidence_text TEXT NN}; \code{confidence NUMERIC(5,4)}; \code{created_at}. & Evidencia/procedencia asociable a contenido y afirmaciones. \\
+\code{brand_channels} & \code{id BIGSERIAL PK}; \code{brand_id BIGINT FK NN}; \code{provider VARCHAR(64) NN}; \code{external_id VARCHAR(320) NN}; \code{display_name VARCHAR(320)}; \code{status}; \code{settings JSONB} (incluye \code{__type}, requerido por Postiz); \code{credential_reference}; \code{created_at}; UK \code{(provider,external_id)}. & Canales asociados a marca para validar la integración Postiz; un canal con \code{__type} se considera configurado. \\
+\code{chat_history} & \code{id SERIAL PK}; \code{task_id TEXT NN}; \code{client_id INTEGER}; \code{role CHECK(user,assistant,tool)}; \code{content TEXT NN}; \code{created_at TIMESTAMPTZ DEFAULT now()}; índice \code{(task_id,id)}. & Conversación durable de cada tarea; no referencia directamente a \code{brand_id}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Estrategia de persistencia}
+Las ideas y publicaciones cuentan con almacenamiento durable y ciclo de vida en PostgreSQL. El servicio \code{tool-rag} genera embeddings de 768 dimensiones a través del LLM Gateway y almacena los vectores en pgvector. Las búsquedas de ideas y publicaciones similares agregan obligatoriamente el filtro \code{brand_id} en SQL antes del orden por distancia coseno, complementado por la exclusión estricta de registros con estado \code{archived}. Las tendencias y referencias de competidores son gestionadas de forma aislada por sus propios microservicios. La tabla \code{chat_history} se actualiza de manera transaccional al iniciar y finalizar cada tarea.
+
+Redis guarda los checkpoints del supervisor con \code{thread_id=task_id}, los checkpoints de agentes bajo el esquema \code{<agent>:<task_id>}, el TaskStore con los estados asíncronos de ejecución y la caché de inferencia y embeddings del gateway. Mientras que el TaskStore gestiona la coordinación transitoria de lotes y entregas, PostgreSQL constituye la fuente de verdad definitiva y durable para las entidades de negocio. RabbitMQ transporta y enruta los envelopes de eventos y llamadas RPC sin fungir como base de persistencia de resultados.
+
+Los índices vectoriales en pgvector emplean operadores de distancia coseno (\code{<=>}). Tras la aplicación de la migración 006, se introducen índices relacionales parciales (\code{idx_ideas_active_brand_status} y \code{idx_publications_active_brand_status}) condicionados a \code{status != 'archived'}, lo que optimiza la latencia de recuperación RAG excluyendo del cálculo vectorial los elementos descartados o eliminados lógicamente.
+
+\subsection{Flujo de recuperación RAG y sincronización vectorial}
+El flujo de recuperación semántica opera desacoplado pero fuertemente consistente:
+\begin{enumerate}
+    \item \textbf{Generación de la consulta vectorial:} El servicio \code{tool-rag} o el cliente envía el texto de búsqueda al endpoint \code{POST /v1/embeddings} del LLM Gateway, obteniendo un vector normalizado de 768 componentes.
+    \item \textbf{Filtrado multi-tenant y ciclo de vida:} La consulta SQL sobre pgvector incorpora una doble condición relacional estricta:
+    \begin{lstlisting}[language=SQL]
+SELECT id, content, 1 - (embedding <=> %(vector)s::vector) AS similarity
+FROM ideas_generadas
+WHERE brand_id = %(brand_id)s
+  AND embedding IS NOT NULL
+  AND COALESCE(status, 'approved') != 'archived'
+ORDER BY embedding <=> %(vector)s::vector
+LIMIT %(limit)s;
+    \end{lstlisting}
+    Esto asegura que los contenidos archivados no contaminen el contexto de los nuevos prompts.
+    \item \textbf{Configuración dinámica por Marca (\code{rag_config}):} Cada marca define en su perfil parámetros que modulan la recuperación:
+    \begin{itemize}
+        \item \code{similarity_threshold}: Umbral mínimo de similitud de coseno (por defecto 0.65, configurable entre 0.30 y 0.95 desde el panel ejecutivo de la SPA).
+        \item \code{top_k}: Límite máximo de recuerdos relevantes a inyectar en el contexto de ideación y redacción (entre 1 y 20).
+        \item \code{contrast_enabled}: Bandera booleana para activar el contraste semántico frente al histórico de la marca.
+    \end{itemize}
+    \item \textbf{Re-indexación automática en operaciones CRUD:} Cuando el usuario edita una idea (\code{PUT /ideas/{id}}) o una publicación borrador (\code{PUT /publicaciones/{pub_id}}), el servicio no solo actualiza los campos textuales relacionales, sino que invoca síncronamente al gateway, recalcula el embedding y actualiza las columnas \code{embedding} y \code{updated_at = NOW()}.
+    \item \textbf{Garantía de inmutabilidad y conflicto (HTTP 409):} Si se intenta editar o eliminar una publicación que ya alcanzó el estado \code{sent_to_postiz} o \code{published}, o si se intenta eliminar una idea que posee variantes despachadas a redes, el backend aborta la transacción con una excepción \code{LifecycleConflictError}, retornando un código de error \code{HTTP 409 Conflict} tanto en \code{tool-rag} como a través del BFF hacia la SPA.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.92\textwidth]{diagramas/10_rag_multi_tenant.pdf}
+\caption{Recuperación y persistencia RAG con filtro por marca. Fuente Mermaid: \code{docs/diagramas/10_rag_multi_tenant.mmd}.}
+\label{fig:rag-flow}
+\end{figure}
+
+\subsection{Política de retención}
+Las claves de cache tienen TTL configurables (la documentación del gateway indica defaults de una hora para generación y 24 horas para embeddings). La retención de conversaciones, tareas y eventos no está especificada de manera global; debe definirse para producción según finalidad, privacidad y requisitos contractuales. La identidad de marca enviada por el cliente no es por sí sola prueba de autorización.
+
+\subsection{Multi-tenencia y gobierno de datos}
+Las migraciones crean organizaciones, usuarios, membresías, marcas, vínculos legacy y ámbitos \code{global|organization|brand}; agregan \code{brand_id} a ideas/publicaciones, asignan filas legacy y ponen en cuarentena filas no asignables. Las consultas RAG privadas filtran por marca. Esto implementa una base de aislamiento a nivel de consulta, pero no hay evidencia de RLS, autenticación ni validación integral de membresía en cada endpoint.
+
+\section{Especificación de APIs}
+
+\subsection{APIs internas}
+La comunicación de dominio es explícita. Los agentes consumen APIs REST de tool services; la coordinación de ejecución usa AMQP. Endpoints de health/metrics/state son administrativos/diagnóstico y no deben exponerse públicamente sin autorización.
+
+\begin{longtable}{p{2.8cm}p{4.0cm}p{7.0cm}}
+\toprule
+Servicio & Contrato principal & Función \\
+\midrule
+Orchestrator & \code{POST /ideas/generate}; \code{GET /ideas/batches/{id}}; \code{POST /ideas/{id}/publish}; \code{POST /publications/{id}/approve}; \code{POST /publications/{id}/deliver}; \code{GET /publications}; \code{POST /process}, \code{/demo}; \code{GET /tasks/{id}}, \code{/tasks/{id}/history}; \code{GET /health}, \code{/metrics}, \code{/graph}, \code{/tools} & Lotes de ideas, preparación/aprobación/entrega de publicaciones, generación individual, estado externo, resultado y catálogo. \\
+Agentes & \code{GET /health}, \code{/metrics}, \code{/tools}, \code{/state/{task_id}} & Diagnóstico y lectura del checkpoint; el trabajo de negocio se recibe por cola. \\
+LLM Gateway & \code{POST /v1/generate}; \code{POST /v1/embeddings}; \code{GET /v1/providers}, \code{/health} & Generación y embeddings con selección de proveedor. \\
+Tools & \code{GET /.well-known/tool-manifest}; operaciones REST declaradas; RPC AMQP opcional & Descubrimiento y operación de dominio encapsulada. \\
+Postiz tool & \code{GET /integrations}, \code{/available-integrations}, \code{/channels}; \code{POST /channels}, \code{/posts} & Catálogo, vínculo canal-marca, validación de canales y publicación con verificación de canal por marca. \\
+BFF & \code{/api/health}, \code{/api/overview}, \code{/api/clients}, \code{/api/brands/{id}} (GET, PUT, DELETE), \code{/api/brands/{id}/channels}, \code{/api/postiz/integrations}, \code{/api/ideas/generate}, \code{/api/idea-batches/{id}}, \code{/api/ideas}, \code{/api/ideas/{id}} (GET, PUT, DELETE), \code{/api/ideas/{id}/publish}, \code{/api/publications} (con \code{/approve} y \code{/deliver}), \code{/api/publications/saved} (GET, GET /{id}, PUT /{id}, DELETE /{id}), \code{/api/tasks}, \code{/api/tasks/{id}/trace}, \code{/api/tasks/{id}/stream}, \code{/api/tools}, \code{/api/rag/stats} & Contratos de interfaz, agregación, CRUD de marcas/ideas/publicaciones con manejo de 409 Conflict, vínculo de canales y distribución de la SPA compilada. \\
+\bottomrule
+\end{longtable}
+
+\subsubsection*{Operaciones de Tool Services}
+Los servicios publican sus operaciones en \code{/.well-known/tool-manifest}; la tabla resume las rutas incluidas en los manifiestos inspeccionados. Los agentes llaman por REST a perfil, tendencias, competencia, RAG, noticias y trending. El transporte AMQP/RPC existe en el contrato de los tools, aunque no es el camino normal de los grafos actuales.
+\begin{longtable}{p{3.0cm}p{4.2cm}p{6.6cm}}
+\toprule
+Tool & Operaciones declaradas & Uso arquitectónico \\
+\midrule
+\code{client} & \code{GET /profile}; \code{POST /brands}; \code{GET /brands}; \code{GET /brands/{id}}; \code{PUT /brands/{id}}; \code{DELETE /brands/{id}} & Perfil de marca solicitado por agentes, creación/listado en onboarding, actualización de perfil/tono, configuración dinámica de RAG (\code{rag_config} JSONB) y archivado lógico. \\
+\code{trends} & \code{GET /search}; \code{GET /all} & Recuperación semántica de tendencias para ideación/publicación. \\
+\code{competitors} & \code{GET /search}; \code{GET /all} & Referencias de competencia por similitud y listado reciente. \\
+\code{rag} & \code{POST /similar}; \code{POST /ideas}; \code{GET /ideas}, \code{/ideas/detail}, \code{/ideas/batch-status}; \code{PUT /ideas/{id}}; \code{DELETE /ideas/{id}}; \code{POST /publicaciones}; \code{GET /publicaciones}, \code{/publicaciones/{id}}; \code{PUT /publicaciones/{id}}; \code{DELETE /publicaciones/{id}}; \code{GET /stats}; \code{POST /documents} & Memoria semántica multi-tenant, ciclo de vida CRUD de ideas y publicaciones, re-indexación automática de embeddings vectoriales, protección de inmutabilidad (HTTP 409 Conflict) tras entrega a redes, biblioteca de dossiers y estadísticas. \\
+\code{news} & \code{GET /news} & Búsqueda Google News RSS utilizada por ideación. \\
+\code{trending} & \code{GET /trending} & Temas desde RSS utilizados por publicación. \\
+\code{postiz} & \code{GET /integrations}, \code{/available-integrations}, \code{/channels}; \code{POST /channels}, \code{/posts} & Canales de la marca, vínculo de integraciones y creación de posts; requiere clave y canales vinculados. \\
+\bottomrule
+\end{longtable}
+
+El gateway concentra \code{GET /health}, \code{GET /v1/providers}, \code{POST /v1/generate} y \code{POST /v1/embeddings}. Una solicitud de generación acepta prompt, system, modelo/parámetros, timeout, caché y, para la salida del agente de ideación, esquema de respuesta estructurada. Devuelve contenido, proveedor/modelo, indicador de caché, intentos y duración; embeddings devuelve vectores y metadatos del proveedor.
+
+\subsection{APIs externas}
+Ollama es consumido por el gateway mediante API HTTP compatible con chat y embeddings. Google News se consulta por RSS/XML a través de tools. Postiz recibe peticiones HTTPS para listar integraciones y crear posts. Las APIs concretas de redes sociales quedan detrás de Postiz; no se documenta una llamada directa a Meta.
+
+La secuencia del conector de publicación muestra la condición efectiva: generar y persistir el texto no implica publicarlo. Solo se llama al proveedor en la fase de entrega, después de la revisión humana, cuando existen integraciones activas y configuradas asociadas a la marca y se configura el secreto de Postiz. La vinculación de un canal a una marca se hace desde Studio consultando primero el catálogo de Postiz.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{diagramas/17_vincular_canal_postiz.pdf}
+\caption{Catálogo, validación y vínculo de un canal Postiz a una marca. Fuente Mermaid: \code{docs/diagramas/17_vincular_canal_postiz.mmd}.}
+\label{fig:link-channel}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.9\textwidth]{diagramas/11_secuencia_publicacion_postiz.pdf}
+\caption{Flujo del publicador y condición de invocación de Postiz. Fuente Mermaid: \code{docs/diagramas/11_secuencia_publicacion_postiz.mmd}.}
+\label{fig:postiz-sequence}
+\end{figure}
+
+\subsection{Estándares de diseño y ejemplos}
+Los tools comparten manifiesto y envelope \code{{tool,status,data,error,duration_ms,correlation_id,server_time}}. Los eventos comparten el esquema JSON anterior. La solicitud principal de generación es un lote:
+\begin{lstlisting}
+POST /ideas/generate
+{
+  "client_id": 1,
+  "brand_id": 1,
+  "count": 3,
+  "content": "Campana de verano para cosmetica natural",
+  "briefs": [],
+  "topics": [],
+  "content_format": "reel"
+}
+\end{lstlisting}
+La respuesta incluye \code{generation_batch_id}, \code{task_ids} y el estado del lote; el progreso se consulta con \code{GET /ideas/batches/{id}?brand_id=}. Preparar copies exige canales vinculados:
+\begin{lstlisting}
+POST /ideas/{idea_id}/publish
+{
+  "brand_id": 1,
+  "publish_mode": "schedule",
+  "publish_at": "2026-10-20T15:00:00Z",
+  "integration_ids": ["<id-canal>"],
+  "settings": {}
+}
+\end{lstlisting}
+La aprobación y la entrega reciben \code{publication_variants} con el copy editado por canal. \code{POST /process} sigue aceptando un brief individual (\code{client_id}, \code{brand_id}, \code{content}, \code{content_format}, \code{wait}, \code{timeout}) y devuelve idea, IDs y dossier; ya no genera ni publica el copy. Errores externos del BFF se traducen a 502/504 cuando corresponde; el orquestador responde 404 si la idea o la preparación no pertenece a la marca, 409 si la preparación no está en un estado válido y 422 si faltan copies o canales. La definición OpenAPI de FastAPI no sustituye versionado, compatibilidad hacia atrás, límites de tamaño ni autenticación.
+
+\section{Vista de seguridad}
+
+\subsection{Autenticación}
+No se encontró autenticación de usuario en el BFF ni en las rutas principales del orquestador. La identidad del proceso se basa en su ubicación de red y, para RabbitMQ/PostgreSQL, credenciales de servicio; esto no identifica al responsable de marketing que envía el brief. Para exposición multiusuario se requiere un proveedor de identidad y propagación verificable del actor.
+
+\subsection{Autorización}
+Las rutas HTTP no acreditan autorización de usuario/marca. Las consultas RAG privadas filtran por \code{brand_id}, y tool-postiz comprueba que los canales estén activos y vinculados a la marca; no hay RLS ni una validación integral de membresía por petición. Se requiere RBAC/ABAC y validar tenant desde una identidad confiable.
+
+\subsection{Cifrado}
+No hay TLS configurado para el tráfico interno de Compose ni certificados/terminación TLS para el BFF local. El conector Postiz y la consulta RSS usan HTTPS/HTTPS-RSS externos; el acceso a Ollama es HTTP local. Para despliegue no local se requieren TLS en ingreso y saltos internos, y cifrado y control de copias de seguridad.
+
+\subsection{Gestión de secretos}
+Claves y contraseñas se leen desde variables de entorno; Compose incluye credenciales de desarrollo y valores por defecto que no son aptos para entornos compartidos. No se identifica un gestor central ni rotación automática. En producción se requiere un vault/secrets manager, mínimos privilegios, rotación y evitar secretos en logs/configuración versionada.
+
+\subsection{Cumplimiento legal y privacidad}
+La aplicación maneja prompts, perfiles y contenido de marca; el gateway puede enviarlos a proveedores configurados. La PoC local reduce exposición a proveedor remoto pero no define clasificación de datos, consentimiento, residencia, derechos sobre datos RSS ni retención. Antes de producción deben revisarse términos de Google News, Postiz y cada canal, tratamiento de datos personales y derechos de contenido generado.
+
+\subsection{Modelo de amenazas y riesgo de prompt injection (STRIDE)}
+\begin{longtable}{p{1.5cm}p{4.1cm}p{4.0cm}p{4.7cm}}
+\toprule
+Categoría & Amenaza / activo & Mitigación presente & Riesgo residual / acción \\
+\midrule
+Spoofing & Cliente suplanta marca o agente & IDs y colas identifican tarea/rol & Sin identidad fuerte ni firma de eventos; añadir autenticación y claims de tenant. \\
+Tampering & Evento o resultado alterado & JSON tipado, correlación, colas con credenciales & AMQP no se cifra/firma en Compose; restringir red, TLS y ACL de colas. \\
+Repudiation & No poder atribuir una decisión & task\_id, correlation\_id, logs, checkpoints y chat history & No hay auditoría inmutable ni actor humano autenticado; centralizar logs con retención. \\
+Information disclosure & Cruce entre marcas o fuga de prompts/secretos & filtro SQL por brand\_id en RAG; tool Postiz valida canal activo de la marca & No RLS/autorización completa; revisar todos los paths y redacción de logs. \\
+Denial of service & Prompts grandes, llamadas LLM lentas o floods & timeout y healthchecks parciales; reintentos acotados del gateway & Rate limits, cuotas, límites de payload/concurrencia y circuit breaker externo pendientes. \\
+Elevation of privilege & Acceso a administración/API o canal de otra marca & Allowlist de tablas RAG; tool-postiz compara integration IDs con brand\_channels & Sin auth/RBAC; restringir APIs y validar tenant desde token confiable. \\
+Prompt injection & Instrucciones hostiles en brief, RSS o documentos & No se identifica una defensa formal en el código revisado & Delimitar datos, filtrar instrucciones, validar factualidad, limitar herramientas y probar red-team. \\
+\bottomrule
+\end{longtable}
+
+El frontend ya no construye vistas con \code{innerHTML}: es una SPA React que escapa por defecto el contenido interpolado y no usa inserción de HTML sin sanear, por lo que el riesgo XSS de la interfaz anterior queda mitigado en la actual (debe mantenerse al añadir componentes). Persisten tres riesgos del BFF: CORS permisivo (\code{allow_origins=*} con credenciales), acceso directo a PostgreSQL desde el BFF sin pasar por las tools (listado de integraciones, desvinculación de canales) y la reasignación de un canal ya vinculado a otra marca, que el BFF ejecuta con un \code{UPDATE} directo cuando la tool responde que el canal ya está vinculado (el diagrama de vinculación lo refleja); sin autenticación, cualquier cliente de la red puede transferir canales entre marcas. El STRIDE anterior es análisis de diseño, no prueba de penetración.
+
+\section{Vista de observabilidad}
+
+\subsection{Métricas clave}
+La instrumentación existente expone estado de servicios, estado y duración de tareas, duraciones registradas por tools, resultado de agentes, conteos de RAG y llamadas registradas. Para operar con objetivos medibles se recomienda añadir p50/p95 de extremo a extremo, espera en cola, fallos/reintentos por servicio, cache hit ratio, errores por proveedor, uso de memoria/CPU y tasa de tareas fallidas. No hay series históricas ni umbrales medidos que permitan afirmar SLO actuales.
+
+\subsection{Herramientas}
+La PoC dispone de logs Python accesibles con \code{docker compose logs}, endpoints JSON \code{/health} y \code{/metrics}, inspección del grafo, catálogo de tools, lectura de estado de agente, TaskStore y traza del BFF. RabbitMQ Management permite inspeccionar colas; Redis/PostgreSQL tienen herramientas operativas del motor. El frontend muestra indicadores, timeline, estado de tarea, llamadas registradas y mensajes de chat. No hay evidencia de exportadores Prometheus, tracing distribuido OpenTelemetry, Langfuse o agregación centralizada de logs. \code{/metrics} es JSON de estado/capacidades, no necesariamente formato Prometheus.
+
+\subsection{Alertas}
+No se encontraron reglas de alertamiento configuradas. Como mínimo deberían alertarse tareas fallidas/atascadas, acumulación de mensajes, indisponibilidad de PostgreSQL/Redis/RabbitMQ, agotamiento de proveedores LLM y errores sostenidos de Postiz. El endpoint de salud del BFF inicializa el status global como healthy incluso si servicios downstream caen; deben leerse estados individuales y corregirse el agregado antes de usarlo para alertas.
+
+\subsection{Observabilidad del razonamiento del agente (LLMOps)}
+La traza disponible explica etapas y herramientas, pero reconstruye algunos valores por defaults cuando no se logra leer checkpoint; por ello no siempre es un registro exacto de cada transición. Se recomienda registrar un span por tarea, agente, nodo, tool y llamada de modelo, con task/correlation IDs, duración, proveedor/modelo, reintentos, cache hit, resultado/errores y versión de prompt. Debe excluir secretos, redaccionar PII, separar contenido de negocio de metadatos, controlar acceso y establecer retención. Langfuse es una alternativa futura, no una dependencia actual.
+
+\section{Matriz de trazabilidad arquitectónica}
+La siguiente matriz propone relación entre requisitos funcionales/no funcionales y decisiones/componentes. Los IDs deben reconciliarse con el documento aprobado del OE2; no se inventa aquí el contenido de requisitos que no está en este repositorio.
+\begin{longtable}{p{1.6cm}p{3.3cm}p{4.1cm}p{3.5cm}p{2.0cm}}
+\toprule
+ID provisional & Necesidad & Componentes / decisiones & Evidencia de verificación & Cobertura actual \\
+\midrule
+FR-01 & Recibir y validar solicitudes de generación (lote o brief individual) & BFF, \code{POST /ideas/generate}, \code{POST /process}, modelos Pydantic, ADR-001/003 & Test de API y validación de esquema & Implementado; ejecución E2E depende del stack. \\
+FR-02 & Generar idea y dossier por lote; preparar copies por plataforma & Supervisor, dos grafos, gateway, tools RAG, ADR-001/003 & Tests unitarios de nodos/prompts, variantes por plataforma y pipeline integración & Implementado; generación real no verificada en esta revisión. \\
+FR-03 & Revisión y aprobación humana antes de publicar & Endpoints \code{approve}/\code{deliver}, estados derivados de TaskStore, módulos Results y Publications & Tests del orquestador sobre aprobación/entrega y listado & Implementado; sin identidad del aprobador ni auditoría inmutable. \\
+FR-04 & Vincular canales sociales a una marca y entregar a ellos & tool-postiz, \code{brand_channels}, Studio, ADR-004 & Tests de tool-postiz y del orquestador; prueba contra Postiz real pendiente & Implementado; transferencia de canal entre marcas sin control de autorización. \\
+NFR-05 & Añadir capacidades con bajo acoplamiento & ToolRegistry/manifiestos, ADR-001 & Tests de discovery/call de tools & Parcial: tools dinámicas por URL; registro de agentes no existe. \\
+NFR-06 & Trazar ejecución y decisiones & task\_id, checkpoints, tool\_calls, history, API trace & Tests TaskStore/runtime + inspección de traza & Parcial: no hay tracing distribuido/Langfuse ni exactitud garantizada en toda reconstrucción. \\
+NFR-09 & Aislar datos por marca & brand\_id, scopes, queries RAG, ADR-006 & Test de SQL con filtro brand\_id y migraciones & Parcial: falta auth/RLS y auditoría de autorización. \\
+NFR-Res & Recuperar trabajo asíncrono & RabbitMQ, RedisSaver, runner idempotente & Tests de redelivery y runtime; E2E de caída por ejecutar & Mecanismo implementado; garantías de infraestructura no demostradas bajo fallo. \\
+\bottomrule
+\end{longtable}
+
+Esta matriz debe completarse con responsables, criticidad, umbral medible, versión y evidencia de ejecución. El archivo puede trasladarse a Excel para el formato institucional, conservando el identificador y enlace a prueba.
+
+\section{Validación con stakeholders}
+
+\subsection{Metodología de validación}
+La validación debe combinar revisión arquitectónica y demostración técnica. Participantes previstos: asesor académico, colaborador de ITY SAS, responsable de marketing, desarrollador y responsable de operación/seguridad. Para cada concern se presenta la vista C4 correspondiente, un caso de secuencia, un escenario de calidad, un ADR y evidencia del repositorio. La revisión técnica ejecuta pruebas unitarias, integración y E2E en un entorno reproducible; la revisión stakeholder registra observación, prioridad, decisión, responsable y fecha.
+
+Como comprobación de esta versión documental se ejecutó \code{python -m pytest tests/unit -q}: 178 pruebas pasaron y ninguna falló. La suite unitaria no requiere servicios externos; no se ejecutaron pruebas de integración ni E2E contra el stack, ni el script de pruebas del frontend (\code{frontend/test-backoffice.mjs}), por lo que este resultado no acredita el comportamiento con Ollama, Postiz o los contenedores levantados.
+
+\subsection{Observaciones y ajustes}
+No se localizaron actas, formularios de conformidad ni resultados que acrediten ocho ajustes o un 95,8\% de conformidad. Esos valores no se reportan como hechos. Como salida de esta revisión documental quedan identificados estos asuntos a someter a validación:
+\begin{enumerate}
+  \item Confirmar que ideación y publicación, con aprobación humana intermedia, son suficientes para el proceso de la organización.
+  \item Confirmar si se necesita un rol Editor independiente o basta la validación estructural del dossier.
+  \item Validar que Google News RSS representa adecuadamente señales de tendencia/competencia.
+  \item Acordar si Postiz cumple la necesidad de multipublicación y qué canales se autorizarán.
+  \item Acordar niveles de aislamiento, identidad y gobierno de datos por marca.
+  \item Definir umbrales de latencia, disponibilidad y carga para aceptación.
+  \item Definir necesidad de observabilidad LLM y política de redacción/retención.
+  \item Confirmar requisitos de despliegue, presupuesto y responsabilidad operativa.
+\end{enumerate}
+
+\subsection{Acta de aprobación}
+El acta debe completarse con fecha, versión del capítulo/código, nombres y cargos, observaciones, respuestas, decisión (aprobado/aprobado con cambios/no aprobado) y firmas. Estado al redactar este capítulo: \textbf{pendiente de validación y aprobación formal}; el repositorio no contiene evidencia que permita declarar conformidad.
+
+\section{Conclusiones del capítulo}
+La PoC concreta una arquitectura híbrida de microservicios en contenedores con dos agentes LangGraph independientes, un supervisor que conserva estado de planificación en Redis y coordina por eventos RabbitMQ, tools desacopladas por manifiestos/REST, un gateway de LLM, PostgreSQL/pgvector para persistencia y memoria, y una SPA React con BFF para operar el flujo en tres fases (lote de ideas, preparación de copies por plataforma y entrega aprobada a Postiz) y consultar la trazabilidad. El C4 proporciona las vistas estructurales; Gaia/AUML hacen explícitos roles e intercambios; BDI se usa como interpretación del flujo determinista, no como motor deliberativo implementado.
+
+El alcance debe distinguirse de una plataforma productiva: no hay agente Editor, Contract Net activo, Meta Suite directo, Agent Registry, Langfuse, RLS, autenticación integral, HA ni evaluación firmada de stakeholders. Los escenarios, métricas y costos planteados constituyen criterios de trabajo futuro hasta que se midan. La arquitectura ofrece una base técnica reproducible para OE4, pero la aprobación de diseño y el cumplimiento cuantitativo dependen de pruebas del stack, revisión de ITY SAS y cierre de los controles pendientes.
+
+La figura siguiente sintetiza el camino implementado y sitúa el valor arquitectónico en la composición de contexto, generación, validación, persistencia y coordinación; la calidad de contenido deberá medirse por separado.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.94\textwidth]{diagramas/13_arquitectura_evolucion.pdf}
+\caption{Síntesis de la ruta de generación implementada. Fuente Mermaid: \code{docs/diagramas/13_arquitectura_evolucion.mmd}.}
+\label{fig:architecture-flow}
+\end{figure}
+
+Como agenda derivada de los límites documentados, la figura de roadmap presenta opciones de maduración. Sus elementos no se contabilizan como funcionalidades desarrolladas ni como requisitos confirmados.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.94\textwidth]{diagramas/14_roadmap_capacidades.pdf}
+\caption{Posibles líneas de evolución, diferenciadas de la PoC. Fuente Mermaid: \code{docs/diagramas/14_roadmap_capacidades.mmd}.}
+\label{fig:architecture-roadmap}
+\end{figure}
+
+\begin{thebibliography}{99}
+\bibitem{iso42010} ISO/IEC/IEEE. (2022). \textit{ISO/IEC/IEEE 42010:2022 Systems and software engineering---Architecture description}. International Organization for Standardization.
+\bibitem{brownc4} Brown, S. (2018--2024). \textit{The C4 model for visualising software architecture}. \url{https://c4model.com/}.
+\bibitem{gaia} Wooldridge, M., Jennings, N. R., \& Kinny, D. (2000). The Gaia methodology for agent-oriented analysis and design. \textit{Autonomous Agents and Multi-Agent Systems, 3}, 285--312.
+\bibitem{aum1} Odell, J., Parunak, H. V. D., \& Bauer, B. (2000). Extending UML for agents. In G. Wagner, Y. Lespérance, \& E. Yu (Eds.), \textit{Agent-Oriented Information Systems Workshop}.
+\bibitem{aum2} Bauer, B., Müller, J. P., \& Odell, J. (2001). Agent UML: A formalism for specifying multiagent software systems. \textit{International Journal of Software Engineering and Knowledge Engineering, 11}(3), 1--25.
+\bibitem{fipaacl} Foundation for Intelligent Physical Agents. (2002). \textit{FIPA ACL Message Structure Specification}. FIPA Standard SC00061.
+\bibitem{rao_georgeff} Rao, A. S., \& Georgeff, M. P. (1995). BDI agents: From theory to practice. In \textit{Proceedings of the First International Conference on Multi-Agent Systems}, 312--319.
+\bibitem{atam} Kazman, R., Klein, M., \& Clements, P. (2000). \textit{ATAM: Method for architecture evaluation}. Technical Report CMU/SEI-2000-TR-004, Software Engineering Institute.
+\bibitem{rabbitmq} VMware. (2024). \textit{RabbitMQ Documentation: Reliability Guide}. \url{https://www.rabbitmq.com/docs/reliability}.
+\bibitem{langgraph} LangChain. (2024--2025). \textit{LangGraph documentation: persistence and interrupts}. \url{https://langchain-ai.github.io/langgraph/}.
+\bibitem{pgvector} pgvector contributors. (2024). \textit{pgvector: Open-source vector similarity search for Postgres}. \url{https://github.com/pgvector/pgvector}.
+\bibitem{stride} Microsoft. (2024). \textit{Threat modeling}. Microsoft Security Development Lifecycle. \url{https://learn.microsoft.com/security/engineering/threat-modeling}.
+\bibitem{dockercompose} Docker Inc. (2024). \textit{Docker Compose documentation}. \url{https://docs.docker.com/compose/}.
+\end{thebibliography}
+
+\end{document}

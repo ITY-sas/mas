@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant O as Orquestador runtime
+    participant TS as TaskStore Redis
+    participant CP as RedisSaver
+    participant Q as RabbitMQ
+    participant A as Agente
+
+    O->>TS: create(task_id, status=running)
+    O->>CP: checkpoint supervisor thread_id=task_id
+    O->>TS: guardar pending {agent, queue, payload}
+    O->>Q: publicar agent.task.triggered (mensaje durable)
+    Q->>A: entregar mensaje
+    A->>CP: consultar checkpoint agent:task_id
+    alt agente ya terminó
+        CP-->>A: estado final guardado
+        A->>Q: reenviar resultado idempotente
+    else agente quedó interrumpido
+        CP-->>A: nodos pendientes
+        A->>CP: retomar grafo desde checkpoint
+        A->>Q: publicar resultado completed/failed
+    end
+    Q-->>O: agent.task.completed
+    Note over O,Q: El consumer de resultados del orquestador usa auto_ack=True en el código actual
+    Note over O,Q: La recuperación E2E de esa ventana de fallo requiere validación/endurecimiento
+    O->>CP: Command(resume=result)
+    O->>TS: completar tarea o guardar siguiente despacho

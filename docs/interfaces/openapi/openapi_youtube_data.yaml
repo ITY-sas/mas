@@ -1,0 +1,33 @@
+openapi: 3.0.3
+info:
+  title: YouTube Data API v3
+  description: API oficial de Google para carga de videos horizontales (16:9) y verticales (Shorts), extracción de subtítulos y analítica de canal.
+  version: 3.0.0
+servers:
+  - url: https://www.googleapis.com/youtube/v3
+security:
+  - OAuth2: []
+paths:
+  /videos:
+    post:
+      summary: Cargar o actualizar metadatos de un video
+      parameters:
+        - name: part
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "snippet,status"
+      responses:
+        '200':
+          description: Objeto de video registrado en YouTube
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://accounts.google.com/o/oauth2/v2/auth
+          tokenUrl: https://oauth2.googleapis.com/token
+          scopes:
+            https://www.googleapis.com/auth/youtube.upload: Permiso para subir videos

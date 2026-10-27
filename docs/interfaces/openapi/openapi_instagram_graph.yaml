@@ -1,0 +1,58 @@
+openapi: 3.0.3
+info:
+  title: Instagram Graph API (Meta Business Suite)
+  description: Interfaz oficial de Meta para lectura de estadísticas, métricas de engagement, historias, reels y programación en cuentas de Instagram Business.
+  version: 21.0.0
+servers:
+  - url: https://graph.facebook.com/v21.0
+security:
+  - UserTokenAuth: []
+paths:
+  /{ig_user_id}/insights:
+    get:
+      summary: Obtener métricas de alcance e interacciones de la cuenta
+      parameters:
+        - name: ig_user_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "17841405822384114"
+        - name: metric
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "reach,impressions,profile_views,follower_count"
+        - name: period
+          in: query
+          schema:
+            type: string
+          example: "day"
+      responses:
+        '200':
+          description: Estadísticas históricas de rendimiento
+  /{ig_user_id}/media_publish:
+    post:
+      summary: Publicar un contenedor multimedia previamente cargado
+      parameters:
+        - name: ig_user_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: creation_id
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "17924019283011"
+      responses:
+        '200':
+          description: Confirmación con ID del post publicado
+components:
+  securitySchemes:
+    UserTokenAuth:
+      type: http
+      scheme: bearer
+      description: Token de usuario con permisos instagram_basic, instagram_content_publish e instagram_manage_insights

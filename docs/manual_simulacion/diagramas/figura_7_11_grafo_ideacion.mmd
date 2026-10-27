@@ -1,0 +1,15 @@
+graph TD
+    S_START([START]) --> load_context["nodo: load_context<br/>Invocación REST a Tool Services:<br/>· tool-client (perfil)<br/>· tool-trends (tendencias)<br/>· tool-competitors (competencia)<br/>· tool-rag (ideas similares)"]
+    
+    load_context --> fetch_news["nodo: fetch_news<br/>Invocación REST a:<br/>· tool-news (Google News RSS)"]
+    
+    fetch_news --> generate_idea["nodo: generate_idea<br/>Invocación LLM Gateway:<br/>· POST /v1/generate con JSON Schema<br/>· Validación de esquema<br/>· Bucle de reparación si falla"]
+    
+    generate_idea --> save_idea["nodo: save_idea<br/>Invocación REST a:<br/>· tool-rag (POST /ideas con embedding)"]
+    
+    save_idea --> S_END([END])
+
+    style load_context fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style fetch_news fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style generate_idea fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    style save_idea fill:#ede7f6,stroke:#512da8,stroke-width:2px

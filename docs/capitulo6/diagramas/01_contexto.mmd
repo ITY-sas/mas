@@ -1,0 +1,15 @@
+flowchart LR
+    marketer["Responsable de marketing<br/>Envía briefs y revisa resultados"]
+    operator["Operador técnico<br/>Levanta y supervisa la PoC"]
+    system["Sistema multiagente de marketing<br/>Studio BFF + supervisor + agentes + tools + datos"]
+    ollama["Ollama en host<br/>Modelos de generación y embeddings"]
+    rss["Google News RSS<br/>Noticias y temas trending"]
+    postiz["Postiz API<br/>Integración opcional de publicación"]
+    channels["Canales sociales conectados<br/>a través de Postiz"]
+
+    marketer -->|HTTP: briefs, consulta y resultados| system
+    operator -->|HTTP local, configuración y diagnóstico| system
+    system -->|HTTP local: inferencia| ollama
+    system -->|RSS/HTTP: noticias y trending| rss
+    system -->|HTTPS: integraciones y posts| postiz
+    postiz -->|API del proveedor| channels

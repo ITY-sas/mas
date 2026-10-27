@@ -1,0 +1,25 @@
+graph TD
+    S_START([Fallo Observado en la Ejecucion]) --> SINTOMA{"Cual es el sintoma principal?"}
+    
+    SINTOMA -->|Un contenedor no arranca| C1["docker ps -a<br/>Revisar estado de salida"]
+    C1 --> C1_CHECK{"Error en logs del contenedor?"}
+    C1_CHECK -->|Puerto ocupado: 5432, 6379 o 5672| FIX_PORT["Liberar puerto local o remapear en docker-compose.yml"]
+    C1_CHECK -->|Falta variable .env| FIX_ENV["Copiar .env.example a .env y configurar parametros"]
+    C1_CHECK -->|Fallo de compilacion Dockerfile| FIX_BUILD["docker compose build --no-cache servicio"]
+    
+    SINTOMA -->|Un Tool Service no responde: 503| C2["Revisar endpoint GET health del tool"]
+    C2 --> C2_CHECK{"Salud degraded o timeout?"}
+    C2_CHECK -->|PostgreSQL inaccesible| FIX_PG["Verificar postgres:5432 y extension pgvector"]
+    C2_CHECK -->|RabbitMQ inaccesible| FIX_RMQ["Verificar rabbitmq:5672 y credenciales"]
+    C2_CHECK -->|Discovery vacio| FIX_DISC["Verificar TOOL_URLS en docker-compose.yml"]
+
+    SINTOMA -->|Pipeline se queda en cola o esperando| C3["Revisar RabbitMQ Management en puerto 15672"]
+    C3 --> C3_CHECK{"Mensajes atascados en cola?"}
+    C3_CHECK -->|Cola con mensajes sin ack| FIX_WORKER["Revisar logs del contenedor del agente"]
+    C3_CHECK -->|LLM Gateway no responde| FIX_GW["Verificar Ollama en host: curl tags"]
+
+    SINTOMA -->|Error 502 Bad Gateway en LLM| C4["Revisar logs de llm-gateway"]
+    C4 --> FIX_OLLAMA["Verificar host.docker.internal y modelos gemma3 y nomic-embed"]
+
+    style S_START fill:#f44336,stroke:#b71c1c,stroke-width:2px,color:#fff
+    style SINTOMA fill:#fff8e1,stroke:#fbc02d,stroke-width:2px

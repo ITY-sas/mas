@@ -1,0 +1,41 @@
+openapi: 3.0.3
+info:
+  title: Metricool REST API
+  description: API comercial de analítica y programación multicanal empleada como respaldo secundario (fallback) para scheduling de publicaciones.
+  version: 1.0.0
+servers:
+  - url: https://app.metricool.com/api/v1
+security:
+  - UserToken: []
+paths:
+  /planner/posts:
+    post:
+      summary: Programar publicación en múltiples plataformas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, publicationDate, networks]
+              properties:
+                text:
+                  type: string
+                  example: "Publicación programada desde Metricool API"
+                publicationDate:
+                  type: string
+                  format: date-time
+                networks:
+                  type: array
+                  items:
+                    type: string
+                  example: ["INSTAGRAM", "TIKTOK"]
+      responses:
+        '200':
+          description: ID del post programado en el planificador
+components:
+  securitySchemes:
+    UserToken:
+      type: apiKey
+      in: header
+      name: X-MC-TOKEN
