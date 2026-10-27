@@ -18,6 +18,22 @@ patrones de agentes sobre infraestructura de servicios:
 
 ---
 
+## Gobernanza del Proyecto y Evidencias Académicas
+
+Este repositorio respalda el Trabajo de Grado de Maestría en Ingeniería (*Prueba de Concepto de un Sistema Multiagente en Contenedores para la Optimización del Flujo de Contenido en ITY SAS*):
+
+- **Tablero Ágil (Kanban)**: [GitHub Projects ITY-sas/projects/1](https://github.com/orgs/ITY-sas/projects/1)
+- **Gobernanza y Actas**: [`documentation/1_Gobernanza_Y_Actas/`](file:///documentation/1_Gobernanza_Y_Actas/)
+  - `Plan maestro.pdf` — Plan de trabajo de 10 semanas, 4 épicas y matriz RACI.
+  - `ACTA OFICIAL DE REUNIÓN DE KICKOFF Y ALINEACIÓN OPERATIVA.pdf` — Compromisos formales de inicio.
+  - Plantillas de observación directa, historias de usuario y planning poker.
+- **Documentación Técnica de Tesis**: [`docs/`](file:///docs/)
+  - `documento trabajo de grado 2 final.pdf` — Documento consolidado de tesis (122 páginas, 43 anexos).
+  - `docs/documento_arquitectura/` y `docs/capitulo6/` — Especificación SRS IEEE 830 y Diseño C4/Gaia.
+  - `docs/capitulo 7/` — Implementación de la PoC (OE4), resultados de simulación y manual.
+
+---
+
 ## 1. ¿Qué hace el sistema?
 
 Studio genera de una a cinco ideas por lote, con brief opcional o briefs
