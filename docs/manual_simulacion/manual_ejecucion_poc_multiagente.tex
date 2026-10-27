@@ -378,14 +378,14 @@ Para operar la prueba mediante interfaz gráfica interactiva, ejecute el servido
 # Instalar dependencias del frontend
 python -m pip install -r frontend/requirements.txt
 
-# Iniciar servidor Uvicorn en el puerto 3001
-python -m uvicorn frontend.server:app --host 127.0.0.1 --port 3001
+# Iniciar servidor Uvicorn en el puerto 3000 (puerto por defecto del BFF)
+python -m uvicorn frontend.server:app --host 127.0.0.1 --port 3000
 \end{lstlisting}
-Acceda desde el navegador web a \code{http://127.0.0.1:3001} para gestionar tareas, visualizar dossiers, aprobar copys y enviar publicaciones.
+Acceda desde el navegador web a \code{http://127.0.0.1:3000} para gestionar tareas, visualizar dossiers, aprobar copys y enviar publicaciones.
 
 \subsection{Paso 9: Detención limpia de servicios sin pérdida de datos}
 \begin{lstlisting}[language=bash,caption={Detención segura de los contenedores.}]
-# Detener los contenedores preservando los volumenes de PostgreSQL y Redis
+# Detener los contenedores preservando los volúmenes de PostgreSQL, Redis y RabbitMQ
 docker compose stop
 
 # ADVERTENCIA: NUNCA ejecute "docker compose down -v" salvo que desee destruir 
