@@ -172,5 +172,5 @@ def test_rag_persists_platform_with_publication(monkeypatch):
     )
 
     assert "platform" in captured["sql"]
-    assert captured["params"] == (3, 8, 5, "linkedin", "LinkedIn variant", "[0.1,0.2]")
-    assert result == {"id": 19}
+    assert captured["params"] == (3, 8, 5, "linkedin", "draft", "LinkedIn variant", "[0.1,0.2]")
+    assert result == {"id": 19, "status": "draft"}
