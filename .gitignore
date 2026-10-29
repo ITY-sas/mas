@@ -46,6 +46,10 @@ docs/**/*.png
 !docs/**/*.md
 !docs/*.md
 
+# Excepciones para entregables oficiales y anexos de grado
+!docs/desarrollo de trabajo/**
+!docs/desarrollo de trabajo/**/*
+
 # Local credentials and environment overrides
 .env
 .env.*
