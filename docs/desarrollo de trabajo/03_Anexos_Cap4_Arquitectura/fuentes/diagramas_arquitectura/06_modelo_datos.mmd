@@ -1,0 +1,150 @@
+erDiagram
+    ORGANIZATIONS ||--o{ ORGANIZATION_MEMBERS : contains
+    USERS ||--o{ ORGANIZATION_MEMBERS : joins
+    ORGANIZATIONS ||--o{ BRANDS : owns
+    USERS ||--o{ BRAND_MEMBERS : joins
+    BRANDS ||--o{ BRAND_MEMBERS : has
+    CLIENTES ||--o| LEGACY_CLIENT_BRAND : maps
+    BRANDS ||--o| LEGACY_CLIENT_BRAND : maps_to
+    BRANDS ||--o{ IDEAS_GENERADAS : owns
+    BRANDS ||--o{ PUBLICACIONES_GENERADAS : owns
+    IDEAS_GENERADAS ||--o{ PUBLICACIONES_GENERADAS : inspires
+    ORGANIZATIONS ||--o{ BRAND_SOURCES : scopes
+    BRANDS ||--o{ BRAND_SOURCES : scopes
+    BRAND_SOURCES ||--o{ BRAND_DOCUMENTS : describes
+    BRAND_DOCUMENTS ||--o{ BRAND_CHUNKS : splits
+    BRAND_CHUNKS ||--o{ BRAND_EVIDENCE : supports
+    BRAND_SOURCES ||--o{ BRAND_EVIDENCE : supports
+    BRANDS ||--o{ BRAND_EVIDENCE : owns
+    BRANDS ||--o{ BRAND_CHANNELS : connects
+
+    ORGANIZATIONS {
+        bigint id PK
+        string name
+        string slug UK
+        string status
+    }
+    USERS {
+        bigint id PK
+        string email UK
+        string display_name
+        string status
+    }
+    ORGANIZATION_MEMBERS {
+        bigint organization_id PK,FK
+        bigint user_id PK,FK
+        string role
+    }
+    BRANDS {
+        bigint id PK
+        bigint organization_id FK
+        string name
+        string slug
+        string status
+        text profile_marca
+        text restricciones_tono
+        jsonb rag_config
+        vector embedding
+    }
+    BRAND_MEMBERS {
+        bigint brand_id PK,FK
+        bigint user_id PK,FK
+        string role
+    }
+    CLIENTES {
+        int id PK
+        string nombre
+        text perfil_marca
+        vector embedding
+    }
+    LEGACY_CLIENT_BRAND {
+        int client_id PK,FK
+        bigint brand_id FK,UK
+    }
+    IDEAS_GENERADAS {
+        int id PK
+        int client_id
+        bigint brand_id FK
+        string status
+        text content
+        vector embedding
+        uuid generation_batch_id
+        smallint generation_index
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    PUBLICACIONES_GENERADAS {
+        int id PK
+        int client_id
+        bigint brand_id FK
+        int idea_id
+        string platform
+        string status
+        text content
+        vector embedding
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    TENDENCIAS {
+        int id PK
+        string categoria
+        text content
+        string fuente
+        date fecha
+        vector embedding
+    }
+    REFERENCIAS_COMPETENCIA {
+        int id PK
+        string competidor
+        text content
+        string plataforma
+        vector embedding
+    }
+    BRAND_SOURCES {
+        bigint id PK
+        bigint organization_id FK
+        bigint brand_id FK
+        string scope
+        string source_type
+        string content_hash
+        json metadata
+    }
+    BRAND_DOCUMENTS {
+        bigint id PK
+        bigint source_id FK
+        bigint organization_id FK
+        bigint brand_id FK
+        string scope
+        text content
+        string content_hash
+    }
+    BRAND_CHUNKS {
+        bigint id PK
+        bigint document_id FK
+        bigint organization_id FK
+        bigint brand_id FK
+        string scope
+        int chunk_index
+        vector embedding
+        text content
+    }
+    BRAND_EVIDENCE {
+        bigint id PK
+        bigint brand_id FK
+        bigint source_id FK
+        bigint document_id FK
+        bigint chunk_id FK
+        text claim
+        text evidence_text
+    }
+    BRAND_CHANNELS {
+        bigint id PK
+        bigint brand_id FK
+        string provider
+        string external_id UK
+        string status
+        json settings
+        string credential_reference
+    }

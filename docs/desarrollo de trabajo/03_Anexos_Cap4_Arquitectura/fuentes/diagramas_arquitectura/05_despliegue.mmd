@@ -1,0 +1,32 @@
+flowchart TB
+    user["Usuario / navegador"] -->|localhost:3000| bff["Proceso local: frontend BFF + SPA"]
+    host["Host de desarrollo"]
+    subgraph docker["Docker Engine: red de Docker Compose"]
+        orchestrator["orchestrator :8002"]
+        agent_i["agente-ideacion :8000"]
+        agent_p["agente-publicacion :8001"]
+        rabbit[("RabbitMQ :5672<br/>management :15672")]
+        gateway["llm-gateway :8003"]
+        tools["7 tool services :8010-8016"]
+        redis[("Redis Stack :6379<br/>redis_data")]
+        postgres[("PostgreSQL + pgvector :5432<br/>postgres_data")]
+        orchestrator <--> rabbit
+        agent_i <--> rabbit
+        agent_p <--> rabbit
+        agent_i --> tools
+        agent_p --> tools
+        agent_i --> gateway
+        agent_p --> gateway
+        orchestrator --> redis
+        agent_i --> redis
+        agent_p --> redis
+        gateway --> redis
+        tools --> postgres
+        orchestrator --> postgres
+    end
+    bff -->|REST localhost:8002| orchestrator
+    bff -->|Redis localhost:6379 para historial/SSE| redis
+    bff -->|PostgreSQL localhost:5432 para perfiles/fallback| postgres
+    gateway -->|host.docker.internal:11434| ollama["Ollama en host"]
+    tools -->|HTTPS/RSS| internet["Internet: Google News RSS / Postiz API"]
+    bff -.-> note["Frontend no declarado en Compose actual<br/>El Dockerfile existe; por defecto se ejecuta localmente"]

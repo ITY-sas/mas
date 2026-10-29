@@ -1,0 +1,16 @@
+Contenedor C4 Nivel 2,Puerto,Clasificacion Funcional,Rol Gaia,Mensajes y Eventos AUML,Invocacion REST o AMQP,Estado de Consistencia
+orchestrator,8002,Coordinacion y Supervision,Supervisor,agent.task.triggered (request) / agent.task.completed (inform),AMQP Exchange agent.events / Redis TaskStore,Consistente
+agente-ideacion,8000,Agente Autonomo (Worker),Ideator,Consume agent.ideacion.tasks / Emite agent.task.completed,AMQP Consumer / Invocador REST Tools / LLM Gateway,Consistente
+agente-publicacion,8001,Agente Autonomo (Worker),Publisher,Consume agent.publicacion.tasks / Emite agent.task.completed,AMQP Consumer / Invocador REST Tools / Postiz,Consistente
+llm-gateway,8003,Pasarela de Inteligencia,Servicio Invocado,HTTP POST /v1/generate / HTTP POST /v1/embeddings,REST sychronous / Backend Ollama :11434,Consistente
+tool-client,8010,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + GET /profile/{id},REST sychronous / PostgreSQL,Consistente
+tool-trends,8011,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + POST /query,REST sychronous / pgvector,Consistente
+tool-competitors,8012,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + POST /references,REST sychronous / pgvector,Consistente
+tool-rag,8013,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + POST /ideas / POST /search,REST sychronous / pgvector (filtro brand_id),Consistente
+tool-news,8014,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + GET /news,REST sychronous / Google News RSS XML,Consistente
+tool-trending,8015,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + GET /topics,REST sychronous / RSS Feedparser,Consistente
+tool-postiz,8016,Herramienta TaaS,Servicio Invocado,Manifiesto JSON + POST /publish,REST sychronous / Postiz API :4007,Consistente
+rabbitmq,5672,Infraestructura de Mensajeria,Infraestructura,AMQP 0-9-1 Connection / Channels / Durable Queues,Transporte de eventos asincronos,Consistente
+postgres,5432,Infraestructura de Persistencia,Infraestructura,SQL DDL/DML + Extension pgvector (vector 768),Almacenamiento durable ACID y vectores,Consistente
+redis,6379,Infraestructura de Estado,Infraestructura,RedisJSON / Hashes / Checkpoints LangGraph,Checkpointer RedisSaver y TaskStore,Consistente
+frontend-bff,3000,Presentacion y Fachada,Presentacion,HTTP REST + Server-Sent Events (SSE),Invocador Orchestrator / Redis / PostgreSQL,Consistente

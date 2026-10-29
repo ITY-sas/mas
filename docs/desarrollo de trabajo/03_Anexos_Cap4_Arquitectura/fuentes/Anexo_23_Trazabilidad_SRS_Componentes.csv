@@ -1,0 +1,50 @@
+ID,Nombre,Prioridad,Macro_Issue,Componente_Asignado,ADR_Asociado,Estado_Asignacion,Estado_Implementacion,Evidencia_Verificacion
+REQ-F01,Consulta de tendencias activas,Must,REQ-US001,tool-trends / tool-trending,ADR-004,100%,Parcial,Consulta Google News RSS y base historica; sin TikTok API
+REQ-F02,Brief estructurado,Must,REQ-US001,agente-ideacion / tool-client,ADR-001,100%,Implementado sin verificacion,Esquema Pydantic en codigo; prueba E2E pendiente
+REQ-F03,Validacion semantica de brief,Should,REQ-US001,agente-ideacion / llm-gateway,ADR-005,100%,Implementado sin verificacion,Nodo valida campos; umbral 30% no calibrado
+REQ-F04,Sugerencia de formato,Could,REQ-US001,agente-ideacion,ADR-003,100%,Implementado sin verificacion,Prompt genera Reel o Post segun clasificacion
+REQ-F05,Rendimiento historico de cuenta,Should,REQ-US001,tool-rag / tool-client,ADR-006,100%,Parcial,Recupera ideas anteriores; sin metricas vivas de Meta
+REQ-F06,Extraccion de palabras clave,Should,REQ-US001,agente-ideacion / llm-gateway,ADR-005,100%,Implementado sin verificacion,LLM extrae tags dentro del JSON estructurado
+REQ-F07,Alineacion con tono de marca,Could,REQ-US001,tool-rag / agente-ideacion,ADR-006,100%,Parcial,Inyecta perfil corporativo; sin rubric scoring
+REQ-F08,Recuperacion de referentes,Should,REQ-US001,tool-competitors / tool-rag,ADR-006,100%,Verificado,Prueba unitaria en test_rag_multimarca.py pasando
+REQ-F09,Sugerencia de KPIs esperados,Could,REQ-US001,agente-ideacion,ADR-003,100%,Implementado sin verificacion,Campo en dossier JSON derivado de prompt
+REQ-F10,Retroalimentacion humana (HITL),Must,REQ-US001,frontend-bff / orchestrator,ADR-007,100%,Verificado,Modal en SPA permite aprobar o descartar ideas
+REQ-F11,Validacion tecnica de video,Must,REQ-US002,agente-ideacion (nodo QC),ADR-001,100%,Diseñado,Solo valida esquema JSON de dossier; no video mp4
+REQ-F12,Limite forzoso de revisiones,Must,REQ-US002,orchestrator / frontend-bff,ADR-003,100%,Diseñado,Bucle reintento fijado a 1; bloqueo v3 en UI ausente
+REQ-F13,Rough cut automatico,Should,REQ-US002,agente-ideacion,ADR-003,100%,Parcial,Estructura escenas en texto JSON; no edita archivo video
+REQ-F14,Historial de retrabajo de editor,Should,REQ-US002,frontend-bff / orchestrator,ADR-007,100%,Diseñado,Tablero de causas raiz por editor no construido
+REQ-F15,Subtitulos automaticos ASR,Must,REQ-US002,tool-client / llm-gateway,ADR-005,100%,Diseñado,Whisper ASR no integrado en Docker Compose PoC
+REQ-F16,Analisis del ritmo de edicion,Could,REQ-US002,agente-ideacion,ADR-003,100%,Diseñado,Calculo de cadencia de corte por segundo no codificado
+REQ-F17,Generacion de proxy liviano,Could,REQ-US002,tool-client,ADR-001,100%,Diseñado,Transcodificacion FFmpeg 720p no implementada en PoC
+REQ-F18,Correccion de color por histograma,Should,REQ-US002,agente-ideacion,ADR-001,100%,Diseñado,Analisis de histograma y LUTs no codificado
+REQ-F19,Notificacion por mensajeria,Should,REQ-US002,orchestrator,ADR-007,100%,Parcial,Notifica via SSE al navegador; webhooks Slack ausentes
+REQ-F20,Estimacion de tiempo restante,Could,REQ-US002,frontend-bff / orchestrator,ADR-007,100%,Diseñado,Barra de progreso cualitativa sin calculo proyectado
+REQ-F21,Adaptacion de relacion de aspecto,Must,REQ-US003,agente-publicacion,ADR-001,100%,Parcial,Indica 9:16 o 1:1 en copy; no recorta archivos
+REQ-F22,Generacion de copy por canal,Must,REQ-US003,agente-publicacion / llm-gateway,ADR-005,100%,Implementado sin verificacion,Genera 4 variantes textuales en publications_generadas
+REQ-F23,Integracion con scheduling (Postiz),Must,REQ-US003,tool-postiz / agente-publicacion,ADR-001,100%,Implementado sin verificacion,Microservicio tool-postiz listo; requiere POSTIZ_API_KEY
+REQ-F24,Previsualizacion en dispositivo,Should,REQ-US003,frontend-bff,ADR-007,100%,Verificado,Modulo Publications en SPA renderiza preview
+REQ-F25,Generacion inteligente hashtags,Should,REQ-US003,tool-trending / publisher,ADR-004,100%,Implementado sin verificacion,LLM anexa lista de hashtags segun topics RSS
+REQ-F26,Recomendacion de mejor horario,Could,REQ-US003,tool-client / publisher,ADR-003,100%,Diseñado,Horario optimo ausente; fecha ingresada manualmente
+REQ-F27,Generacion miniatura de portada,Could,REQ-US003,agente-publicacion,ADR-005,100%,Diseñado,Composicion grafica de portada JPG/PNG ausente
+REQ-F28,Validacion limites de caracteres,Must,REQ-US003,agente-publicacion,ADR-003,100%,Verificado,Tests unitarios verifican tope por red social
+REQ-F29,Informe consolidado de entrega,Should,REQ-US003,frontend-bff / orchestrator,ADR-007,100%,Parcial,Consulta historial en pantalla; sin exportacion PDF
+REQ-F30,Tolerancia a fallos y reintentos,Must,REQ-US003,common/events.py / tool-postiz,ADR-002,100%,Implementado sin verificacion,Backoff exponencial codificado en clientes HTTP
+REQ-NF01,Contenedorizacion independiente,Must,REQ-US004,docker-compose.yml / Dockerfiles,ADR-001,100%,Verificado,14 microservicios levantando con imagenes <500MB
+REQ-NF02,Latencia inter-microservicios,Must,REQ-US004,Red Docker multiagent-net,ADR-001,100%,No medido,Objetivo de diseño P95 <500ms no medido formalmente
+REQ-NF03,Disponibilidad del servicio,Should,REQ-US004,Docker healthchecks,ADR-001,100%,Parcial,Healthchecks presentes; sin cluster HA en PoC
+REQ-NF04,Cifrado y gestion de secretos,Must,REQ-US004,.env / HashiCorp Vault,ADR-001,100%,Parcial,Variables .env planas en PoC; Vault disenado
+REQ-NF05,Escalabilidad horizontal,Should,REQ-US004,RabbitMQ colas durables,ADR-002,100%,Diseñado,Compose fija 1 replica por worker; HPA en K8s futuro
+REQ-NF06,Auditoria y trazabilidad,Should,REQ-US004,Redis TaskStore / chat_history,ADR-007,100%,Parcial,Trazas operativas presentes; sin log inmutable 90d
+REQ-NF07,Fiabilidad y fallback LLM,Could,REQ-US004,llm_gateway/resilience.py,ADR-005,100%,Implementado sin verificacion,Fallback local implementado; tests unitarios
+REQ-NF08,Tiempo de arranque de servicios,Should,REQ-US004,FastAPI / Uvicorn,ADR-001,100%,Verificado,Startup promedio medido en <10s por contenedor
+REQ-NF09,Cumplimiento Ley 1581 de 2012,Must,REQ-US004,Esquemas PostgreSQL,ADR-006,100%,Verificado,Cero PII de audiencias; usuarios de agencia en users
+REQ-IE01,API TikTok Research v2,Must,REQ-US001,tool-news / tool-trending,ADR-004,100%,Parcial,Sustituido por Google News RSS publico
+REQ-IE02,API Instagram Graph v21.0,Must,REQ-US001,tool-trends,ADR-006,100%,Parcial,Sustituido por historico semantico en pgvector
+REQ-IE03,Motor FFmpeg 6.1 / OpenCV,Must,REQ-US002,agente-ideacion (validate_dossier),ADR-001,100%,Diseñado,Valida estructura JSON; no binario de video
+REQ-IE04,LLM Gateway Service (:8003),Must,REQ-US001,llm-gateway,ADR-005,100%,Implementado sin verificacion,Fachada funcional hacia Ollama local :11434
+REQ-IE05,API Postiz / Metricool,Must,REQ-US003,tool-postiz,ADR-001,100%,Implementado sin verificacion,Microservicio :8016 funcional; requiere POSTIZ_API_KEY
+REQ-IE06,HashiCorp Vault (:8200),Should,REQ-US004,Infraestructura de secretos,ADR-001,100%,Diseñado,Simulado mediante .env seguro en la PoC
+REQ-IE07,WhatsApp / Slack Webhooks,Should,REQ-US002,orchestrator / frontend-bff,ADR-007,100%,Parcial,Resuelto mediante Server-Sent Events hacia la SPA
+REQ-IE08,Google YouTube Data API v3,Should,REQ-US003,tool-postiz,ADR-001,100%,Parcial,Canalizado como integracion delegada en Postiz
+REQ-IE09,Prometheus Metrics Exporter,Should,REQ-US004,Endpoints /health y /metrics,ADR-007,100%,Parcial,Endpoints devuelven JSON; sin formato Prometheus
+REQ-IE10,MinIO S3 Object Storage (:9000),Could,REQ-US002,Volumenes persistentes Docker,ADR-001,100%,Diseñado,Archivos locales en volumenes Docker Compose

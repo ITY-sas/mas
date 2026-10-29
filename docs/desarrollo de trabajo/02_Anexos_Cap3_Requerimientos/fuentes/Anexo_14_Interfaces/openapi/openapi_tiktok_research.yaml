@@ -1,0 +1,62 @@
+openapi: 3.0.3
+info:
+  title: TikTok Research API v2
+  description: Interfaz oficial de TikTok para consulta académica e investigación de tendencias, videos virales, hashtags populares y patrones de consumo.
+  version: 2.0.0
+servers:
+  - url: https://open.tiktokapis.com/v2/research
+security:
+  - OAuth2: []
+paths:
+  /video/query/:
+    post:
+      summary: Consultar videos por hashtag, audio, región y rango temporal
+      description: Utilizado por el Agente de Ideación para extraer el top de contenidos de la industria en Colombia.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: object
+                  properties:
+                    and:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          operation:
+                            type: string
+                            example: "IN"
+                          field_name:
+                            type: string
+                            example: "hashtag_name"
+                          field_values:
+                            type: array
+                            items:
+                              type: string
+                            example: ["skincarecolombia", "cuidadodelapiel"]
+                start_date:
+                  type: string
+                  example: "20260801"
+                end_date:
+                  type: string
+                  example: "20260828"
+                max_count:
+                  type: integer
+                  example: 20
+      responses:
+        '200':
+          description: Lista de videos virales con métricas de likes, shares y comentarios
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://open.tiktokapis.com/v2/oauth/token/
+          scopes:
+            research.data.basic: Acceso básico a estadísticas y tendencias

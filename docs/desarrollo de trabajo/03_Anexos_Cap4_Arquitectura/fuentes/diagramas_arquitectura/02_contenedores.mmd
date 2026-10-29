@@ -1,0 +1,62 @@
+flowchart LR
+    browser["Navegador"] -->|HTTP| bff["Frontend BFF :3000<br/>FastAPI + SPA React Vite<br/>Proceso local"]
+    bff -->|REST lotes, publicaciones, process| orch
+    bff -->|REST biblioteca y estadísticas| rag
+    bff -->|REST canales e integraciones| postiz_tool
+    bff -->|TaskStore para SSE y listado| redis
+    bff -->|Perfiles, canales / historial fallback| pg
+
+    subgraph compose["Docker Compose - 14 servicios backend"]
+        orch["Orquestador :8002<br/>Supervisor LangGraph"]
+        rabbit[("RabbitMQ<br/>AMQP :5672")]
+        ideation["Agente ideación :8000<br/>LangGraph worker"]
+        publication["Agente publicación :8001<br/>LangGraph worker"]
+        gateway["LLM Gateway :8003<br/>balanceo, fallback, cache"]
+        client["tool-client :8010"]
+        trends["tool-trends :8011"]
+        competitors["tool-competitors :8012"]
+        rag["tool-rag :8013"]
+        news["tool-news :8014"]
+        trending["tool-trending :8015"]
+        postiz_tool["tool-postiz :8016"]
+        redis[("Redis Stack :6379<br/>checkpoints + TaskStore + cache")]
+        pg[("PostgreSQL 16 + pgvector :5432<br/>datos de negocio + chat_history")]
+
+        orch -->|agent.task.triggered| rabbit
+        rabbit -->|cola agent.ideacion.tasks| ideation
+        rabbit -->|cola agent.publicacion.tasks| publication
+        ideation -->|agent.task.completed| rabbit
+        publication -->|agent.task.completed| rabbit
+        rabbit -->|agent.results| orch
+
+        ideation -->|REST + manifests| client
+        ideation --> trends
+        ideation --> competitors
+        ideation --> rag
+        ideation --> news
+        publication --> client
+        publication --> trends
+        publication --> trending
+        publication --> rag
+        publication -.->|canales y create_post| postiz_tool
+
+        orch -.->|valida idea y canales| rag
+        orch -.-> postiz_tool
+        ideation -->|REST generate| gateway
+        publication -->|REST generate| gateway
+        client --> pg
+        trends --> pg
+        postiz_tool --> pg
+        competitors --> pg
+        rag --> pg
+        orch -->|checkpoints + tareas| redis
+        ideation -->|checkpoint propio| redis
+        publication -->|checkpoint propio| redis
+        gateway -->|cache| redis
+        rag -->|embeddings| gateway
+    end
+
+    gateway -->|HTTP local :11434| ollama["Ollama en el host"]
+    news -->|RSS| google["Google News RSS"]
+    trending -->|RSS| google
+    postiz_tool -->|HTTPS, requiere POSTIZ_API_KEY| postiz_api["Postiz API"]

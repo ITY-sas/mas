@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph orchestrator["Supervisor LangGraph"]
+        S["START"] --> decide["decide_next<br/>(brief.workflow)"]
+        decide -->|generate_idea| ideation["dispatch_ideacion<br/>interrupt()"]
+        ideation -->|Command resume| decide
+        decide -->|prepare / deliver_publication| publication["dispatch_publicacion<br/>interrupt()"]
+        publication -->|Command resume| decide
+        decide -->|resultado listo| E["END"]
+    end
+
+    subgraph ideation_agent["Grafo agente de ideación"]
+        I0["START"] --> I1["load_context"] --> I2["fetch_news"] --> I3["generate_idea"] --> I4["save_idea"] --> I5["END"]
+        I3 -->|validación falla; reparación única| I3
+    end
+
+    subgraph publishing_agent["Grafo agente de publicación"]
+        P0["START<br/>publication_action"] -->|prepare| P1["load_context + canales"] --> P2["fetch_trending"] --> P3["generate_variants_by_platform"] --> P4["save_variant_per_platform"] --> P5["schedule_post<br/>prepared | created | skipped | failed"] --> P6["END"]
+        P0 -->|deliver| P5
+    end
+
+    ideation -.->|evento agent.task.triggered| I0
+    I5 -.->|evento agent.task.completed| ideation
+    publication -.->|evento agent.task.triggered| P0
+    P6 -.->|evento agent.task.completed| publication

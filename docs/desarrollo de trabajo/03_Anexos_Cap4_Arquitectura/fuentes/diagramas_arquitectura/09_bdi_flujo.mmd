@@ -1,0 +1,13 @@
+flowchart TD
+    task["Evento + brief + IDs de cliente/marca"] --> beliefs["Creencias operativas<br/>Estado del grafo + perfil/contexto consultado"]
+    beliefs --> goals["Objetivo del flujo<br/>Completar la fase solicitada: idea, copies o entrega"]
+    goals --> intention["Intenciones deterministas<br/>Ejecutar el siguiente nodo LangGraph"]
+    intention --> ideation["Ideación (lote 1-5)<br/>contexto -> noticias -> generar -> validar -> guardar"]
+    ideation -->|dossier incompleto| repair["Una reparación del dossier"]
+    repair --> ideation
+    ideation --> human["Usuario elige idea y canales"]
+    human --> prepare["Publicación: preparar<br/>contexto -> trending -> variante por plataforma -> guardar"]
+    prepare --> review["Revisión y aprobación humana"]
+    review --> deliver["Publicación: entregar<br/>create_post en Postiz"]
+    deliver --> result["Resultado, TaskStore y checkpoints"]
+    result -->|decide_next verifica salidas| goals

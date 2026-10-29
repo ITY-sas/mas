@@ -1,0 +1,8 @@
+flowchart TD
+    architecture_style["Estilo híbrido<br/>microservicios + REST + eventos"] -->|ADR-001| composition["Agentes como servicios<br/>herramientas como servicios"]
+    rabbit["RabbitMQ"] -->|ADR-002| delivery["Despacho asíncrono<br/>colas durables + resultados"]
+    langgraph["LangGraph"] -->|ADR-003| control["Supervisor determinista por workflow<br/>interrupciones y reanudación"]
+    sources["PostgreSQL/pgvector + RSS"] -->|ADR-004| context["Contexto interno + señales públicas"]
+    gateway["LLM Gateway"] -->|ADR-005| models["Abstracción, fallback y cache<br/>Ollama configurado en PoC"]
+    vectors["pgvector"] -->|ADR-006| memory["Memoria vectorial dentro de PostgreSQL<br/>filtrado por brand_id"]
+    telemetry["TaskStore + checkpoints + logs"] -->|ADR-007| trace["Trazabilidad operativa parcial<br/>sin plataforma LLMOps central"]

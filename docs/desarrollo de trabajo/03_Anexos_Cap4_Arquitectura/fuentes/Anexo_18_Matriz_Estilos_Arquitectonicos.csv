@@ -1,0 +1,12 @@
+Criterio,Monolito Tradicional,Microservicios REST Puros,Orientada a Eventos (EDA Pura),Serverless (FaaS Cloud),Basada en Actores (Akka/Ray),Hibrida (Eventos + REST),Justificacion Tecnica,Evaluador
+C1. Aislamiento de fallas,2,5,5,4,4,5,"El monolito colapsa ante excepciones en memoria de GPU o LLM. Las arquitecturas desacopladas aislan el fallo en contenedores independientes.",Equipo de Investigacion ITY-MAS
+C2. Escalabilidad independiente,1,5,5,4,5,4,"Monolito escala todo el bloque. Microservicios y EDA permiten escalar workers especificos (ej. ideacion) segun la demanda.",Equipo de Investigacion ITY-MAS
+C3. Resiliencia asincrona,2,2,5,4,4,5,"REST puro mantiene conexiones HTTP abiertas expuestas a timeout durante inferencias largas (>30s). RabbitMQ retiene tareas sin perder estado.",Equipo de Investigacion ITY-MAS
+C4. Simplicidad para consultas de baja latencia,4,5,2,3,3,4,"EDA introduce latencia innecesaria en lecturas sincronas (ej. perfiles de marca). REST sychronous resuelve en <15ms.",Equipo de Investigacion ITY-MAS
+C5. Integracion y desacoplamiento,1,2,5,4,4,5,"La arquitectura hibrida permite TaaS (Tools-as-a-Service) donde las herramientas se descubren por manifiestos JSON sin acoplar agentes.",Equipo de Investigacion ITY-MAS
+C6. Observabilidad y trazabilidad,2,4,3,4,3,4,"EDA pura exige tracing distribuido complejo. El estilo hibrido utiliza TaskStore en Redis correlacionado con task_id y logs centralizados.",Equipo de Investigacion ITY-MAS
+C7. Consistencia de datos,5,2,2,3,3,3,"Monolito brinda ACID local estricto. La arquitectura hibrida impone consistencia eventual entre checkpoints en Redis y PostgreSQL.",Equipo de Investigacion ITY-MAS
+C8. Esfuerzo de implementacion en PoC,5,2,2,2,1,3,"Frameworks de actores exigen curva alta de aprendizaje. La combinacion FastAPI + LangGraph + RabbitMQ equilibra esfuerzo y modularidad.",Equipo de Investigacion ITY-MAS
+C9. Extensibilidad para nuevos agentes,2,4,5,4,5,5,"Incorporar nuevos agentes es modular gracias a colas independientes en RabbitMQ y manifiestos dinamicos de tools.",Equipo de Investigacion ITY-MAS
+TOTAL PUNTUACION (Max 45),24,31,34,32,32,38,"Arquitectura Hibrida seleccionada como ganadora formal con 38/45 puntos.",Comite Tecnico ITY SAS
+POSICION FINAL,6,5,2,3,3,1,"Serverless descartado pese a obtener 32 puntos debido a vendor lock-in cloud y latencia de cold starts para inferencia de LLMs locales.",Comite Tecnico ITY SAS

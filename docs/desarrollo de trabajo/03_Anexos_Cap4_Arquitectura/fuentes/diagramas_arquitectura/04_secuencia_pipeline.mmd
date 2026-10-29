@@ -1,0 +1,78 @@
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant B as BFF Studio
+    participant O as Orquestador
+    participant R as Redis TaskStore / checkpoints
+    participant Q as RabbitMQ
+    participant I as Agente ideación
+    participant T as Tool services
+    participant G as LLM Gateway
+    participant P as PostgreSQL
+    participant A as Agente publicación
+
+    U->>B: POST /api/ideas/generate (count 1..5, brief(s) opcionales)
+    B->>O: POST /ideas/generate
+    O->>R: Crea registro padre + tareas hijas por idea
+    loop cada posición del lote
+        O->>R: Guarda brief, brand_id, generation_index
+        O->>Q: agent.task.triggered (ideación)
+        Q->>I: Consume tarea hija
+        I->>T: Perfil, tendencias, competencia, RAG y noticias
+        T-->>I: Contexto de marca/mercado
+        opt brief vacío
+            I->>I: Compone brief desde perfil y temas de marca
+        end
+        I->>G: Genera dossier estructurado
+        G-->>I: Dossier validado
+        I->>T: rag.save_idea (batch_id + index)
+        T->>P: INSERT idea con brand_id + embedding
+        T-->>I: idea_id
+        I->>Q: agent.task.completed
+        Q->>O: Resultado de ideación
+        O->>R: Finaliza tarea y actualiza progreso parcial
+    end
+    B-->>U: generation_batch_id
+    U->>B: GET biblioteca / seleccionar idea + canales + modo
+    B->>O: POST /ideas/{idea_id}/publish
+    O->>T: rag.get_idea (brand_id + idea_id)
+    T->>P: SELECT dossier filtrado por marca
+    P-->>T: JSON completo del dossier
+    T-->>O: Idea validada
+    O->>T: postiz.channels (validar integraciones de marca)
+    T-->>O: Canales activos y vinculados
+    O->>R: Crea tarea workflow=prepare_publication
+    O->>Q: agent.task.triggered (publication_action=prepare)
+    Q->>A: Consume dossier + canales + modo/fecha
+    A->>T: Contexto, tendencias y copy por plataforma
+    T-->>A: Contexto
+    A->>G: Genera variantes adaptadas
+    G-->>A: Copys por plataforma
+    A->>T: rag.save_publicacion por plataforma
+    T->>P: Guarda copys con platform e idea_id
+    A->>A: Devuelve postiz.status=prepared
+    A->>Q: agent.task.completed
+    Q->>O: Variantes listas para revisión
+    O->>R: Finaliza tarea de preparación (sin Postiz)
+    B-->>U: Resultados editables por plataforma
+    U->>B: Editar y aprobar copies revisados
+    B->>O: POST /publications/{prepare_task_id}/approve
+    O->>R: Guarda variantes aprobadas (postiz.status=approved_pending)
+    U->>B: Entregar (modo draft/schedule/now)
+    B->>O: POST /publications/{prepare_task_id}/deliver (variantes editadas)
+    O->>T: Validar nuevamente marca e integraciones
+    T-->>O: Canales activos
+    O->>R: Crea tarea workflow=deliver_publication
+    O->>Q: agent.task.triggered (publication_action=deliver)
+    Q->>A: Consume copies aprobados + mode/date
+    A->>T: postiz.create_post (sin regenerar ni re-guardar)
+    T->>P: POST /posts con type/date/integration/value/settings
+    P-->>T: Post IDs o error de proveedor
+    T-->>A: Resultado por integración
+    A->>Q: agent.task.completed
+    Q->>O: Estado Postiz y trazabilidad
+    O->>R: Finaliza entrega y emite task.completed
+    opt Studio consulta estado
+        B->>R: Sondea lote/tarea
+        B-->>U: Progreso y resultado vía REST/SSE
+    end

@@ -1,0 +1,51 @@
+openapi: 3.0.3
+info:
+  title: WhatsApp Business Cloud API (Meta)
+  description: Interfaz oficial para envío de notificaciones automáticas y alertas operativas a líderes de proyecto y clientes de ITY SAS.
+  version: 21.0.0
+servers:
+  - url: https://graph.facebook.com/v21.0
+security:
+  - BearerToken: []
+paths:
+  /{phone_number_id}/messages:
+    post:
+      summary: Enviar mensaje de plantilla o texto libre a colaborador
+      parameters:
+        - name: phone_number_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "109283019283"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messaging_product, to, type]
+              properties:
+                messaging_product:
+                  type: string
+                  example: "whatsapp"
+                to:
+                  type: string
+                  example: "573105551234"
+                type:
+                  type: string
+                  enum: [text, template]
+                text:
+                  type: object
+                  properties:
+                    body:
+                      type: string
+                      example: "Alerta: El video 2026-08_001 ha superado el QC automático y está listo para revisión."
+      responses:
+        '200':
+          description: Mensaje encolado para entrega
+components:
+  securitySchemes:
+    BearerToken:
+      type: http
+      scheme: bearer

@@ -1,0 +1,10 @@
+flowchart LR
+    brief["Brief + brand_id"] --> embed["LLM Gateway<br/>/v1/embeddings"]
+    embed --> query["tool-rag / shared_tools.rag"]
+    query --> filter["WHERE brand_id = ?<br/>filtro antes de ordenar"]
+    filter --> vector["pgvector<br/>distancia coseno"]
+    vector --> results["Ideas/publicaciones similares<br/>misma marca"]
+    results --> prompt["Contexto del agente"]
+    prompt --> generate["LLM Gateway /v1/generate"]
+    generate --> save["Guardar salida + embedding"]
+    save --> db[("PostgreSQL + pgvector")]

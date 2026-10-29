@@ -1,0 +1,53 @@
+flowchart LR
+    subgraph supervisor["Orchestrator - FastAPI + LangGraph runtime"]
+        api["POST /ideas/generate, /ideas/:id/publish,<br/>/publications/:id/approve y deliver, /process"] --> start["start_task / start_idea_batch"]
+        start --> supervisor_graph["Supervisor graph"]
+        supervisor_graph --> decide["decide_next por workflow"]
+        decide -->|generate_idea sin idea| dispatch_i["dispatch_ideacion<br/>interrupt()"]
+        decide -->|prepare_publication / deliver_publication| dispatch_p["dispatch_publicacion<br/>interrupt()"]
+        dispatch_i --> runtime["Runtime event adapter"]
+        dispatch_p --> runtime
+        runtime --> taskstore["TaskStore<br/>lotes, preparaciones, entregas"]
+        runtime --> history["Chat history adapter"]
+        runtime --> recover["recover_running_tasks"]
+    end
+
+    subgraph ideation["Agente de ideación - grafo LangGraph"]
+        i1["load_context"] --> i2["fetch_news"] --> i3["generate_idea"] --> i4["validate_dossier"] --> i5["save_idea"]
+        i4 -->|faltan campos: un intento| i3
+    end
+
+    subgraph publication["Agente de publicación - grafo LangGraph"]
+        p1["load_context"] --> p2["fetch_trending"] --> p3["generate_post<br/>una variante por plataforma"] --> p4["save_post"] --> p5["schedule_post<br/>prepared | created"]
+        p0(["START: deliver"]) -.-> p5
+    end
+
+    runtime <-->|RabbitMQ events| broker[("RabbitMQ")]
+    broker -->|triggered| ideation
+    broker -->|triggered| publication
+    ideation -->|completed / failed| broker
+    publication -->|completed / failed| broker
+
+    subgraph tools["Tool services descubiertos por manifiesto"]
+        client["client.profile"]
+        trends["trends.search"]
+        competitors["competitors.search"]
+        rag["rag.similar / save_idea / list_ideas / get_idea / save_publicacion"]
+        rss["news.news / trending.trending"]
+        postiz["postiz.channels / link_channel / create_post"]
+    end
+    subgraph llm["LLM Gateway"]
+        generate["/v1/generate"]
+        embeddings["/v1/embeddings"]
+        resilience["provider selection + retries + fallback + cache"]
+    end
+    ideation -->|ToolRegistry REST| tools
+    publication -->|ToolRegistry REST| tools
+    ideation --> generate
+    publication --> generate
+    rag --> embeddings
+    taskstore --> redis[("Redis Stack")]
+    ideation -->|RedisSaver: ideacion:task_id| redis
+    publication -->|RedisSaver: publicacion:task_id| redis
+    history --> pg[("PostgreSQL chat_history")]
+    taskstore --> pg
